@@ -1,0 +1,32 @@
+services:
+  flutter-dev:
+    build:
+      context: .
+      dockerfile: docker/flutter/Dockerfile
+    container_name: promati-flutter-dev
+    working_dir: /workspace/frontend_flutter/promati_inspection_app
+    volumes:
+      - ./:/workspace
+      - flutter_pub_cache:/root/.pub-cache
+      - android_sdk_cache:/opt/android-sdk
+    ports:
+      - "3100:3100"
+    environment:
+      API_BASE_URL_DOCKER: "http://api:8000"
+      API_BASE_URL_BROWSER: "http://localhost:8000"
+    networks:
+      - core
+    command: >
+      bash -lc "
+      if [ ! -f /workspace/frontend_flutter/promati_inspection_app/pubspec.yaml ]; then
+        cd /workspace/frontend_flutter &&
+        flutter create promati_inspection_app;
+      fi &&
+      cd /workspace/frontend_flutter/promati_inspection_app &&
+      flutter pub get &&
+      flutter run -d web-server --web-hostname 0.0.0.0 --web-port 3100
+      "
+
+volumes:
+  flutter_pub_cache:
+  android_sdk_cache:

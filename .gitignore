@@ -1,0 +1,46 @@
+# Secrets / lokale instellingen
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+.next/
+.nuxt/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Docker / volumes / data
+data/
+volumes/
+minio_data/
+postgres_data/
+qdrant_storage/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
