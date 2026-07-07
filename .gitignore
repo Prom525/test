@@ -44,3 +44,11 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# PROMATI lokale/private bestanden
+*.xls
+*.xlsx
+*token*.txt
+frontend_flutter/promati_inspection_app/linux/
+frontend_flutter/promati_inspection_app/macos/
+frontend_flutter/promati_inspection_app/windows/
