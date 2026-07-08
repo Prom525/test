@@ -69,6 +69,50 @@ class ValidationQueueItem {
       _asBool(raw['ready_for_planner_approval']) ?? false;
 }
 
+class ValidationSubmissionDetail {
+  final Map<String, dynamic> submission;
+  final List<Map<String, dynamic>> items;
+  final List<Map<String, dynamic>> validationIssues;
+
+  const ValidationSubmissionDetail({
+    required this.submission,
+    required this.items,
+    required this.validationIssues,
+  });
+
+  factory ValidationSubmissionDetail.fromJson(Map<String, dynamic> json) {
+    return ValidationSubmissionDetail(
+      submission: _asMap(json['submission']),
+      items: _asMapList(json['items']),
+      validationIssues: _asMapList(json['validation_issues']),
+    );
+  }
+
+  String get submissionId => _asString(submission['submission_id']) ?? '-';
+
+  String get validationStatus =>
+      _asString(submission['validation_status']) ?? 'ONBEKEND';
+
+  String get userDisplay =>
+      _asString(submission['user_name']) ??
+      _asString(submission['user_id']) ??
+      'Onbekend';
+
+  String get customerDisplay =>
+      _asString(submission['customer_name']) ??
+      _asString(submission['customer_id']) ??
+      'Onbekende klant';
+
+  String get siteDisplay =>
+      _asString(submission['site_name']) ??
+      _asString(submission['site_id']) ??
+      '';
+
+  int get itemCount => items.length;
+
+  int get issueCount => validationIssues.length;
+}
+
 class PromatiApiClient {
   static const String defaultBaseUrl = String.fromEnvironment(
     'PROMATI_API_BASE_URL',
@@ -120,6 +164,81 @@ class PromatiApiClient {
     return ValidationQueueResponse.fromJson(data);
   }
 
+  Future<ValidationSubmissionDetail> getValidationSubmission(
+    String submissionId,
+  ) async {
+    final response = await _client
+        .get(_uri('/validation/submissions/$submissionId'))
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Submission-detail kon niet geladen worden: HTTP ${response.statusCode}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return ValidationSubmissionDetail.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> startValidation({
+    required String submissionId,
+    String validatedBy = 'planner-test',
+    String? note,
+  }) {
+    return _postValidationAction(
+      path: '/validation/submissions/$submissionId/start',
+      validatedBy: validatedBy,
+      note: note,
+    );
+  }
+
+  Future<Map<String, dynamic>> approveSubmission({
+    required String submissionId,
+    String validatedBy = 'planner-test',
+    String? note,
+  }) {
+    return _postValidationAction(
+      path: '/validation/submissions/$submissionId/approve',
+      validatedBy: validatedBy,
+      note: note,
+    );
+  }
+
+  Future<Map<String, dynamic>> needsCorrection({
+    required String submissionId,
+    String validatedBy = 'planner-test',
+    String? note,
+  }) {
+    return _postValidationAction(
+      path: '/validation/submissions/$submissionId/needs-correction',
+      validatedBy: validatedBy,
+      note: note,
+    );
+  }
+
+  Future<Map<String, dynamic>> _postValidationAction({
+    required String path,
+    required String validatedBy,
+    String? note,
+  }) async {
+    final response = await _client
+        .post(
+          _uri(path),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'validated_by': validatedBy, 'note': note}),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Validatieactie mislukt: HTTP ${response.statusCode} ${response.body}',
+      );
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Uri _uri(String path, [Map<String, String>? query]) {
     final cleanBase = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
@@ -127,6 +246,17 @@ class PromatiApiClient {
 
     return Uri.parse('$cleanBase$path').replace(queryParameters: query);
   }
+}
+
+Map<String, dynamic> _asMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return <String, dynamic>{};
+}
+
+List<Map<String, dynamic>> _asMapList(dynamic value) {
+  if (value is! List) return const [];
+  return value.map(_asMap).where((item) => item.isNotEmpty).toList();
 }
 
 String? _asString(dynamic value) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/promati_api_client.dart';
+import 'validation_submission_detail_page.dart';
 
 class ValidationQueuePage extends StatefulWidget {
   final PromatiApiClient apiClient;
@@ -24,6 +25,19 @@ class _ValidationQueuePageState extends State<ValidationQueuePage> {
     setState(() {
       queueFuture = widget.apiClient.getValidationQueue();
     });
+  }
+
+  void openDetail(ValidationQueueItem item) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => ValidationSubmissionDetailPage(
+              apiClient: widget.apiClient,
+              submissionId: item.submissionId,
+            ),
+          ),
+        )
+        .then((_) => refresh());
   }
 
   @override
@@ -67,7 +81,12 @@ class _ValidationQueuePageState extends State<ValidationQueuePage> {
             itemCount: items.length,
             separatorBuilder: (_, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
-              return _ValidationQueueCard(item: items[index]);
+              final item = items[index];
+
+              return _ValidationQueueCard(
+                item: item,
+                onTap: () => openDetail(item),
+              );
             },
           );
         },
@@ -78,8 +97,9 @@ class _ValidationQueuePageState extends State<ValidationQueuePage> {
 
 class _ValidationQueueCard extends StatelessWidget {
   final ValidationQueueItem item;
+  final VoidCallback onTap;
 
-  const _ValidationQueueCard({required this.item});
+  const _ValidationQueueCard({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +107,7 @@ class _ValidationQueueCard extends StatelessWidget {
 
     return Card(
       child: ListTile(
+        onTap: onTap,
         leading: Icon(
           hasIssues ? Icons.warning_amber : Icons.assignment_turned_in,
           color: hasIssues ? Colors.orange : Colors.green,
