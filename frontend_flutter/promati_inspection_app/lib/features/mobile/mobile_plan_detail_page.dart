@@ -295,63 +295,102 @@ class _InspectionItemFormCard extends StatelessWidget {
         : titleParts.join(' - ');
 
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         initiallyExpanded: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         leading: const Icon(Icons.fact_check),
-        title: Text(title),
-        subtitle: Text(
-          'Lijn: ${_text(item['lijn_code'])}\n'
-          'Vorige meshoogte: ${_text(item['previous_meshoogte_mm'])} mm\n'
-          'Planner-notitie: ${_text(item['planner_note'])}',
+        title: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            'Lijn: ${_text(item['lijn_code'])}  |  '
+            'Vorige meshoogte: ${_text(item['previous_meshoogte_mm'])} mm  |  '
+            'Vorige conditie: ${_text(item['previous_condition_code'])}',
+          ),
         ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: 180,
-                child: TextField(
-                  controller: form.meshoogteController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Meshoogte mm',
-                    border: OutlineInputBorder(),
+          if (_text(item['planner_note']).isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.notes, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _text(item['planner_note']),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              alignment: WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.start,
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: form.meshoogteController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Meshoogte mm',
+                      hintText: 'bijv. 4.2',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(
-                width: 160,
-                child: TextField(
-                  controller: form.conditionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Conditie',
-                    border: OutlineInputBorder(),
+                SizedBox(
+                  width: 160,
+                  child: TextField(
+                    controller: form.conditionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Conditie',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(
-                width: 160,
-                child: TextField(
-                  controller: form.statusController,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    border: OutlineInputBorder(),
+                SizedBox(
+                  width: 160,
+                  child: TextField(
+                    controller: form.statusController,
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(
-                width: 160,
-                child: TextField(
-                  controller: form.severityController,
-                  decoration: const InputDecoration(
-                    labelText: 'Severity',
-                    border: OutlineInputBorder(),
+                SizedBox(
+                  width: 160,
+                  child: TextField(
+                    controller: form.severityController,
+                    decoration: const InputDecoration(
+                      labelText: 'Severity',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -360,30 +399,42 @@ class _InspectionItemFormCard extends StatelessWidget {
             maxLines: 4,
             decoration: const InputDecoration(
               labelText: 'Opmerking',
+              hintText: 'Bijzonderheden, schade, vervuiling of advies...',
               border: OutlineInputBorder(),
+              alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 24,
-            children: [
-              FilterChip(
-                label: const Text('Actie nodig'),
-                selected: form.actionRequired,
-                onSelected: (value) {
-                  form.actionRequired = value;
-                  onChanged();
-                },
-              ),
-              FilterChip(
-                label: const Text('Vervangen'),
-                selected: form.replaced,
-                onSelected: (value) {
-                  form.replaced = value;
-                  onChanged();
-                },
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                FilterChip(
+                  avatar: form.actionRequired
+                      ? const Icon(Icons.priority_high, size: 18)
+                      : null,
+                  label: const Text('Actie nodig'),
+                  selected: form.actionRequired,
+                  onSelected: (value) {
+                    form.actionRequired = value;
+                    onChanged();
+                  },
+                ),
+                FilterChip(
+                  avatar: form.replaced
+                      ? const Icon(Icons.check, size: 18)
+                      : null,
+                  label: const Text('Vervangen'),
+                  selected: form.replaced,
+                  onSelected: (value) {
+                    form.replaced = value;
+                    onChanged();
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),
