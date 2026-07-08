@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'api/promati_api_client.dart';
 import 'features/validation/validation_queue_page.dart';
+import 'features/mobile/mobile_plans_page.dart';
 
 void main() {
   runApp(const PromatiInspectionApp());
@@ -95,7 +96,13 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle:
                   'Planning downloaden, offline inspecteren en synchroniseren.',
               icon: Icons.engineering,
-              onTap: () => _showComingSoon(context, 'Monteur app'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MobilePlansPage(),
+                  ),
+                );
+              },
             ),
             _MenuCard(
               title: 'Planner',
