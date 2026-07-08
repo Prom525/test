@@ -1,7 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+
+import 'api/promati_api_client.dart';
+import 'features/validation/validation_queue_page.dart';
 
 void main() {
   runApp(const PromatiInspectionApp());
@@ -21,40 +21,6 @@ class PromatiInspectionApp extends StatelessWidget {
       ),
       home: const HomeScreen(),
     );
-  }
-}
-
-class ApiStatus {
-  final bool online;
-  final String message;
-
-  ApiStatus({required this.online, required this.message});
-}
-
-class PromatiApiClient {
-  static const String browserBaseUrl = 'http://localhost:8000';
-
-  Future<ApiStatus> checkHealth() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$browserBaseUrl/healthz'))
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return ApiStatus(
-          online: true,
-          message: 'API online: ${data['status']}',
-        );
-      }
-
-      return ApiStatus(
-        online: false,
-        message: 'API fout: HTTP ${response.statusCode}',
-      );
-    } catch (e) {
-      return ApiStatus(online: false, message: 'API niet bereikbaar: $e');
-    }
   }
 }
 
@@ -142,7 +108,13 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle:
                   'Mobiele inspecties controleren, goedkeuren en promoveren.',
               icon: Icons.verified,
-              onTap: () => _showComingSoon(context, 'Validatie'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ValidationQueuePage(apiClient: api),
+                  ),
+                );
+              },
             ),
           ],
         ),
