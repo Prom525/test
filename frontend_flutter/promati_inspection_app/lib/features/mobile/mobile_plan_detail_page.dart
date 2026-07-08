@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 class MobilePlanDetailPage extends StatefulWidget {
   final String planId;
@@ -22,6 +23,7 @@ class MobilePlanDetailPage extends StatefulWidget {
 class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
   late Future<MobilePlanDetail> planFuture;
   final Map<String, _InspectionItemFormState> itemForms = {};
+  final Uuid uuid = const Uuid();
   bool busy = false;
 
   @override
@@ -75,6 +77,150 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
           opmerking: '',
         ),
       );
+    }
+  }
+
+  Future<void> submitInspection(MobilePlanDetail plan) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final submissionItems = <Map<String, dynamic>>[];
+
+    for (final item in plan.items) {
+      final form = itemForms[_itemKey(item)];
+
+      if (form == null) {
+        continue;
+      }
+
+      final meshoogteText = form.meshoogteController.text.trim().replaceAll(
+        ',',
+        '.',
+      );
+      final meshoogte = meshoogteText.isEmpty
+          ? null
+          : double.tryParse(meshoogteText);
+
+      if (meshoogteText.isNotEmpty && meshoogte == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Meshoogte is ongeldig bij ${_text(item['band_code'])}. Gebruik bijvoorbeeld 4.2',
+            ),
+          ),
+        );
+        return;
+      }
+
+      submissionItems.add({
+        'client_item_id': uuid.v4(),
+        'plan_item_id': _nullIfEmpty(_text(item['plan_item_id'])),
+        'scope_type': _text(item['scope_type'], fallback: 'SCRAPER_POSITION'),
+        'lijn_code': _nullIfEmpty(_text(item['lijn_code'])),
+        'band_code': _nullIfEmpty(_text(item['band_code'])),
+        'side': _nullIfEmpty(_text(item['side'])),
+        'component_type': _nullIfEmpty(_text(item['component_type'])),
+        'transfer_point_id': _nullIfEmpty(_text(item['transfer_point_id'])),
+        'scraper_position_id': _nullIfEmpty(_text(item['scraper_position_id'])),
+        'scraper_position': _nullIfEmpty(_text(item['scraper_position'])),
+        'scraper_role': _nullIfEmpty(_text(item['scraper_role'])),
+        'scraper_type': _nullIfEmpty(_text(item['scraper_type'])),
+        'scraper_family': _nullIfEmpty(_text(item['scraper_family'])),
+        'measurement_type': 'MESHOOGTE',
+        'measurement_value_num': meshoogte,
+        'measurement_value_text': meshoogte?.toString(),
+        'meshoogte_mm': meshoogte,
+        'condition_code': _nullIfEmpty(form.conditionController.text.trim()),
+        'status': _nullIfEmpty(form.statusController.text.trim()),
+        'severity': _nullIfEmpty(form.severityController.text.trim()),
+        'opmerking': _nullIfEmpty(form.opmerkingController.text.trim()),
+        'action_required': form.actionRequired,
+        'replaced': form.replaced,
+        'asset_match_status': 'MATCHED',
+        'offline_created_at': now,
+        'raw_payload': {
+          'source': 'flutter_monteur_flow_item',
+          'planner_note': _text(item['planner_note']),
+        },
+      });
+    }
+
+    if (submissionItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Er zijn geen inspectie-items om te synchroniseren.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      busy = true;
+    });
+
+    try {
+      final uri = Uri.parse(
+        'http://localhost:8000/mobile/inspection-submissions',
+      );
+
+      final payload = {
+        'client_submission_id': uuid.v4(),
+        'plan_id': _nullIfEmpty(plan.planId),
+        'user_id': widget.userId,
+        'user_name': _nullIfEmpty(plan.assignedUserName),
+        'device_id': widget.deviceId,
+        'customer_id': _nullIfEmpty(plan.customerId),
+        'customer_name': _nullIfEmpty(plan.customerName),
+        'site_id': _nullIfEmpty(plan.siteId),
+        'site_name': _nullIfEmpty(plan.siteName),
+        'basisunit_code': _nullIfEmpty(plan.basisunitCode),
+        'sub_area_code': _nullIfEmpty(plan.subAreaCode),
+        'offline_started_at': now,
+        'offline_completed_at': now,
+        'raw_payload': {
+          'source': 'flutter_monteur_flow',
+          'plan_status_at_submit': plan.status,
+        },
+        'items': submissionItems,
+      };
+
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Synchronisatie mislukt: HTTP ${response.statusCode} ${response.body}',
+        );
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Inspectie gesynchroniseerd. Status: ${data['validation_status']}.',
+          ),
+        ),
+      );
+
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fout: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+        });
+      }
     }
   }
 
@@ -193,6 +339,11 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
                   icon: const Icon(Icons.download_done),
                   label: const Text('Markeer als gedownload'),
                 ),
+                FilledButton.icon(
+                  onPressed: busy ? null : () => submitInspection(plan),
+                  icon: const Icon(Icons.cloud_upload),
+                  label: const Text('Synchroniseer inspectie'),
+                ),
                 if (busy)
                   const SizedBox(
                     width: 24,
@@ -236,7 +387,9 @@ class MobilePlanDetail {
   String get planDate => _text(plan['plan_date']);
   String get status =>
       _text(plan['status'], fallback: _text(plan['plan_status']));
+  String get customerId => _text(plan['customer_id']);
   String get customerName => _text(plan['customer_name']);
+  String get siteId => _text(plan['site_id']);
   String get siteName => _text(plan['site_name']);
   String get basisunitCode => _text(plan['basisunit_code']);
   String get subAreaCode => _text(plan['sub_area_code']);
@@ -522,6 +675,16 @@ String _itemKey(Map<String, dynamic> item) {
   return fallbackParts.isEmpty
       ? item.hashCode.toString()
       : fallbackParts.join('|');
+}
+
+String? _nullIfEmpty(String value) {
+  final text = value.trim();
+
+  if (text.isEmpty || text == '-') {
+    return null;
+  }
+
+  return text;
 }
 
 String _text(dynamic value, {String fallback = ''}) {
