@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'mobile_plan_detail_page.dart';
+
 class MobilePlansPage extends StatefulWidget {
   const MobilePlansPage({super.key});
 
@@ -11,8 +13,9 @@ class MobilePlansPage extends StatefulWidget {
 }
 
 class _MobilePlansPageState extends State<MobilePlansPage> {
-  final TextEditingController userIdController =
-      TextEditingController(text: 'monteur-test');
+  final TextEditingController userIdController = TextEditingController(
+    text: 'monteur-test',
+  );
 
   late Future<List<MobilePlanSummary>> plansFuture;
 
@@ -33,12 +36,7 @@ class _MobilePlansPageState extends State<MobilePlansPage> {
 
     final uri = Uri.parse(
       'http://localhost:8000/planner/mobile-download/inspection-plans',
-    ).replace(
-      queryParameters: {
-        'assigned_user_id': userId,
-        'limit': '50',
-      },
-    );
+    ).replace(queryParameters: {'assigned_user_id': userId, 'limit': '50'});
 
     final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
@@ -68,11 +66,17 @@ class _MobilePlansPageState extends State<MobilePlansPage> {
   }
 
   void openPlan(MobilePlanSummary plan) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Plan openen komt in fase M2: ${plan.planId}'),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => MobilePlanDetailPage(
+              planId: plan.planId,
+              userId: userIdController.text.trim(),
+              deviceId: 'flutter-web-test-device',
+            ),
+          ),
+        )
+        .then((_) => refresh());
   }
 
   @override
@@ -208,10 +212,7 @@ class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
