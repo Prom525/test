@@ -98,9 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.engineering,
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const MobilePlansPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const MobilePlansPage()),
                 );
               },
             ),
