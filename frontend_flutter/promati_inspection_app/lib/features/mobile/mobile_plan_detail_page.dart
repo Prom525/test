@@ -21,12 +21,21 @@ class MobilePlanDetailPage extends StatefulWidget {
 
 class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
   late Future<MobilePlanDetail> planFuture;
+  final Map<String, _InspectionItemFormState> itemForms = {};
   bool busy = false;
 
   @override
   void initState() {
     super.initState();
     planFuture = loadPlan();
+  }
+
+  @override
+  void dispose() {
+    for (final form in itemForms.values) {
+      form.dispose();
+    }
+    super.dispose();
   }
 
   Future<MobilePlanDetail> loadPlan() async {
@@ -50,6 +59,23 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
     setState(() {
       planFuture = loadPlan();
     });
+  }
+
+  void ensureForms(MobilePlanDetail plan) {
+    for (final item in plan.items) {
+      final key = _itemKey(item);
+
+      itemForms.putIfAbsent(
+        key,
+        () => _InspectionItemFormState(
+          meshoogteText: '',
+          conditionCode: _text(item['previous_condition_code'], fallback: 'OK'),
+          status: 'OK',
+          severity: 'LOW',
+          opmerking: '',
+        ),
+      );
+    }
   }
 
   Future<void> markDownloaded() async {
@@ -147,6 +173,8 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
       return const Center(child: Text('Geen plan gevonden.'));
     }
 
+    ensureForms(plan);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -179,7 +207,11 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
         Text('Inspectie-items', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         for (final item in plan.items) ...[
-          _PlanItemCard(item: item),
+          _InspectionItemFormCard(
+            item: item,
+            form: itemForms[_itemKey(item)]!,
+            onChanged: () => setState(() {}),
+          ),
           const SizedBox(height: 12),
         ],
       ],
@@ -239,10 +271,16 @@ class _PlanHeader extends StatelessWidget {
   }
 }
 
-class _PlanItemCard extends StatelessWidget {
+class _InspectionItemFormCard extends StatelessWidget {
   final Map<String, dynamic> item;
+  final _InspectionItemFormState form;
+  final VoidCallback onChanged;
 
-  const _PlanItemCard({required this.item});
+  const _InspectionItemFormCard({
+    required this.item,
+    required this.form,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -257,18 +295,130 @@ class _PlanItemCard extends StatelessWidget {
         : titleParts.join(' - ');
 
     return Card(
-      child: ListTile(
+      child: ExpansionTile(
+        initiallyExpanded: true,
         leading: const Icon(Icons.fact_check),
         title: Text(title),
         subtitle: Text(
           'Lijn: ${_text(item['lijn_code'])}\n'
           'Vorige meshoogte: ${_text(item['previous_meshoogte_mm'])} mm\n'
-          'Vorige conditie: ${_text(item['previous_condition_code'])}\n'
           'Planner-notitie: ${_text(item['planner_note'])}',
         ),
-        isThreeLine: true,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: 180,
+                child: TextField(
+                  controller: form.meshoogteController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Meshoogte mm',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 160,
+                child: TextField(
+                  controller: form.conditionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Conditie',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 160,
+                child: TextField(
+                  controller: form.statusController,
+                  decoration: const InputDecoration(
+                    labelText: 'Status',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 160,
+                child: TextField(
+                  controller: form.severityController,
+                  decoration: const InputDecoration(
+                    labelText: 'Severity',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: form.opmerkingController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Opmerking',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 24,
+            children: [
+              FilterChip(
+                label: const Text('Actie nodig'),
+                selected: form.actionRequired,
+                onSelected: (value) {
+                  form.actionRequired = value;
+                  onChanged();
+                },
+              ),
+              FilterChip(
+                label: const Text('Vervangen'),
+                selected: form.replaced,
+                onSelected: (value) {
+                  form.replaced = value;
+                  onChanged();
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
+  }
+}
+
+class _InspectionItemFormState {
+  final TextEditingController meshoogteController;
+  final TextEditingController conditionController;
+  final TextEditingController statusController;
+  final TextEditingController severityController;
+  final TextEditingController opmerkingController;
+
+  bool actionRequired = false;
+  bool replaced = false;
+
+  _InspectionItemFormState({
+    required String meshoogteText,
+    required String conditionCode,
+    required String status,
+    required String severity,
+    required String opmerking,
+  }) : meshoogteController = TextEditingController(text: meshoogteText),
+       conditionController = TextEditingController(text: conditionCode),
+       statusController = TextEditingController(text: status),
+       severityController = TextEditingController(text: severity),
+       opmerkingController = TextEditingController(text: opmerking);
+
+  void dispose() {
+    meshoogteController.dispose();
+    conditionController.dispose();
+    statusController.dispose();
+    severityController.dispose();
+    opmerkingController.dispose();
   }
 }
 
@@ -306,6 +456,21 @@ Map<String, dynamic> _map(dynamic value) {
 List<Map<String, dynamic>> _mapList(dynamic value) {
   if (value is! List) return [];
   return value.map(_map).where((item) => item.isNotEmpty).toList();
+}
+
+String _itemKey(Map<String, dynamic> item) {
+  final planItemId = _text(item['plan_item_id']);
+  if (planItemId.isNotEmpty) return planItemId;
+
+  final fallbackParts = [
+    _text(item['band_code']),
+    _text(item['scraper_position_id']),
+    _text(item['scraper_type']),
+  ].where((value) => value.isNotEmpty).toList();
+
+  return fallbackParts.isEmpty
+      ? item.hashCode.toString()
+      : fallbackParts.join('|');
 }
 
 String _text(dynamic value, {String fallback = ''}) {
