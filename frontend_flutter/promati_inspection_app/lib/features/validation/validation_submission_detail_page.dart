@@ -163,6 +163,11 @@ class _SubmissionHeader extends StatelessWidget {
             _InfoBlock(label: 'Klant', value: detail.customerDisplay),
             _InfoBlock(label: 'Locatie', value: detail.siteDisplay),
             _InfoBlock(label: 'Monteur', value: detail.userDisplay),
+            if (detail.secondMonteurName.isNotEmpty)
+              _InfoBlock(
+                label: 'Tweede monteur',
+                value: detail.secondMonteurName,
+              ),
             _InfoBlock(label: 'Status', value: detail.validationStatus),
             _InfoBlock(label: 'Items', value: '${detail.itemCount}'),
             _InfoBlock(label: 'Issues', value: '${detail.issueCount}'),

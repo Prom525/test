@@ -98,6 +98,9 @@ class ValidationSubmissionDetail {
       _asString(submission['user_id']) ??
       'Onbekend';
 
+  String get secondMonteurName =>
+      _asString(submission['second_monteur_name']) ?? '';
+
   String get customerDisplay =>
       _asString(submission['customer_name']) ??
       _asString(submission['customer_id']) ??
