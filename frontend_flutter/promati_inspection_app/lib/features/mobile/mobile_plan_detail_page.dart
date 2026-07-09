@@ -23,6 +23,7 @@ class MobilePlanDetailPage extends StatefulWidget {
 class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
   late Future<MobilePlanDetail> planFuture;
   final Map<String, _InspectionItemFormState> itemForms = {};
+  final TextEditingController secondMonteurController = TextEditingController();
   final Uuid uuid = const Uuid();
   bool busy = false;
 
@@ -34,9 +35,12 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
 
   @override
   void dispose() {
+    secondMonteurController.dispose();
+
     for (final form in itemForms.values) {
       form.dispose();
     }
+
     super.dispose();
   }
 
@@ -182,6 +186,7 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
       final uri = Uri.parse(
         'http://localhost:8000/mobile/inspection-submissions',
       );
+      final secondMonteurName = secondMonteurController.text.trim();
 
       final payload = {
         'client_submission_id': uuid.v4(),
@@ -200,6 +205,7 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
         'raw_payload': {
           'source': 'flutter_monteur_flow',
           'plan_status_at_submit': plan.status,
+          'second_monteur_name': _nullIfEmpty(secondMonteurName),
         },
         'items': submissionItems,
       };
@@ -347,6 +353,21 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
       padding: const EdgeInsets.all(16),
       children: [
         _PlanHeader(plan: plan),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: secondMonteurController,
+              decoration: const InputDecoration(
+                labelText: 'Tweede monteur',
+                hintText: 'Naam tweede monteur, indien aanwezig',
+                prefixIcon: Icon(Icons.person_add_alt_1),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         Card(
           child: Padding(
