@@ -490,6 +490,31 @@ class _InspectionItemFormCard extends StatelessWidget {
         ? _text(item['scope_type'], fallback: 'Inspectie-item')
         : titleParts.join(' - ');
 
+    final beltWidth = _text(
+      item['belt_width_mm'],
+      fallback: _text(item['belt_width_raw']),
+    );
+    final beltWidthDisplay = beltWidth.isEmpty ? '' : '$beltWidth mm';
+
+    final plannedScraper = _text(
+      item['planned_scraper_type'],
+      fallback: _text(item['scraper_type']),
+    );
+
+    final referenceScraperParts = [
+      _text(item['reference_scraper_type']),
+      _text(item['reference_scraper_type_norm']),
+    ].where((value) => value.isNotEmpty).toList();
+
+    final referenceScraper = referenceScraperParts.isEmpty
+        ? ''
+        : referenceScraperParts.join(' / ');
+
+    final referenceExtra = [
+      _text(item['reference_scraper_family']),
+      _text(item['reference_scraper_role']),
+    ].where((value) => value.isNotEmpty).join(' - ');
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
@@ -507,6 +532,33 @@ class _InspectionItemFormCard extends StatelessWidget {
           ),
         ),
         children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Wrap(
+              spacing: 24,
+              runSpacing: 12,
+              children: [
+                _InfoBlock(label: 'Bandbreedte', value: beltWidthDisplay),
+                _InfoBlock(label: 'Geplande schraper', value: plannedScraper),
+                _InfoBlock(
+                  label: 'Referentie schraper',
+                  value: referenceScraper,
+                ),
+                _InfoBlock(
+                  label: 'Referentie familie/rol',
+                  value: referenceExtra,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           if (_text(item['planner_note']).isNotEmpty) ...[
             Container(
               width: double.infinity,
