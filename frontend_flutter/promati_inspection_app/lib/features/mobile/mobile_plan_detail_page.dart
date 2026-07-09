@@ -502,12 +502,10 @@ class _InspectionItemFormCard extends StatelessWidget {
                   width: 180,
                   child: TextField(
                     controller: form.meshoogteController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                    keyboardType: TextInputType.text,
                     decoration: const InputDecoration(
-                      labelText: 'Meshoogte mm',
-                      hintText: 'bijv. 4.2',
+                      labelText: 'Meshoogte / conditie',
+                      hintText: 'bijv. 4.2, G, M of V',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -558,38 +556,108 @@ class _InspectionItemFormCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                FilterChip(
-                  avatar: form.actionRequired
-                      ? const Icon(Icons.priority_high, size: 18)
-                      : null,
-                  label: const Text('Actie nodig'),
-                  selected: form.actionRequired,
-                  onSelected: (value) {
-                    form.actionRequired = value;
-                    onChanged();
-                  },
-                ),
-                FilterChip(
-                  avatar: form.replaced
-                      ? const Icon(Icons.check, size: 18)
-                      : null,
-                  label: const Text('Vervangen'),
-                  selected: form.replaced,
-                  onSelected: (value) {
-                    form.replaced = value;
-                    onChanged();
-                  },
-                ),
-              ],
-            ),
-          ),
+          _WorkActivitiesSection(form: form, onChanged: onChanged),
         ],
+      ),
+    );
+  }
+}
+
+class _WorkActivitiesSection extends StatelessWidget {
+  final _InspectionItemFormState form;
+  final VoidCallback onChanged;
+
+  const _WorkActivitiesSection({required this.form, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Werkzaamheden', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _WorkSwitch(
+              label: 'Demontage',
+              value: form.demontage,
+              onChanged: (value) {
+                form.demontage = value;
+                onChanged();
+              },
+            ),
+            _WorkSwitch(
+              label: 'Reinigen',
+              value: form.reinigen,
+              onChanged: (value) {
+                form.reinigen = value;
+                onChanged();
+              },
+            ),
+            _WorkSwitch(
+              label: 'Vervangen',
+              value: form.vervangen,
+              onChanged: (value) {
+                form.vervangen = value;
+                onChanged();
+              },
+            ),
+            _WorkSwitch(
+              label: 'Montage',
+              value: form.montage,
+              onChanged: (value) {
+                form.montage = value;
+                onChanged();
+              },
+            ),
+            _WorkSwitch(
+              label: 'Afstellen',
+              value: form.afstellen,
+              onChanged: (value) {
+                form.afstellen = value;
+                onChanged();
+              },
+            ),
+            _WorkSwitch(
+              label: 'Actie nodig',
+              value: form.actionRequired,
+              onChanged: (value) {
+                form.actionRequired = value;
+                onChanged();
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _WorkSwitch extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _WorkSwitch({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 190,
+      child: Card.outlined(
+        margin: EdgeInsets.zero,
+        child: SwitchListTile.adaptive(
+          dense: true,
+          title: Text(label),
+          value: value,
+          onChanged: onChanged,
+        ),
       ),
     );
   }
@@ -603,7 +671,17 @@ class _InspectionItemFormState {
   final TextEditingController opmerkingController;
 
   bool actionRequired = false;
-  bool replaced = false;
+
+  bool demontage = false;
+  bool reinigen = false;
+  bool vervangen = false;
+  bool montage = false;
+  bool afstellen = false;
+
+  // Tijdelijke compatibiliteit met bestaande sync-code.
+  // Later gebruiken we overal form.vervangen.
+  bool get replaced => vervangen;
+  set replaced(bool value) => vervangen = value;
 
   _InspectionItemFormState({
     required String meshoogteText,
