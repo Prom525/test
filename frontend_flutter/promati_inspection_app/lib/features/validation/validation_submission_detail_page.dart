@@ -265,19 +265,123 @@ class _ItemsSection extends StatelessWidget {
                   _text(item['scraper_position']),
                 ].where((value) => value.isNotEmpty).join(' - '),
               ),
-              subtitle: Text(
-                'Status: ${_text(item['status'])}\n'
-                'Meting: ${_text(item['measurement_type'])} '
-                '${_text(item['meshoogte_mm'])}\n'
-                'Schraper: ${_text(item['scraper_type'])}\n'
-                'Opmerking: ${_text(item['opmerking'])}',
-              ),
-              isThreeLine: true,
+              subtitle: Text(_itemSubtitle(item)),
+              isThreeLine: false,
             ),
         ],
       ),
     );
   }
+}
+
+String _itemSubtitle(Map<String, dynamic> item) {
+  final rawPayload = _validationMap(item['raw_payload']);
+  final actions = _validationMap(rawPayload['actions']);
+  final mes = _validationMap(rawPayload['mes']);
+  final excel = _validationMap(rawPayload['excel_action_mapping']);
+
+  final werkzaamheden = <String>[];
+
+  if (_validationBool(actions['demontage']) ||
+      _actionTypeHas(item, 'DEMONTAGE')) {
+    werkzaamheden.add('Demontage');
+  }
+
+  if (_validationBool(actions['reinigen']) ||
+      _actionTypeHas(item, 'REINIGEN')) {
+    werkzaamheden.add('Reinigen');
+  }
+
+  if (_validationBool(actions['vervangen']) ||
+      _actionTypeHas(item, 'VERVANGEN') ||
+      _validationBool(item['replaced'])) {
+    werkzaamheden.add('Vervangen');
+  }
+
+  if (_validationBool(actions['montage']) || _actionTypeHas(item, 'MONTAGE')) {
+    werkzaamheden.add('Montage');
+  }
+
+  if (_validationBool(actions['afstellen']) ||
+      _actionTypeHas(item, 'AFSTELLEN')) {
+    werkzaamheden.add('Afstellen');
+  }
+
+  final excelParts = <String>[];
+
+  if (_text(excel['Unnamed: 3']).isNotEmpty) excelParts.add('U3 Demontage');
+  if (_text(excel['Unnamed: 4']).isNotEmpty) excelParts.add('U4 Reinigen');
+  if (_text(excel['Unnamed: 5']).isNotEmpty) excelParts.add('U5 Vervangen');
+  if (_text(excel['Unnamed: 6']).isNotEmpty) excelParts.add('U6 Montage');
+  if (_text(excel['Unnamed: 7']).isNotEmpty) excelParts.add('U7 Afstellen');
+
+  var mesRaw = _text(mes['mes_raw']);
+
+  if (mesRaw.isEmpty) {
+    mesRaw = _text(item['measurement_value_text']);
+  }
+
+  if (mesRaw.isEmpty) {
+    mesRaw = _text(item['meshoogte_mm']);
+  }
+
+  final lines = <String>[
+    'Status: ${_text(item['status'])}',
+    'Meting: ${_text(item['measurement_type'])} $mesRaw',
+    'Schraper: ${_text(item['scraper_type'])}',
+  ];
+
+  if (werkzaamheden.isNotEmpty) {
+    lines.add('Werkzaamheden: ${werkzaamheden.join(', ')}');
+  }
+
+  if (excelParts.isNotEmpty) {
+    lines.add('Excel mapping: ${excelParts.join(', ')}');
+  }
+
+  final opmerking = _text(item['opmerking']);
+
+  if (opmerking.isNotEmpty) {
+    lines.add('Opmerking: $opmerking');
+  }
+
+  return lines.join('\n');
+}
+
+bool _actionTypeHas(Map<String, dynamic> item, String action) {
+  final actionType = _text(item['action_type']).toUpperCase();
+
+  return actionType
+      .split(',')
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .contains(action);
+}
+
+Map<String, dynamic> _validationMap(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+
+  return {};
+}
+
+bool _validationBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+
+  if (value is num) {
+    return value != 0;
+  }
+
+  final text = _text(value).trim().toUpperCase();
+
+  return text == 'X' || text == 'V' || text == 'TRUE' || text == 'JA';
 }
 
 class _IssuesSection extends StatelessWidget {
