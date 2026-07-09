@@ -284,6 +284,8 @@ String _itemSubtitle(Map<String, dynamic> item) {
   final actions = _validationMap(rawPayload['actions']);
   final mes = _validationMap(rawPayload['mes']);
   final excel = _validationMap(rawPayload['excel_action_mapping']);
+  final actualScraper = _validationMap(rawPayload['actual_scraper']);
+  final scraperReference = _validationMap(rawPayload['scraper_reference']);
 
   final werkzaamheden = <String>[];
 
@@ -330,11 +332,32 @@ String _itemSubtitle(Map<String, dynamic> item) {
     mesRaw = _text(item['meshoogte_mm']);
   }
 
+  final plannedScraperFromReference = _text(
+    scraperReference['planned_scraper_type'],
+  );
+  final plannedScraper = plannedScraperFromReference.isNotEmpty
+      ? plannedScraperFromReference
+      : _text(item['scraper_type']);
+
+  final actualScraperType = _text(actualScraper['type']);
+  final actualScraperSource = _text(actualScraper['source']);
+  final actualScraperDiffers = _validationBool(
+    actualScraper['differs_from_planned'],
+  );
+
   final lines = <String>[
     'Status: ${_text(item['status'])}',
     'Meting: ${_text(item['measurement_type'])} $mesRaw',
-    'Schraper: ${_text(item['scraper_type'])}',
+    'Geplande schraper: $plannedScraper',
   ];
+
+  if (actualScraperType.isNotEmpty) {
+    lines.add('Werkelijke schraper: $actualScraperType');
+    lines.add(
+      'Schraper afwijking: ${actualScraperDiffers ? 'ja' : 'nee'}'
+      '${actualScraperSource.isEmpty ? '' : ' | Bron: $actualScraperSource'}',
+    );
+  }
 
   if (werkzaamheden.isNotEmpty) {
     lines.add('Werkzaamheden: ${werkzaamheden.join(', ')}');

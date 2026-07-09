@@ -79,6 +79,10 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
           status: 'OK',
           severity: 'LOW',
           opmerking: '',
+          actualScraperType: _text(
+            item['planned_scraper_type'],
+            fallback: _text(item['scraper_type']),
+          ),
         ),
       );
     }
@@ -114,6 +118,27 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
 
       final actionType = actions.isEmpty ? null : actions.join(',');
 
+      final plannedScraperType = _text(
+        item['planned_scraper_type'],
+        fallback: _text(item['scraper_type']),
+      );
+
+      final referenceScraperParts = [
+        _text(item['reference_scraper_type']),
+        _text(item['reference_scraper_type_norm']),
+      ].where((value) => value.isNotEmpty).toList();
+
+      final referenceScraperType = referenceScraperParts.isEmpty
+          ? ''
+          : referenceScraperParts.join(' / ');
+
+      final actualScraperType = form.actualScraperController.text.trim();
+
+      final actualScraperDiffersFromPlanned =
+          actualScraperType.isNotEmpty &&
+          plannedScraperType.isNotEmpty &&
+          actualScraperType.toUpperCase() != plannedScraperType.toUpperCase();
+
       submissionItems.add({
         'client_item_id': uuid.v4(),
         'plan_item_id': _nullIfEmpty(_text(item['plan_item_id'])),
@@ -145,6 +170,29 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
         'raw_payload': {
           'source': 'flutter_monteur_flow_item',
           'planner_note': _text(item['planner_note']),
+          'actual_scraper': {
+            'source': form.actualScraperSource,
+            'type': _nullIfEmpty(actualScraperType),
+            'differs_from_planned': actualScraperDiffersFromPlanned,
+          },
+          'scraper_reference': {
+            'belt_width_mm': item['belt_width_mm'],
+            'belt_width_raw': _nullIfEmpty(_text(item['belt_width_raw'])),
+            'planned_scraper_type': _nullIfEmpty(plannedScraperType),
+            'reference_scraper_type': _nullIfEmpty(
+              _text(item['reference_scraper_type']),
+            ),
+            'reference_scraper_type_norm': _nullIfEmpty(
+              _text(item['reference_scraper_type_norm']),
+            ),
+            'reference_scraper_display': _nullIfEmpty(referenceScraperType),
+            'reference_scraper_family': _nullIfEmpty(
+              _text(item['reference_scraper_family']),
+            ),
+            'reference_scraper_role': _nullIfEmpty(
+              _text(item['reference_scraper_role']),
+            ),
+          },
           'excel_action_mapping': {
             'Unnamed: 3': form.demontage ? 'X' : '',
             'Unnamed: 4': form.reinigen ? 'X' : '',
@@ -515,6 +563,20 @@ class _InspectionItemFormCard extends StatelessWidget {
       _text(item['reference_scraper_role']),
     ].where((value) => value.isNotEmpty).join(' - ');
 
+    void setActualScraperSource(String? value) {
+      if (value == null) return;
+
+      form.actualScraperSource = value;
+
+      if (value == 'PLANNED') {
+        form.actualScraperController.text = plannedScraper;
+      } else if (value == 'REFERENCE') {
+        form.actualScraperController.text = referenceScraper;
+      }
+
+      onChanged();
+    }
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
@@ -593,6 +655,52 @@ class _InspectionItemFormCard extends StatelessWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
+                SizedBox(
+                  width: 220,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: form.actualScraperSource,
+                    decoration: const InputDecoration(
+                      labelText: 'Werkelijke schraper bron',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'PLANNED',
+                        child: Text('Zelfde als gepland'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'REFERENCE',
+                        child: Text('Zelfde als referentie'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'PRODUCT_LIST',
+                        child: Text('Productkeuze'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'MANUAL',
+                        child: Text('Handmatig'),
+                      ),
+                    ],
+                    onChanged: setActualScraperSource,
+                  ),
+                ),
+                SizedBox(
+                  width: 260,
+                  child: TextField(
+                    controller: form.actualScraperController,
+                    decoration: const InputDecoration(
+                      labelText: 'Werkelijke schraper',
+                      hintText: 'bijv. U 1200 of TPH 1200-1050 HD',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (form.actualScraperSource != 'PRODUCT_LIST') {
+                        form.actualScraperSource = 'MANUAL';
+                      }
+                      onChanged();
+                    },
+                  ),
+                ),
                 SizedBox(
                   width: 180,
                   child: TextField(
@@ -765,6 +873,9 @@ class _InspectionItemFormState {
   final TextEditingController severityController;
   final TextEditingController opmerkingController;
 
+  final TextEditingController actualScraperController;
+  String actualScraperSource = 'PLANNED';
+
   bool actionRequired = false;
 
   bool demontage = false;
@@ -784,11 +895,13 @@ class _InspectionItemFormState {
     required String status,
     required String severity,
     required String opmerking,
+    required String actualScraperType,
   }) : meshoogteController = TextEditingController(text: meshoogteText),
        conditionController = TextEditingController(text: conditionCode),
        statusController = TextEditingController(text: status),
        severityController = TextEditingController(text: severity),
-       opmerkingController = TextEditingController(text: opmerking);
+       opmerkingController = TextEditingController(text: opmerking),
+       actualScraperController = TextEditingController(text: actualScraperType);
 
   void dispose() {
     meshoogteController.dispose();
@@ -796,6 +909,7 @@ class _InspectionItemFormState {
     statusController.dispose();
     severityController.dispose();
     opmerkingController.dispose();
+    actualScraperController.dispose();
   }
 }
 
