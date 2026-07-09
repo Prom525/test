@@ -580,9 +580,25 @@ def promote_submission_to_canonical(submission_id: UUID, payload: ValidationActi
                     ) AS locatie,
                     NULL AS band_breedte,
                     i.scraper_type AS merk_type,
-                    false AS demontage,
-                    false AS reinigen,
-                    COALESCE(i.replaced, false) AS vervangen,
+                    (
+                        LOWER(COALESCE(i.raw_payload #>> '{actions,demontage}', 'false'))
+                            IN ('true', 't', '1', 'x', 'v', 'ja')
+                        OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 3', ''))
+                            IN ('x', 'v', 'true', 't', '1', 'ja')
+                    ) AS demontage,
+                    (
+                        LOWER(COALESCE(i.raw_payload #>> '{actions,reinigen}', 'false'))
+                            IN ('true', 't', '1', 'x', 'v', 'ja')
+                        OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 4', ''))
+                            IN ('x', 'v', 'true', 't', '1', 'ja')
+                    ) AS reinigen,
+                    (
+                        COALESCE(i.replaced, false)
+                        OR LOWER(COALESCE(i.raw_payload #>> '{actions,vervangen}', 'false'))
+                            IN ('true', 't', '1', 'x', 'v', 'ja')
+                        OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 5', ''))
+                            IN ('x', 'v', 'true', 't', '1', 'ja')
+                    ) AS vervangen,
                     jsonb_build_object(
                         'source', 'mobile_inspection',
                         'mobile_submission_id', s.submission_id::text,
@@ -606,6 +622,57 @@ def promote_submission_to_canonical(submission_id: UUID, payload: ValidationActi
                         'measurement_value_num', i.measurement_value_num,
                         'measurement_value_text', i.measurement_value_text,
                         'meshoogte_mm', i.meshoogte_mm,
+
+                        'Unnamed: 3',
+                            CASE
+                                WHEN LOWER(COALESCE(i.raw_payload #>> '{actions,demontage}', 'false'))
+                                    IN ('true', 't', '1', 'x', 'v', 'ja')
+                                  OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 3', ''))
+                                    IN ('x', 'v', 'true', 't', '1', 'ja')
+                                    THEN 'X'
+                                ELSE NULL
+                            END,
+
+                        'Unnamed: 4',
+                            CASE
+                                WHEN LOWER(COALESCE(i.raw_payload #>> '{actions,reinigen}', 'false'))
+                                    IN ('true', 't', '1', 'x', 'v', 'ja')
+                                  OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 4', ''))
+                                    IN ('x', 'v', 'true', 't', '1', 'ja')
+                                    THEN 'X'
+                                ELSE NULL
+                            END,
+
+                        'Unnamed: 5',
+                            CASE
+                                WHEN COALESCE(i.replaced, false)
+                                  OR LOWER(COALESCE(i.raw_payload #>> '{actions,vervangen}', 'false'))
+                                    IN ('true', 't', '1', 'x', 'v', 'ja')
+                                  OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 5', ''))
+                                    IN ('x', 'v', 'true', 't', '1', 'ja')
+                                    THEN 'X'
+                                ELSE NULL
+                            END,
+
+                        'Unnamed: 6',
+                            CASE
+                                WHEN LOWER(COALESCE(i.raw_payload #>> '{actions,montage}', 'false'))
+                                    IN ('true', 't', '1', 'x', 'v', 'ja')
+                                  OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 6', ''))
+                                    IN ('x', 'v', 'true', 't', '1', 'ja')
+                                    THEN 'X'
+                                ELSE NULL
+                            END,
+
+                        'Unnamed: 7',
+                            CASE
+                                WHEN LOWER(COALESCE(i.raw_payload #>> '{actions,afstellen}', 'false'))
+                                    IN ('true', 't', '1', 'x', 'v', 'ja')
+                                  OR LOWER(COALESCE(i.raw_payload -> 'excel_action_mapping' ->> 'Unnamed: 7', ''))
+                                    IN ('x', 'v', 'true', 't', '1', 'ja')
+                                    THEN 'X'
+                                ELSE NULL
+                            END,
 
                         'Unnamed: 8',
                             CASE
