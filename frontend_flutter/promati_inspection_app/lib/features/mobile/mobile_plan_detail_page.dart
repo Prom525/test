@@ -91,24 +91,24 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
         continue;
       }
 
-      final meshoogteText = form.meshoogteController.text.trim().replaceAll(
-        ',',
-        '.',
-      );
-      final meshoogte = meshoogteText.isEmpty
+      final mesRaw = form.meshoogteController.text.trim();
+      final mesNormalized = mesRaw.replaceAll(',', '.');
+      final mesNum = mesNormalized.isEmpty
           ? null
-          : double.tryParse(meshoogteText);
+          : double.tryParse(mesNormalized);
+      final mesCode = mesRaw.isEmpty || mesNum != null
+          ? null
+          : mesRaw.toUpperCase();
 
-      if (meshoogteText.isNotEmpty && meshoogte == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Meshoogte is ongeldig bij ${_text(item['band_code'])}. Gebruik bijvoorbeeld 4.2',
-            ),
-          ),
-        );
-        return;
-      }
+      final actions = <String>[];
+
+      if (form.demontage) actions.add('DEMONTAGE');
+      if (form.reinigen) actions.add('REINIGEN');
+      if (form.vervangen) actions.add('VERVANGEN');
+      if (form.montage) actions.add('MONTAGE');
+      if (form.afstellen) actions.add('AFSTELLEN');
+
+      final actionType = actions.isEmpty ? null : actions.join(',');
 
       submissionItems.add({
         'client_item_id': uuid.v4(),
@@ -125,20 +125,42 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
         'scraper_type': _nullIfEmpty(_text(item['scraper_type'])),
         'scraper_family': _nullIfEmpty(_text(item['scraper_family'])),
         'measurement_type': 'MESHOOGTE',
-        'measurement_value_num': meshoogte,
-        'measurement_value_text': meshoogte?.toString(),
-        'meshoogte_mm': meshoogte,
-        'condition_code': _nullIfEmpty(form.conditionController.text.trim()),
+        'measurement_value_num': mesNum,
+        'measurement_value_text': _nullIfEmpty(mesRaw),
+        'meshoogte_mm': mesNum,
+        'condition_code':
+            mesCode ?? _nullIfEmpty(form.conditionController.text.trim()),
         'status': _nullIfEmpty(form.statusController.text.trim()),
         'severity': _nullIfEmpty(form.severityController.text.trim()),
         'opmerking': _nullIfEmpty(form.opmerkingController.text.trim()),
         'action_required': form.actionRequired,
-        'replaced': form.replaced,
+        'action_type': actionType,
+        'replaced': form.vervangen,
         'asset_match_status': 'MATCHED',
         'offline_created_at': now,
         'raw_payload': {
           'source': 'flutter_monteur_flow_item',
           'planner_note': _text(item['planner_note']),
+          'excel_action_mapping': {
+            'Unnamed: 3': form.demontage ? 'X' : '',
+            'Unnamed: 4': form.reinigen ? 'X' : '',
+            'Unnamed: 5': form.vervangen ? 'X' : '',
+            'Unnamed: 6': form.montage ? 'X' : '',
+            'Unnamed: 7': form.afstellen ? 'X' : '',
+            'Unnamed: 8': _nullIfEmpty(mesRaw),
+          },
+          'actions': {
+            'demontage': form.demontage,
+            'reinigen': form.reinigen,
+            'vervangen': form.vervangen,
+            'montage': form.montage,
+            'afstellen': form.afstellen,
+          },
+          'mes': {
+            'mes_raw': _nullIfEmpty(mesRaw),
+            'mes_num': mesNum,
+            'mes_code': mesCode,
+          },
         },
       });
     }
