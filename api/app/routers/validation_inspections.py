@@ -618,6 +618,39 @@ def promote_submission_to_canonical(submission_id: UUID, payload: ValidationActi
                         'scraper_type', i.scraper_type,
                         'scraper_family', i.scraper_family,
 
+                        'planned_scraper_type',
+                            COALESCE(
+                                i.raw_payload #>> '{scraper_reference,planned_scraper_type}',
+                                i.scraper_type
+                            ),
+
+                        'actual_scraper_type',
+                            i.raw_payload #>> '{actual_scraper,type}',
+
+                        'actual_scraper_source',
+                            i.raw_payload #>> '{actual_scraper,source}',
+
+                        'actual_scraper_differs_from_planned',
+                            COALESCE(
+                                (i.raw_payload #>> '{actual_scraper,differs_from_planned}')::boolean,
+                                false
+                            ),
+
+                        'belt_width_mm',
+                            NULLIF(
+                                i.raw_payload #>> '{scraper_reference,belt_width_mm}',
+                                ''
+                            )::int,
+
+                        'reference_scraper_type',
+                            i.raw_payload #>> '{scraper_reference,reference_scraper_type}',
+
+                        'reference_scraper_type_norm',
+                            i.raw_payload #>> '{scraper_reference,reference_scraper_type_norm}',
+
+                        'reference_scraper_family',
+                            i.raw_payload #>> '{scraper_reference,reference_scraper_family}',
+
                         'measurement_type', i.measurement_type,
                         'measurement_value_num', i.measurement_value_num,
                         'measurement_value_text', i.measurement_value_text,
