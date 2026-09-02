@@ -1,0 +1,117 @@
+{
+  "build_inputs": [
+    {
+      "path": "api/Dockerfile",
+      "sha256": "E569DF4A1A240D2D11C2E3333FEDD31102BB661763335DE560E60214C887153D"
+    },
+    {
+      "path": "api/requirements.txt",
+      "sha256": "FF2FCA32870E7840B2711C8A8D2FE523DFF228EFBC389EB90C661AC9F085EA76"
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "67DB02F7D52A9BAED224F3BEAF092043FCA0F5E1BB58325F08C3D2C323F8549E"
+    },
+    {
+      "path": "docker-compose.override.yml",
+      "sha256": "DEDEA8F7821AAF0920EBCEEAA5FC967A22A5BF08D8C9EA58BC140C99A971480A"
+    }
+  ],
+  "contract_version": "promati.release.manifest.v1",
+  "created_at_utc": "2026-09-02T07:15:26.536132+00:00",
+  "database_migrations": [
+    {
+      "path": "api/sql/2026_05_12_rfq_artifacts.sql",
+      "sha256": "5242A45BE16869094C2CDD33F513DDBF208832852BA2B0BF9D33274DD3F5C93C"
+    },
+    {
+      "path": "api/sql/2026_09_01_p3_1_orchestrator_runs.sql",
+      "sha256": "ADA4261A1B978A12CF777E44DF5B9028D70C607C118D593512F3CADA51F0BBBA"
+    },
+    {
+      "path": "api/sql/2026_09_01_p3_2_error_health_taxonomy.sql",
+      "sha256": "69C40ECD3F7551696033A9B9A3E7BCE0199ADB73C6F6E758543B6042F78EADEB"
+    },
+    {
+      "path": "api/sql/2026_09_01_p3_3_privacy_retention.sql",
+      "sha256": "8FC9C305936D2E410FCC2BDF413AD745315E7BCAF1D19F9F469F6BF1B0FB9046"
+    },
+    {
+      "path": "api/sql/2026_09_01_p3_3b_retention_daily_gate.sql",
+      "sha256": "F4E99C7A408C08033A7D7F4982788E0A54A83ADB725014CC45C12F150BCF30AA"
+    }
+  ],
+  "manifest_kind": "canonical_api_baseline",
+  "next_gate": "P4.3 gated release build and deploy",
+  "protected_hashes": {
+    "db": "76122D43DF82B72E6AC4A3A69B66BE01361C0294B07FF4E6F313DA65327D8630",
+    "diagnostics": "B6BF07D152059D36E055F7F15E6155D99C977B4B43B1BBECCB7F42D2A3F7930B",
+    "models": "1EEA439207345857467C4F108195F04CCE9A55E18EF42BFC5B0D2488D7FC5488",
+    "operability": "DD694A20450619B526431E88227ED913097DE87CB9B087B44BB19DCD23358329",
+    "operability_test": "D2E86D747710886F5CFB8D02654CA0271AB084558169D283D7B6F1F72F9B7C2A",
+    "orchestrator_router": "1400AA3AE7707138B76348B7318918B8B221BCFD4F651F736D19B1B7AB0C3BD6",
+    "privacy": "679DBF54B1CC9B4E7746A186DB6985AD374D277BDE0E67043C1D2FC906F011D1",
+    "retention_migration": "F4E99C7A408C08033A7D7F4982788E0A54A83ADB725014CC45C12F150BCF30AA",
+    "retention_test": "4B8E240898B0EA71D3B59B5DC89BE34C7CB72FE0787D36C76083CFDB2D61BB8A",
+    "run_logging": "7778DC5DABAF438D02407AA62B2E70CFAE2D9B47E31AF34E22A258A5A2C8762E",
+    "service": "A413EB63B47539CA13F872B7BBFB5588A5F814479DAF31C3EB685B4F8D9D8052",
+    "taxonomy": "F7C0A26FF06656F79E6A4A74A9049347AB57EA5CA752241D4101D6BCE572B9CC"
+  },
+  "public_contracts": {
+    "operability_contract": "promati.diagnostics.operability.v1",
+    "operability_operation_id": "diagnostics_operability",
+    "orchestrator_operation_id": "promati_orchestrator_ask",
+    "retention_contract": "promati.orchestrator.retention_gate.v1"
+  },
+  "regression": {
+    "known_failure_count": 13,
+    "known_failures": [
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_e401_resolves_to_mv2",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_gsl_area_hint_is_accepted_for_r5",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_r_dash_5_is_detected_from_free_text",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_r_space_5_uses_canonical_mv1_and_adds_context",
+      "tests/test_orchestrator_user_answer.py::OrchestratorUserAnswerTests::test_resolved_asset_answer_contains_full_context",
+      "tests/test_phase_b3b1_specialist_registry.py::SpecialistRegistryV1Tests::test_analysis_mode_gap_is_preserved_not_fixed",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_null_validity_does_not_imply_current",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_org_records_are_normalized",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_valid_from_is_normalized_as_effective_at",
+      "tests/test_phase_c2_evidence_requirement_catalog.py::EvidenceRequirementCatalogV1Tests::test_exact_initial_intent_catalog",
+      "tests/test_phase_c2_evidence_requirement_catalog.py::EvidenceRequirementCatalogV1Tests::test_person_rfq_and_diagnostics_are_not_interchangeable",
+      "tests/test_phase_c8_evidence_pipeline_integration.py::EvidencePipelineServiceWiringV1Tests::test_execute_plan_collects_typed_shadow_results",
+      "tests/test_phase_c8_evidence_pipeline_integration.py::EvidencePipelineServiceWiringV1Tests::test_pipeline_call_order_is_exact"
+    ],
+    "new_failure_count": 0
+  },
+  "release_controls": {
+    "free_sql": false,
+    "known_regression_debt_allowed_only_by_exact_fingerprint": true,
+    "remote_required_for_this_baseline": false,
+    "tag_created": false
+  },
+  "release_state": "baseline_not_yet_released",
+  "runtime": {
+    "api_image": "sha256:892785f94b3b65393dc01eab872600940b5b94d3d45c3af2454d694a3f5e9939",
+    "built_from_source_commit": false,
+    "container_restart_count": 0,
+    "container_status": "running",
+    "deploy_performed_for_manifest": false,
+    "image_provenance": "observed_runtime_match",
+    "source_hashes_match_runtime": true
+  },
+  "runtime_asset_hashes": {
+    "api/app/openapi-gpt.json": "1E2B30A6ECF4EE7A6D2665E39FEDB3AB617973F1C98133BEDE7011B713191F46",
+    "api/app/openapi-org.json": "14506809ECFFBF51857605299FA5093D0C744E54F2866C1BA535D05E99231EC7",
+    "api/app/openapi.json": "CAF0E9FEAF1DB40BB2C71BD280F70DCFBAC3A82D63FED6956B7222C62CA6C1D8",
+    "api/app/templates/rfq_supplier_package_landscape.html": "7A3330041031CDCF62F028EC77C169D0DBFCB2AAD4BA6EA90F746D611EC6FFCA"
+  },
+  "source": {
+    "branch": "feature/monteur-flow",
+    "canonical_runtime_asset_count": 4,
+    "canonical_snapshot_sha256": "EABA95237D3EC2C25EF86D9EABE1E065DEB42E0C672C42DE3B802C9CAE9C44E4",
+    "canonical_source_count": 183,
+    "canonical_total_count": 187,
+    "commit": "d51a9e5e35d4be2cae4033279c2aa2132d3e8f04",
+    "parent_commit": "8f7023c63461d79e62c84b8af0033b5369ced57d",
+    "tree": "c3a29d78fdaa18f9a08c7f0931f6d45dfef41fbe"
+  }
+}
