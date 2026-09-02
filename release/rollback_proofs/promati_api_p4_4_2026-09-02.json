@@ -1,0 +1,81 @@
+{
+  "contract_version": "promati.release.rollback_proof.v1",
+  "database": {
+    "database_rollback_required": false,
+    "persistent_data_mounts_preserved": true,
+    "schema_migration_performed": false
+  },
+  "final_state": {
+    "active_config_image": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+    "active_image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "data_mounts": [
+      "/app/data",
+      "/app/generated"
+    ],
+    "default_alias_image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "release_tag_image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "rollback_tag_image_id": "sha256:892785f94b3b65393dc01eab872600940b5b94d3d45c3af2454d694a3f5e9939",
+    "round_trip_complete": true
+  },
+  "next_phase": "P5 Security",
+  "p4_result": "release_discipline_complete",
+  "proved_at_utc": "2026-09-02T08:04:32.435684+00:00",
+  "release": {
+    "committed_snapshot_sha256": "A43F2D8F533E0740224584BAA9E27D096A8B0868F2883AD54BDBBFE284C3D71C",
+    "release_image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "release_tag": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+    "source_commit": "d51a9e5e35d4be2cae4033279c2aa2132d3e8f04",
+    "source_tree": "c3a29d78fdaa18f9a08c7f0931f6d45dfef41fbe"
+  },
+  "restore": {
+    "duration_seconds": 6.408,
+    "live_proof": {
+      "a660_http_status": 200,
+      "a660_response_bytes": 2125,
+      "a660_response_sha256": "651AD8F55490A8415F793D691619AA1D3E7AF0CA50B03C194E241F1EBA05C70F",
+      "operability_contract": "promati.diagnostics.operability.v1",
+      "operability_operation_id": "diagnostics_operability",
+      "orchestrator_operation_id": "promati_orchestrator_ask"
+    },
+    "release_image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "release_tag": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+    "result": "PASS",
+    "runtime": {
+      "config_image": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+      "container_id": "ddbd15241b2374612b25bca1cf34a73b71f13ecca2479ece1e30f76370dfe5b7",
+      "data_mounts": [
+        "/app/data",
+        "/app/generated"
+      ],
+      "image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+      "source_override_count": 0
+    },
+    "source_matches_committed_bytes": true
+  },
+  "rollback": {
+    "duration_seconds": 6.832,
+    "live_proof": {
+      "a660_http_status": 200,
+      "a660_response_bytes": 2125,
+      "a660_response_sha256": "A8FE89AC61162CDB04B2E5294D6ACCBD48F798694832F2C04D65B4705DD37BA4",
+      "operability_contract": "promati.diagnostics.operability.v1",
+      "operability_operation_id": "diagnostics_operability",
+      "orchestrator_operation_id": "promati_orchestrator_ask"
+    },
+    "result": "PASS",
+    "rollback_image_id": "sha256:892785f94b3b65393dc01eab872600940b5b94d3d45c3af2454d694a3f5e9939",
+    "rollback_tag": "promati-api-rollback:pre-p4-3-892785f94b3b",
+    "runtime": {
+      "config_image": "promati-api-rollback:pre-p4-3-892785f94b3b",
+      "container_id": "94536703f4661dfc9b85cbb50310f947b1339284498e10ebf3514d01e8e4ef2f",
+      "data_mounts": [
+        "/app/data",
+        "/app/generated"
+      ],
+      "image_id": "sha256:892785f94b3b65393dc01eab872600940b5b94d3d45c3af2454d694a3f5e9939",
+      "source_override_count": 0
+    }
+  },
+  "scope": "api_image_runtime_round_trip",
+  "status": "PASS"
+}
