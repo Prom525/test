@@ -29,6 +29,10 @@ from app.orchestrator.evidence_synthesizer import (
 )
 from app.orchestrator.models import OrchestratorAskRequest
 from app.orchestrator.planner import build_execution_plan
+from app.orchestrator.product_family_evidence import (
+    assess_product_family_coverage,
+    recover_missing_product_families,
+)
 from app.orchestrator.routing_sanity import apply_routing_sanity
 from app.orchestrator.understanding import understand_query
 from app.text_encoding import repair_mojibake_text
@@ -3856,13 +3860,116 @@ def run_orchestrator(
                     initial_evidence_items
                 )
 
+            # PROMATI_PRODUCT_FAMILY_RECOVERY_P4_5B4
+            #
+            # Family-scoped PRODUCT_RECORD coverage happens before
+            # the existing generic evidence-research gate.
+            #
+            # Recovery itself is deterministic product retrieval.
+            # Technical/project synthesis remains a separate path.
+            working_evidence_items = (
+                initial_evidence_items
+            )
+
+            product_family_coverage = (
+                assess_product_family_coverage(
+                    requirement_set,
+                    working_evidence_items,
+                    plan,
+                    now=retrieved_at,
+                )
+            )
+
+            product_family_recovery = {
+                "contract_version": (
+                    "promati.orchestrator."
+                    "product_family_evidence.v1"
+                ),
+                "performed": False,
+                "requested_family_codes": [],
+                "attempted_family_codes": [],
+                "attempted_call_count": 0,
+                "accepted_result_count": 0,
+                "skipped_budget_family_codes": [],
+                "skipped_missing_step_family_codes": [],
+            }
+
+            missing_product_families = tuple(
+                product_family_coverage.get(
+                    "missing_family_codes"
+                )
+                or ()
+            )
+
+            if (
+                product_family_coverage.get(
+                    "applicable"
+                )
+                and missing_product_families
+            ):
+                recovery_typed_results = []
+
+                (
+                    _recovery_raw_results,
+                    product_family_recovery,
+                ) = (
+                    recover_missing_product_families(
+                        plan,
+                        missing_product_families,
+                        sender=sender,
+                        shadow_observer=(
+                            recovery_typed_results
+                            .append
+                        ),
+                    )
+                )
+
+                counts[
+                    "phase_c_research_follow_up_specialist_calls"
+                ] += (
+                    _observability_nonnegative_int(
+                        product_family_recovery.get(
+                            "attempted_call_count"
+                        )
+                    )
+                )
+
+                recovered_evidence_items = tuple(
+                    evidence_item
+                    for execution_result
+                    in recovery_typed_results
+                    for evidence_item
+                    in normalize_execution_result_evidence(
+                        execution_result,
+                        retrieved_at=retrieved_at,
+                    )
+                )
+
+                working_evidence_items = (
+                    tuple(
+                        initial_evidence_items
+                    )
+                    + tuple(
+                        recovered_evidence_items
+                    )
+                )
+
+                product_family_coverage = (
+                    assess_product_family_coverage(
+                        requirement_set,
+                        working_evidence_items,
+                        plan,
+                        now=retrieved_at,
+                    )
+                )
+
             initial_assessment = (
                 _observability_call(
                     timings,
                     "evidence_assessment",
                     assess_evidence,
                     requirement_set,
-                    initial_evidence_items,
+                    working_evidence_items,
                     target_entity_ids=None,
                     now=retrieved_at,
                 )
@@ -3903,7 +4010,7 @@ def run_orchestrator(
             ):
                 counts[
                     "phase_c_research_follow_up_specialist_calls"
-                ] = (
+                ] += (
                     _observability_nonnegative_int(
                         phase_c_agent_metadata.get(
                             "follow_up_specialist_calls"
@@ -3927,7 +4034,7 @@ def run_orchestrator(
                     "reconciliation",
                     reconcile_evidence,
                     requirement_set,
-                    initial_evidence_items,
+                    working_evidence_items,
                     initial_assessment,
                     research_execution,
                     retrieved_at=retrieved_at,
@@ -3983,6 +4090,14 @@ def run_orchestrator(
                             reconciliation
                         ),
                         "synthesis": synthesis,
+
+                        "product_family_coverage": (
+                            product_family_coverage
+                        ),
+
+                        "product_family_recovery": (
+                            product_family_recovery
+                        ),
                     }
                 )
             )

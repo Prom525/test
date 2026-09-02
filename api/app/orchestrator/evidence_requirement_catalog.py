@@ -598,6 +598,12 @@ REQUIREMENT_SETS_BY_INTENT = MappingProxyType(
 INTENT_REQUIREMENT_ALIASES = MappingProxyType(
     {
         "org_lookup": "person_role_lookup",
+
+        # PROMATI_MULTI_PRODUCT_REQUIREMENT_ALIASES_P4_5B4
+        # Product comparison/advantages still require the same
+        # controlled PRODUCT_RECORD evidence as product_lookup.
+        "product_selection": "product_lookup",
+        "advantages_disadvantages": "product_lookup",
     }
 )
 
