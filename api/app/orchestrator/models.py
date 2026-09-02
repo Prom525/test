@@ -81,6 +81,11 @@ class QueryPlan(BaseModel):
         default_factory=dict
     )
 
+    # PROMATI_MULTI_PRODUCT_FAMILIES_P4_5B2
+    product_families: list[DetectedEntity] = Field(
+        default_factory=list,
+    )
+
     requested_information: list[str] = Field(
         default_factory=list
     )

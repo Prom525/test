@@ -24,7 +24,12 @@ SPECIALIST_CONTRACTS: dict[str, SpecialistContract] = {
             "mode",
             "limit",
         ),
-        planner_fields=("vraag", "mode"),
+        planner_fields=(
+            "vraag",
+            "mode",
+            "family_code",
+            "belt_width_mm",
+        ),
         research_fields=(
             "vraag",
             "family_code",

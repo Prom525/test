@@ -40,18 +40,26 @@ def _ordered_domains(
     return ordered
 
 
+
 def _build_product_step(
     plan: QueryPlan,
     step_no: int,
+    *,
+    family_code: str | None = None,
+    multi_family: bool = False,
 ) -> ExecutionStep:
     params = {
         "vraag": plan.original_question,
         "mode": "auto",
     }
 
-    family_code = _entity_value(
-        plan,
-        "family_code",
+    resolved_family_code = (
+        family_code
+        if family_code is not None
+        else _entity_value(
+            plan,
+            "family_code",
+        )
     )
 
     belt_width_mm = _entity_value(
@@ -59,20 +67,38 @@ def _build_product_step(
         "belt_width_mm",
     )
 
-    if family_code is not None:
-        params["family_code"] = family_code
+    if resolved_family_code is not None:
+        params["family_code"] = (
+            resolved_family_code
+        )
 
     if belt_width_mm is not None:
-        params["belt_width_mm"] = belt_width_mm
+        params["belt_width_mm"] = (
+            belt_width_mm
+        )
+
+    if (
+        multi_family
+        and resolved_family_code is not None
+    ):
+        step_id = (
+            f"step_{step_no}_product_"
+            f"{resolved_family_code}"
+        )
+    else:
+        step_id = (
+            f"step_{step_no}_product"
+        )
 
     return ExecutionStep(
-        step_id=f"step_{step_no}_product",
+        step_id=step_id,
         domain=Domain.PRODUCT,
         action="product_assistant",
         params=params,
         required=True,
         fallback_allowed=True,
     )
+
 
 
 def _build_inspection_step(
@@ -302,6 +328,8 @@ def _build_diagnostics_step(
     )
 
 
+
+# PROMATI_MULTI_PRODUCT_PLANNER_FANOUT_P4_5B2
 def build_execution_plan(
     plan: QueryPlan,
 ) -> QueryPlan:
@@ -312,61 +340,104 @@ def build_execution_plan(
     Geen database-acties.
     Geen fallback-uitvoering.
 
+    Multi-productvragen worden per expliciet genoemde
+    productfamilie uitgewaaierd naar dezelfde allowlisted
+    product_assistant.
+
     Als clarification nodig is, wordt bewust niets uitgevoerd.
     """
+
     plan.execution_steps = []
 
     # PROMATI_PHASE_A2D_EXECUTION_GROUNDING_V1
     # Execution safety is independent from clarification UX.
     if plan.execution_blockers:
         return plan
+
     if plan.clarification_required:
         return plan
 
-    domains = _ordered_domains(plan)
+    domains = _ordered_domains(
+        plan
+    )
 
-    for step_no, domain in enumerate(
-        domains,
-        start=1,
-    ):
+    next_step_no = 1
+
+    for domain in domains:
+
         if domain == Domain.PRODUCT:
-            plan.execution_steps.append(
-                _build_product_step(
-                    plan,
-                    step_no,
+            family_codes = [
+                str(item.value).strip()
+                for item in (
+                    plan.product_families
+                    or []
                 )
-            )
+                if item.value is not None
+                and str(item.value).strip()
+            ]
+
+            # Alleen echte multi-family vragen fan-out.
+            if len(family_codes) > 1:
+                for family_code in family_codes:
+                    plan.execution_steps.append(
+                        _build_product_step(
+                            plan,
+                            next_step_no,
+                            family_code=family_code,
+                            multi_family=True,
+                        )
+                    )
+
+                    next_step_no += 1
+
+            else:
+                plan.execution_steps.append(
+                    _build_product_step(
+                        plan,
+                        next_step_no,
+                    )
+                )
+
+                next_step_no += 1
 
         elif domain == Domain.INSPECTION:
             plan.execution_steps.append(
                 _build_inspection_step(
                     plan,
-                    step_no,
+                    next_step_no,
                 )
             )
+
+            next_step_no += 1
 
         elif domain == Domain.TECHNICAL:
             plan.execution_steps.append(
                 _build_technical_step(
                     plan,
-                    step_no,
+                    next_step_no,
                 )
             )
+
+            next_step_no += 1
 
         elif domain == Domain.ORG:
             plan.execution_steps.append(
                 _build_org_step(
                     plan,
-                    step_no,
+                    next_step_no,
                 )
             )
+
+            next_step_no += 1
 
         elif domain == Domain.DIAGNOSTICS:
             plan.execution_steps.append(
                 _build_diagnostics_step(
                     plan,
-                    step_no,
+                    next_step_no,
                 )
             )
+
+            next_step_no += 1
 
     return plan

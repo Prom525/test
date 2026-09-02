@@ -102,6 +102,14 @@ PRODUCT_FAMILY_PATTERNS = (
             r"\bblutec\s+proload\b",
         ),
     ),
+    FamilyPattern(
+        code="IMPACT-BARS",
+        patterns=(
+            r"\bimpact[\s-]*bars?\b",
+            r"\bblu[\s-]*tec\s+impact[\s-]*bars?\b",
+            r"\bblutec\s+impact[\s-]*bars?\b",
+        ),
+    ),
 )
 
 
@@ -333,28 +341,88 @@ def _entity(
     )
 
 
-def detect_product_family(
+
+# PROMATI_MULTI_PRODUCT_UNDERSTANDING_P4_5B2
+def detect_product_families(
     question: str,
-) -> DetectedEntity | None:
+) -> list[DetectedEntity]:
+    """
+    Detecteer alle expliciet genoemde productfamilies.
+
+    Eigenschappen:
+    - deduplicatie op canonieke family-code;
+    - behoud volgorde van eerste vermelding;
+    - langste match wint bij gelijke startpositie;
+    - bestaande contextgevoelige BB-U fallback blijft
+      alleen gelden wanneer geen expliciete familie matcht.
+    """
+
     q = question or ""
 
-    for family in PRODUCT_FAMILY_PATTERNS:
-        for pattern in family.patterns:
-            match = re.search(pattern, q, re.IGNORECASE)
-            if match:
-                return _entity(
+    best_by_code: dict[
+        str,
+        tuple[
+            tuple[int, int, int, int],
+            DetectedEntity,
+        ],
+    ] = {}
+
+    for family_index, family in enumerate(
+        PRODUCT_FAMILY_PATTERNS
+    ):
+        for pattern_index, pattern in enumerate(
+            family.patterns
+        ):
+            for match in re.finditer(
+                pattern,
+                q,
+                re.IGNORECASE,
+            ):
+                raw = match.group(0)
+
+                sort_key = (
+                    match.start(),
+                    -len(raw),
+                    family_index,
+                    pattern_index,
+                )
+
+                entity = _entity(
                     name="family_code",
-                    raw_value=match.group(0),
+                    raw_value=raw,
                     value=family.code,
                     confidence=0.96,
                     source="family_pattern",
                 )
 
-    # Contextgevoelige fallback voor natuurlijke BB-U-vragen.
-    #
-    # Een losse notatie "U 1800" is op zichzelf te algemeen.
-    # We accepteren die alleen wanneer de vraag duidelijke
-    # product-/commerci?le context bevat.
+                current = best_by_code.get(
+                    family.code
+                )
+
+                if (
+                    current is None
+                    or sort_key < current[0]
+                ):
+                    best_by_code[
+                        family.code
+                    ] = (
+                        sort_key,
+                        entity,
+                    )
+
+    if best_by_code:
+        ordered = sorted(
+            best_by_code.values(),
+            key=lambda item: item[0],
+        )
+
+        return [
+            entity
+            for _sort_key, entity in ordered
+        ]
+
+    # Bestaande contextgevoelige fallback voor
+    # natuurlijke BB-U-vragen.
     bb_u_context_terms = (
         "voorraad",
         "op voorraad",
@@ -367,7 +435,10 @@ def detect_product_family(
         "voor- en nadelen",
     )
 
-    if any(term in q.lower() for term in bb_u_context_terms):
+    if any(
+        term in q.lower()
+        for term in bb_u_context_terms
+    ):
         match = re.search(
             r"\bu(?:\s+voor)?\s+(\d{3,4})\b",
             q,
@@ -375,15 +446,38 @@ def detect_product_family(
         )
 
         if match:
-            return _entity(
-                name="family_code",
-                raw_value=match.group(0),
-                value="BB-U",
-                confidence=0.90,
-                source="contextual_bb_u_pattern",
-            )
+            return [
+                _entity(
+                    name="family_code",
+                    raw_value=match.group(0),
+                    value="BB-U",
+                    confidence=0.90,
+                    source=(
+                        "contextual_bb_u_pattern"
+                    ),
+                )
+            ]
 
-    return None
+    return []
+
+
+def detect_product_family(
+    question: str,
+) -> DetectedEntity | None:
+    """
+    Backward-compatible singular wrapper.
+    """
+
+    families = detect_product_families(
+        question
+    )
+
+    return (
+        families[0]
+        if families
+        else None
+    )
+
 
 
 def detect_belt_width(
@@ -2183,11 +2277,19 @@ def understand_query(
         )
 
 
-    family = detect_product_family(normalized)
+    product_families = detect_product_families(
+        normalized
+    )
+
+    family = (
+        product_families[0]
+        if product_families
+        else None
+    )
 
     family_code = (
-        str(family.value)
-        if family is not None
+        str(product_families[0].value)
+        if len(product_families) == 1
         else None
     )
 
@@ -2457,8 +2559,12 @@ def understand_query(
             )
         )
 
-    if family:
-        entities["family_code"] = family
+    # Legacy family_code blijft alleen bestaan
+    # wanneer exact één productfamilie is genoemd.
+    if len(product_families) == 1:
+        entities["family_code"] = (
+            product_families[0]
+        )
 
     if width:
         entities["belt_width_mm"] = width
@@ -2751,6 +2857,7 @@ def understand_query(
         domains=domains,
         intent=intent,
         entities=entities,
+        product_families=product_families,
         requested_information=requested_information,
         residual_terms=[],
         confidence=confidence,
