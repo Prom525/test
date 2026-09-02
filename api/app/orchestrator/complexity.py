@@ -207,6 +207,7 @@ def _inferred_domain_signals(question: str) -> set[str]:
     return found
 
 
+
 def assess_research_requirement(plan: QueryPlan) -> QueryPlan:
     """
     Bepaalt deterministisch of een vraag research-waardig is.
@@ -217,33 +218,65 @@ def assess_research_requirement(plan: QueryPlan) -> QueryPlan:
     - geen wijziging van execution_steps;
     - multi-intent is een signaal, nooit op zichzelf een AI-trigger;
     - bij vereiste verduidelijking wordt research altijd geblokkeerd.
+
+    P4.5b3:
+    - meerdere expliciete productfamilies zijn een zelfstandig
+      complexiteitssignaal;
+    - multi-product selectie/project/engineering activeert
+      bounded research ook wanneer de generieke score net
+      onder de normale threshold blijft.
     """
-    question = (plan.normalized_question or "").lower()
+
+    question = (
+        plan.normalized_question
+        or ""
+    ).lower()
 
     route_domains = {
-        str(getattr(domain, "value", domain))
-        for domain in plan.domains
+        str(
+            getattr(
+                domain,
+                "value",
+                domain,
+            )
+        )
+        for domain
+        in plan.domains
     }
-    inferred_domains = _inferred_domain_signals(question)
-    effective_domains = route_domains | inferred_domains
+
+    inferred_domains = (
+        _inferred_domain_signals(
+            question
+        )
+    )
+
+    effective_domains = (
+        route_domains
+        | inferred_domains
+    )
 
     requested_information = {
         str(item).strip().lower()
-        for item in (plan.requested_information or [])
+        for item
+        in (
+            plan.requested_information
+            or []
+        )
         if str(item).strip()
     }
 
-    # PROMATI_REQUESTED_INFORMATION_COMPLEXITY_SCOPE_V1
-    #
-    # requested_information bestond vóór P1.1 alleen voor PRODUCT.
-    # Inspection-facetten zijn voorlopig presentation-only en mogen
-    # daarom niet stilzwijgend de research-threshold verhogen.
     multiple_information_requests = (
-        len(requested_information) > 1
+        len(
+            requested_information
+        )
+        > 1
     )
 
     multi_intent = (
-        len(effective_domains) > 1
+        len(
+            effective_domains
+        )
+        > 1
         or multiple_information_requests
     )
 
@@ -257,56 +290,223 @@ def assess_research_requirement(plan: QueryPlan) -> QueryPlan:
     ).lower()
 
     requested_information_affects_complexity = (
-        primary_domain_value == "product"
+        primary_domain_value
+        == "product"
         and multiple_information_requests
     )
 
+    product_family_codes = {
+        str(
+            getattr(
+                item,
+                "value",
+                "",
+            )
+            or ""
+        ).strip()
+        for item
+        in (
+            getattr(
+                plan,
+                "product_families",
+                None,
+            )
+            or []
+        )
+        if str(
+            getattr(
+                item,
+                "value",
+                "",
+            )
+            or ""
+        ).strip()
+    }
+
+    multiple_product_families = (
+        len(
+            product_family_codes
+        )
+        >= 2
+    )
+
+    multi_product_engineering_signals = (
+        "vergelijk",
+        "vergelijking",
+        "selectie",
+        "selecteer",
+        "keuze",
+        "kiezen",
+        "advies",
+        "adviseer",
+        "aanbevel",
+        "beoordeel",
+        "concept",
+        "project",
+        "engineering",
+        "engineer",
+        "toepassing",
+        "toepassen",
+        "geschikt",
+        "geschiktheid",
+        "passend",
+        "alternatief",
+        "alternatieven",
+    )
+
+    multi_product_engineering = (
+        multiple_product_families
+        and (
+            _contains_any(
+                question,
+                RECOMMENDATION_SIGNALS,
+            )
+            or _contains_any(
+                question,
+                EXPLICIT_RESEARCH_SIGNALS,
+            )
+            or _contains_any(
+                question,
+                multi_product_engineering_signals,
+            )
+        )
+    )
+
     score = 0
+
     reasons: list[str] = []
 
-    if len(effective_domains) > 1:
+    if len(
+        effective_domains
+    ) > 1:
+
         score += 2
-        reasons.append("multiple_domains")
 
-    if requested_information_affects_complexity:
+        reasons.append(
+            "multiple_domains"
+        )
+
+    if (
+        requested_information_affects_complexity
+    ):
+
         score += 1
-        reasons.append("multiple_information_requests")
 
-    if _contains_any(question, CAUSAL_SIGNALS):
+        reasons.append(
+            "multiple_information_requests"
+        )
+
+    if multiple_product_families:
+
         score += 2
-        reasons.append("causal_analysis")
 
-    if _contains_any(question, RECOMMENDATION_SIGNALS):
+        reasons.append(
+            "multiple_product_families"
+        )
+
+    if _contains_any(
+        question,
+        CAUSAL_SIGNALS,
+    ):
+
         score += 2
-        reasons.append("recommendation_or_comparison")
 
-    if _contains_any(question, HISTORY_SIGNALS):
+        reasons.append(
+            "causal_analysis"
+        )
+
+    if _contains_any(
+        question,
+        RECOMMENDATION_SIGNALS,
+    ):
+
+        score += 2
+
+        reasons.append(
+            "recommendation_or_comparison"
+        )
+
+    if _contains_any(
+        question,
+        HISTORY_SIGNALS,
+    ):
+
         score += 1
-        reasons.append("historical_context")
 
-    if _contains_any(question, TECHNICAL_CONTEXT_SIGNALS):
+        reasons.append(
+            "historical_context"
+        )
+
+    if _contains_any(
+        question,
+        TECHNICAL_CONTEXT_SIGNALS,
+    ):
+
         score += 1
-        reasons.append("technical_context")
 
-    if _contains_any(question, EXPERIENCE_SIGNALS):
+        reasons.append(
+            "technical_context"
+        )
+
+    if _contains_any(
+        question,
+        EXPERIENCE_SIGNALS,
+    ):
+
         score += 1
-        reasons.append("application_experience")
 
-    if _contains_any(question, EXPLICIT_RESEARCH_SIGNALS):
+        reasons.append(
+            "application_experience"
+        )
+
+    if _contains_any(
+        question,
+        EXPLICIT_RESEARCH_SIGNALS,
+    ):
+
         score += 3
-        reasons.append("explicit_research_request")
+
+        reasons.append(
+            "explicit_research_request"
+        )
+
+    if multi_product_engineering:
+
+        reasons.append(
+            "multi_product_engineering"
+        )
 
     research_required = (
-        score >= RESEARCH_REQUIRED_THRESHOLD
+        (
+            score
+            >= RESEARCH_REQUIRED_THRESHOLD
+            or multi_product_engineering
+        )
         and not plan.clarification_required
     )
 
-    if plan.clarification_required and score >= RESEARCH_REQUIRED_THRESHOLD:
-        reasons.append("clarification_required_blocks_research")
+    if (
+        plan.clarification_required
+        and (
+            score
+            >= RESEARCH_REQUIRED_THRESHOLD
+            or multi_product_engineering
+        )
+    ):
 
-    plan.multi_intent = multi_intent
+        reasons.append(
+            "clarification_required_blocks_research"
+        )
+
+    plan.multi_intent = (
+        multi_intent
+        or multiple_product_families
+    )
+
     plan.complexity_score = score
     plan.complexity_reasons = reasons
-    plan.research_required = research_required
+    plan.research_required = (
+        research_required
+    )
 
     return plan

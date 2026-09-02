@@ -29,6 +29,7 @@ from app.orchestrator.evidence_synthesizer import (
 )
 from app.orchestrator.models import OrchestratorAskRequest
 from app.orchestrator.planner import build_execution_plan
+from app.orchestrator.routing_sanity import apply_routing_sanity
 from app.orchestrator.understanding import understand_query
 from app.text_encoding import repair_mojibake_text
 # PROMATI_COMPACT_PUBLIC_RESULTS_V1
@@ -3714,6 +3715,11 @@ def run_orchestrator(
         question,
         conversation_context=conversation_context,
     )
+
+    # PROMATI_ROUTING_SANITY_BEFORE_RESEARCH_P4_5B3
+    # Deterministic/local sanity gate. Geen nieuwe observability timing-key:
+    # promati.orchestrator.observability.v1 blijft backwards-compatible.
+    plan = apply_routing_sanity(plan)
 
     plan = _observability_call(
         timings,
