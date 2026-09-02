@@ -718,6 +718,49 @@ def _sanitize_product_family_context(
     if not isinstance(results, list) or not results:
         return family_context
 
+
+    # PROMATI_EXPLICIT_PRODUCT_FAMILY_SCOPE_P4_5B6
+    # A planner-scoped family_code is authoritative. The original broad
+    # multi-product question intentionally remains intact for context, but
+    # must not cause other named families to filter out this family record.
+    if family_code:
+        target_family_code = str(
+            family_code
+        ).strip().casefold()
+
+        filtered = [
+            row
+            for row in results
+            if (
+                isinstance(row, dict)
+                and str(
+                    row.get("family_code")
+                    or ""
+                ).strip().casefold()
+                == target_family_code
+            )
+        ]
+
+        cleaned = dict(
+            family_context
+        )
+        cleaned["results"] = filtered
+        cleaned["count"] = len(
+            filtered
+        )
+        cleaned["sanitized"] = True
+        cleaned[
+            "explicit_family_scope"
+        ] = True
+
+        if not filtered:
+            cleaned["note"] = (
+                "Geen controlled productrecord voor "
+                "de expliciete family scope."
+            )
+
+        return cleaned
+
     q = (vraag or "").lower()
     requested_terms = set()
 
