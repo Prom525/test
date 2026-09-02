@@ -185,6 +185,216 @@ def _technical_structured_evidence(
     return tuple(evidence_items)
 
 
+def _product_knowledge_evidence(
+    execution_result: ExecutionResult,
+    *,
+    retrieved_at: datetime,
+) -> tuple[EvidenceItem, ...]:
+    """
+    Normalize controlled product-family context into
+    PRODUCT_RECORD evidence.
+
+    Safety boundary:
+    - only family_context.results is authoritative here;
+    - RAG/document scope is never promoted to a product record;
+    - article_search_v2 remains a separate LIVE_CANONICAL path.
+    """
+    raw_result = execution_result.result
+
+    if not isinstance(raw_result, dict):
+        return ()
+
+    result_status = _nonempty_string(
+        raw_result.get("status")
+    )
+
+    if (
+        result_status is None
+        or result_status.casefold() != "ok"
+    ):
+        return ()
+
+    family_context = raw_result.get(
+        "family_context"
+    )
+
+    if not isinstance(
+        family_context,
+        dict,
+    ):
+        return ()
+
+    family_status = _nonempty_string(
+        family_context.get("status")
+    )
+
+    if (
+        family_status is None
+        or family_status.casefold() != "ok"
+    ):
+        return ()
+
+    records = family_context.get(
+        "results"
+    )
+
+    if not isinstance(records, list):
+        return ()
+
+    detected_family_code = (
+        _nonempty_string(
+            raw_result.get(
+                "detected_family_code"
+            )
+        )
+        or _nonempty_string(
+            family_context.get(
+                "detected_family_code"
+            )
+        )
+    )
+
+    context_type = (
+        _nonempty_string(
+            family_context.get(
+                "context_type"
+            )
+        )
+        or "product_family_context"
+    )
+
+    evidence_items: list[EvidenceItem] = []
+
+    for index, raw_record in enumerate(
+        records
+    ):
+        if not isinstance(
+            raw_record,
+            dict,
+        ):
+            continue
+
+        record = copy.deepcopy(
+            raw_record
+        )
+
+        record_family_code = (
+            _nonempty_string(
+                record.get(
+                    "family_code"
+                )
+            )
+        )
+
+        if record_family_code is None:
+            continue
+
+        if (
+            detected_family_code is not None
+            and (
+                record_family_code.casefold()
+                != detected_family_code.casefold()
+            )
+        ):
+            # Never ground a returned family record against
+            # a different explicitly resolved family.
+            continue
+
+        entity_id = (
+            detected_family_code
+            or record_family_code
+        )
+
+        subject = (
+            _nonempty_string(
+                record.get(
+                    "family_name"
+                )
+            )
+            or entity_id
+        )
+
+        source_reference = (
+            f"{context_type}:{entity_id}"
+        )
+
+        provenance = {
+            "family_code": entity_id,
+            "family_name": subject,
+            "context_type": context_type,
+            "family_context_status": (
+                family_status
+            ),
+        }
+
+        evidence_items.append(
+            EvidenceItem(
+                contract_version=(
+                    EVIDENCE_CONTRACT_VERSION
+                ),
+                evidence_id=(
+                    _stable_evidence_id(
+                        execution_result=(
+                            execution_result
+                        ),
+                        record=record,
+                        index=index,
+                    )
+                ),
+                execution_step_id=(
+                    execution_result.step_id
+                ),
+                specialist_id=(
+                    execution_result.action
+                ),
+                domain=(
+                    execution_result.domain
+                ),
+                subject=subject,
+                entity_type="product",
+                entity_id=entity_id,
+                evidence_type=(
+                    EvidenceType.RECORD
+                ),
+                source_type=(
+                    EvidenceSourceType
+                    .STRUCTURED_KNOWLEDGE
+                ),
+                source_name=context_type,
+                source_reference=(
+                    source_reference
+                ),
+                source_priority=None,
+                observed_at=None,
+                retrieved_at=retrieved_at,
+                effective_at=None,
+                value=record,
+                unit=None,
+                claim_scope=(),
+                freshness_status=(
+                    EvidenceFreshnessStatus
+                    .NOT_APPLICABLE
+                ),
+                grounding_status=(
+                    EvidenceGroundingStatus
+                    .GROUNDED
+                ),
+                quality_status=(
+                    EvidenceQualityStatus
+                    .VALID
+                ),
+                direct_or_derived=(
+                    EvidenceDirectness
+                    .DIRECT
+                ),
+                derivation_reference=None,
+                provenance=provenance,
+            )
+        )
+
+    return tuple(evidence_items)
+
+
 def _product_article_evidence(
     execution_result: ExecutionResult,
     *,
@@ -4368,9 +4578,15 @@ def normalize_execution_result_evidence(
         execution_result.action
         == "product_assistant"
     ):
-        return _product_article_evidence(
-            execution_result,
-            retrieved_at=retrieved_at,
+        return (
+            _product_knowledge_evidence(
+                execution_result,
+                retrieved_at=retrieved_at,
+            )
+            + _product_article_evidence(
+                execution_result,
+                retrieved_at=retrieved_at,
+            )
         )
 
     if (
