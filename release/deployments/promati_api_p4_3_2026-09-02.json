@@ -1,0 +1,76 @@
+{
+  "baseline_manifest": {
+    "manifest_commit": "a9aba58ff4c21e5f45f17408041865aa5701d94a",
+    "path": "release/manifests/promati_api_baseline_2026-09-02.json",
+    "sha256": "F25E7BC0C39A92208D7B4EECA5BE6CA0D3411FAAA850625C0BB013C631943F77"
+  },
+  "contract_version": "promati.release.deployment.v1",
+  "deployed_at_utc": "2026-09-02T07:48:49.419544+00:00",
+  "git_tag_created": false,
+  "image": {
+    "built_from_source_commit": true,
+    "default_alias": "ai-platform-api:latest",
+    "default_alias_points_to_release": true,
+    "image_id": "sha256:66b8b9440b4c3dc4150c1cba230d93275d922cbc38b1bd62280c1b77e99b473e",
+    "release_tag": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+    "source_content_verified": true,
+    "source_labels_verified": true
+  },
+  "live_proof": {
+    "a660_http_status": 200,
+    "a660_response_bytes": 2125,
+    "a660_response_sha256": "E709CAD513995D423F713C9E41837A0D8DFB9E912ABB339F6140766B273BCA79",
+    "operability_contract": "promati.diagnostics.operability.v1",
+    "operability_operation_id": "diagnostics_operability",
+    "orchestrator_operation_id": "promati_orchestrator_ask"
+  },
+  "next_gate": "P4.4 deterministic rollback proof",
+  "regression": {
+    "known_failure_count": 13,
+    "known_failures": [
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_e401_resolves_to_mv2",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_gsl_area_hint_is_accepted_for_r5",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_r_dash_5_is_detected_from_free_text",
+      "tests/test_analysis_asset_wrapper.py::AnalysisAssetWrapperTests::test_r_space_5_uses_canonical_mv1_and_adds_context",
+      "tests/test_orchestrator_user_answer.py::OrchestratorUserAnswerTests::test_resolved_asset_answer_contains_full_context",
+      "tests/test_phase_b3b1_specialist_registry.py::SpecialistRegistryV1Tests::test_analysis_mode_gap_is_preserved_not_fixed",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_null_validity_does_not_imply_current",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_org_records_are_normalized",
+      "tests/test_phase_c1_evidence_adapters.py::OrgEvidenceAdapterV1Tests::test_valid_from_is_normalized_as_effective_at",
+      "tests/test_phase_c2_evidence_requirement_catalog.py::EvidenceRequirementCatalogV1Tests::test_exact_initial_intent_catalog",
+      "tests/test_phase_c2_evidence_requirement_catalog.py::EvidenceRequirementCatalogV1Tests::test_person_rfq_and_diagnostics_are_not_interchangeable",
+      "tests/test_phase_c8_evidence_pipeline_integration.py::EvidencePipelineServiceWiringV1Tests::test_execute_plan_collects_typed_shadow_results",
+      "tests/test_phase_c8_evidence_pipeline_integration.py::EvidencePipelineServiceWiringV1Tests::test_pipeline_call_order_is_exact"
+    ],
+    "new_failure_count": 0,
+    "passed_tests": 551
+  },
+  "release_state": "deployed",
+  "remote_registry_push": false,
+  "rollback": {
+    "data_mounts_preserved": true,
+    "previous_image_id": "sha256:892785f94b3b65393dc01eab872600940b5b94d3d45c3af2454d694a3f5e9939",
+    "rollback_prepared": true,
+    "rollback_tag": "promati-api-rollback:pre-p4-3-892785f94b3b"
+  },
+  "runtime": {
+    "container_config_image": "promati-api-release:p4-3-20260902-d51a9e5e35d4",
+    "container_id": "27cbe95ad14eedc006786cde093ea63a8ca0fc7d40ff640e049b2e1c8e38bec6",
+    "data_mounts": [
+      "/app/data",
+      "/app/generated"
+    ],
+    "source_matches_committed_bytes": true,
+    "source_override_count": 0
+  },
+  "source": {
+    "archive_matches_git_blobs": true,
+    "authoritative_identity": "git_commit_plus_tree",
+    "commit": "d51a9e5e35d4be2cae4033279c2aa2132d3e8f04",
+    "committed_blob_snapshot_sha256": "A43F2D8F533E0740224584BAA9E27D096A8B0868F2883AD54BDBBFE284C3D71C",
+    "materialization_mode": "git_archive_core_autocrlf_false",
+    "materialized_release_snapshot_sha256": "A43F2D8F533E0740224584BAA9E27D096A8B0868F2883AD54BDBBFE284C3D71C",
+    "observed_worktree_snapshot_sha256": "EABA95237D3EC2C25EF86D9EABE1E065DEB42E0C672C42DE3B802C9CAE9C44E4",
+    "tree": "c3a29d78fdaa18f9a08c7f0931f6d45dfef41fbe"
+  }
+}
