@@ -1,0 +1,113 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PROMATI AI Orchestrator",
+    "description": "PROMATI bedrijfsdata, productkennis, inspectieanalyse, techniek, RFQ, organisatie, diagnostiek en bounded research.",
+    "version": "13.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://precut-ahead-rack.ngrok-free.dev"
+    }
+  ],
+  "paths": {
+    "/orchestrator/ask": {
+      "post": {
+        "operationId": "promati_orchestrator_ask",
+        "x-openai-isConsequential": false,
+        "summary": "Beantwoord een PROMATI-vraag via de centrale orchestrator",
+        "description": "Primaire ingang voor PROMATI-vragen. De backend bepaalt domein, specialist, complexiteit en of bounded research nodig is.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vraag": {
+                    "type": "string",
+                    "description": "De volledige oorspronkelijke gebruikersvraag."
+                  },
+                  "q": {
+                    "type": "string",
+                    "description": "Optionele expliciete zoekterm."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "default": "auto"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10
+                  },
+                  "include_trace": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "vraag"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Succesvol PROMATI orchestrator-antwoord"
+          },
+          "422": {
+            "description": "Ongeldige request"
+          },
+          "500": {
+            "description": "Interne API-fout"
+          }
+        }
+      }
+    },
+    "/analysis/rfq/{rfq_id}/pdf-url/{language}": {
+      "get": {
+        "operationId": "get_rfq_pdf_url_v2",
+        "summary": "Geef de URL van een bestaande RFQ PDF",
+        "description": "Gebruik alleen wanneer expliciet een bestaande RFQ PDF of PDF-link wordt gevraagd.",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "nl",
+                "en",
+                "de",
+                "fr"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Succesvolle RFQ PDF URL response"
+          },
+          "404": {
+            "description": "RFQ of PDF niet gevonden"
+          },
+          "500": {
+            "description": "Interne API-fout"
+          }
+        }
+      }
+    }
+  }
+}

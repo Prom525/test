@@ -1,0 +1,19 @@
+
+services:
+  init-keycloak:
+    image: curlimages/curl:8.6.0
+    container_name: init-keycloak
+    depends_on:
+      - keycloak
+    environment:
+      KC_BASE: ${KC_BASE:-http://keycloak:8080}
+      REALM_NAME: ${REALM_NAME:-promati}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+      INIT_USERNAME: ${INIT_USERNAME:-john}
+      INIT_PASSWORD: ${INIT_PASSWORD:-Prom#t!1234}
+      INIT_EMAIL: ${INIT_EMAIL:-john@example.com}
+    command: ["sh", "-c", "sh /work/init.sh"]
+    volumes:
+      - ./keycloak-init/init.sh:/work/init.sh:ro
+    networks: [core]

@@ -1,0 +1,74 @@
+{
+    "openapi":  "3.1.0",
+    "info":  {
+                 "title":  "Promati Internal Help API",
+                 "version":  "1.0.0"
+             },
+    "servers":  [
+
+                ],
+    "paths":  {
+                  "/analysis/context/org/internal-help":  {
+                                                              "get":  {
+                                                                          "tags":  [
+                                                                                       "org-context"
+                                                                                   ],
+                                                                          "summary":  "Internal Help, IT, HR, BHV and who-to-contact routing",
+                                                                          "description":  "Verplicht gebruiken voor interne hulpvragen zoals wifi, internet, printer, IT, HR, BHV, toegang, wie moet ik bellen, bij wie moet ik zijn en wat moet ik doen bij interne problemen.",
+                                                                          "operationId":  "internal_help_analysis_context_org_internal_help_get",
+                                                                          "parameters":  [
+                                                                                             {
+                                                                                                 "name":  "q",
+                                                                                                 "in":  "query",
+                                                                                                 "required":  true,
+                                                                                                 "description":  "De originele gebruikersvraag, bijvoorbeeld: mijn wifi werkt niet",
+                                                                                                 "schema":  {
+                                                                                                                "type":  "string"
+                                                                                                            }
+                                                                                             },
+                                                                                             {
+                                                                                                 "name":  "firma",
+                                                                                                 "in":  "query",
+                                                                                                 "required":  false,
+                                                                                                 "schema":  {
+                                                                                                                "type":  "string",
+                                                                                                                "nullable":  true
+                                                                                                            }
+                                                                                             },
+                                                                                             {
+                                                                                                 "name":  "locatie",
+                                                                                                 "in":  "query",
+                                                                                                 "required":  false,
+                                                                                                 "schema":  {
+                                                                                                                "type":  "string",
+                                                                                                                "nullable":  true
+                                                                                                            }
+                                                                                             },
+                                                                                             {
+                                                                                                 "name":  "afdeling",
+                                                                                                 "in":  "query",
+                                                                                                 "required":  false,
+                                                                                                 "schema":  {
+                                                                                                                "type":  "string",
+                                                                                                                "nullable":  true
+                                                                                                            }
+                                                                                             }
+                                                                                         ],
+                                                                          "responses":  {
+                                                                                            "200":  {
+                                                                                                        "description":  "Interne hulpinformatie, selfservice-stappen en contactroutering.",
+                                                                                                        "content":  {
+                                                                                                                        "application/json":  {
+                                                                                                                                                 "schema":  {
+                                                                                                                                                                "type":  "object",
+                                                                                                                                                                "additionalProperties":  true
+                                                                                                                                                            }
+                                                                                                                                             }
+                                                                                                                    }
+                                                                                                    }
+                                                                                        },
+                                                                          "x-openai-isConsequential":  false
+                                                                      }
+                                                          }
+              }
+}

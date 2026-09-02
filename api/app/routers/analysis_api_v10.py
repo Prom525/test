@@ -1,0 +1,6160 @@
+from __future__ import annotations
+
+import os
+import re
+from app.services.asset_resolver import normalize_asset_code, resolve_asset
+from app.services.scope_analysis import analyze_scope_question
+# PROMATI_CANONICAL_POSITION_PROJECTION_V1
+from app.canonical_positions import build_canonical_position_projection
+from typing import Optional, Literal, Any
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from datetime import date, datetime, timedelta
+
+router = APIRouter(prefix="/analysis", tags=["analysis"])
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://postgres:5432/promati",
+)
+
+engine: Engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+KNOWN_LIJN_CODES = {
+    "GSL",
+    "MV1",
+    "MV2",
+    "KOFA1",
+    "KOFA2",
+    "EO1",
+    "PEFA",
+    "SIFA",
+    "HOO6",
+    "HOO7",
+    "KOLEN2",
+}
+
+KNOWN_SIDES = {"OOST", "WEST", "NOORD", "ZUID", "MIDDEN", "BOVEN", "ONDER"}
+
+BAND_CODE_PATTERN = re.compile(r"\b([A-Z]{1,3}\s?[0-9]{1,4})\b", re.IGNORECASE)
+SCRAPER_PATTERN = re.compile(
+    r"\b(?:UI?|HI?|TPHI?|TPLI?|RI?|RV|AF|KFI?|KSI?|P|BP1|BS1|CLEANSCAPE)\s*[A-Z0-9/\-() ]*\b",
+    re.IGNORECASE,
+)
+
+SIGNAL_TERMS = [
+    "band",
+    "loopt scheef",
+    "scheefloop",
+    "scheef",
+    "trommel",
+    "splice",
+    "vervuil",
+    "mors",
+    "morsgoot",
+    "nat materiaal",
+    "nat",
+    "materiaalopbouw",
+    "uithouder",
+    "druk",
+    "lager",
+    "frame",
+    "steun",
+    "hoog",
+    "niet zichtbaar",
+    "niet toegankelijk",
+    "geen steiger",
+    "mes",
+    "vervang",
+    "cassette",
+    "hosch",
+]
+
+
+# ---------------------------------------------------------
+# GENERIEK
+# ---------------------------------------------------------
+
+def fetch_all(sql: str, params: dict) -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def fetch_one(sql: str, params: dict) -> Optional[dict]:
+    with engine.connect() as conn:
+        row = conn.execute(text(sql), params).mappings().first()
+    return dict(row) if row else None
+
+
+class AssistantAskRequest(BaseModel):
+    vraag: str
+    lijn_code: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    band_code: Optional[str] = None
+    scraper_type: Optional[str] = None
+
+    # PROMATI_SCOPE_SCRAPER_FAMILY_FILTER_V1
+    scraper_family: Optional[str] = None
+
+    zijde: Optional[str] = None
+
+    # PROMATI_SCOPE_ANALYSIS_WRAPPER_V13_1
+    scope_code: Optional[str] = None
+    scope_type: Optional[str] = None
+    area_code: Optional[str] = None
+    installation_code: Optional[str] = None
+
+    limit: int = 20
+
+
+def normalize_code(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return re.sub(r"\s+", "", value).upper()
+
+
+def normalize_scraper_type(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return re.sub(r"\s+", " ", value.strip()).upper()
+
+
+def normalize_person_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def normalize_side(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    value = re.sub(r"\s+", "", value).upper()
+    return value if value in KNOWN_SIDES else None
+
+
+def extract_band_code(vraag: str) -> Optional[str]:
+    matches = BAND_CODE_PATTERN.findall(vraag or "")
+    if not matches:
+        return None
+
+    cleaned = []
+    for m in matches:
+        code = normalize_code(m)
+        if code in KNOWN_LIJN_CODES:
+            continue
+        cleaned.append(code)
+
+    return cleaned[0] if cleaned else None
+
+
+def extract_lijn_code(vraag: str, explicit_lijn_code: Optional[str]) -> Optional[str]:
+    if explicit_lijn_code:
+        code = normalize_code(explicit_lijn_code)
+        return code if code in KNOWN_LIJN_CODES else None
+
+    vraag_up = (vraag or "").upper()
+    for code in sorted(KNOWN_LIJN_CODES, key=len, reverse=True):
+        if code in vraag_up:
+            return code
+
+    return None
+
+
+def extract_scraper_type(vraag: str, explicit_scraper_type: Optional[str] = None) -> Optional[str]:
+    if explicit_scraper_type:
+        return normalize_scraper_type(explicit_scraper_type)
+
+    m = SCRAPER_PATTERN.search(vraag or "")
+    if not m:
+        return None
+    return normalize_scraper_type(m.group(0))
+
+
+def extract_side(vraag: str, explicit_side: Optional[str] = None) -> Optional[str]:
+    if explicit_side:
+        return normalize_side(explicit_side)
+
+    vraag_up = (vraag or "").upper()
+
+    # Geen zijde afleiden uit onderhoudsvragen.
+    # Voorkomt false positives zoals ONDER uit ONDERHOUDSPLANNING.
+    if any(w in vraag_up for w in [
+        "ONDERHOUD",
+        "ONDERHOUDSPLANNING",
+        "ONDERHOUDSPLAN",
+        "ONDERHOUDSLIJST",
+    ]):
+        return None
+
+    for side in sorted(KNOWN_SIDES, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(side)}\b", vraag_up):
+            return side
+
+    return None
+
+
+def build_date_filters(
+    date_from: Optional[str],
+    date_to: Optional[str],
+    column: str,
+) -> tuple[list[str], dict]:
+    conditions: list[str] = []
+    params: dict[str, Any] = {}
+
+    if date_from:
+        conditions.append(f"{column} >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        conditions.append(f"{column} <= :date_to")
+        params["date_to"] = date_to
+
+    return conditions, params
+
+
+def friendly_config_type(config_type: Optional[str]) -> str:
+    mapping = {
+        "VOLLEDIG_MEERTRAPS": "volledige meertrapsconfiguratie",
+        "DUBBEL_PRIMAIR": "dubbele primaire configuratie",
+        "DUBBELZIJDIG_SECUNDAIR": "dubbelzijdige secundaire configuratie",
+        "DUBBELZIJDIG_TERTIAIR": "dubbelzijdige tertiaire configuratie",
+        "PRIMAIR_SECUNDAIR": "primair-secundaire configuratie",
+        "PRIMAIR_TERTIAIR": "primair-tertiaire configuratie",
+        "SECUNDAIR_TERTIAIR": "secundair-tertiaire configuratie",
+        "ALLEEN_PRIMAIR": "enkel primaire configuratie",
+        "ENKELZIJDIG_SECUNDAIR": "enkelzijdige secundaire configuratie",
+        "ENKELZIJDIG_TERTIAIR": "enkelzijdige tertiaire configuratie",
+        "ONVOLLEDIG": "onvolledige configuratie",
+        "GEEN_PRIMAIRE_SCHRAPER": "geen primaire schraper",
+        "GEEN_SECUNDAIRE": "geen secundaire schraper",
+        "MULTI_PRIMAIR": "meerdere primaire schrapers",
+        "MULTI_ZONE": "multi-zone configuratie",
+        "STANDAARD_OK": "standaard configuratie",
+    }
+    return mapping.get(config_type or "", config_type or "onbekende configuratie")
+
+
+def detect_intent(
+    vraag: str,
+    band_code: Optional[str],
+    lijn_code: Optional[str],
+    scraper_type: Optional[str],
+) -> str:
+    q = (vraag or "").lower()
+
+    if any(
+        w in q
+        for w in [
+            "onderhoudslijst",
+            "actielijst",
+            "meest dringend",
+            "hoogste prioriteit",
+            "prioriteit",
+            "onderhoudsplanning",
+            "onderhoudsplan",
+            "planning",
+            "toplijst",
+            "top list",
+            "historische forecast",
+            "historisch gewogen",
+            "6mm",
+            "6 mm",
+            "3mm",
+            "3 mm",
+            "wat moet eerst",
+            "wat moet vervangen",
+        ]
+    ):
+        return "maintenance_positions"
+
+    if any(w in q for w in [
+        "slijtageverloop",
+        "slijtage verloop",
+        "meshoogteverloop",
+        "meshoogte verloop",
+        "actuele configuratie",
+        "actuele schraperconfiguratie",
+        "schraperconfiguratie",
+        "per positie",
+        "per schraperpositie",
+        "positieoverzicht",
+        "positie overzicht",
+        "oost west vergelijken",
+        "oost/west vergelijken",
+        "messen t.o.v. elkaar",
+        "messen ten opzichte van elkaar",
+        "schrapers t.o.v. elkaar",
+        "schrapers ten opzichte van elkaar",
+    ]):
+        return "band_position_wear_overview"
+
+    if any(w in q for w in [
+        "maandoverzicht",
+        "per maand",
+        "monthly",
+        "maandrapport",
+        "maand overzicht",
+    ]):
+        return "crm_monthly_overview"
+
+    if any(w in q for w in [
+        "pipeline",
+        "pijplijn",
+        "crm",
+        "verkoopkans",
+        "verkoopkansen",
+        "aanvragen",
+        "verloren aanvragen",
+        "verliesreden",
+        "sales",
+        "offertelast",
+        "opportunity",
+        "opportunities",
+    ]):
+        return "crm_pipeline"
+
+    if any(w in q for w in [
+        "wat zit er nu op",
+        "huidige bandstatus",
+        "actuele bandstatus",
+        "actuele schrapers",
+        "actief op band",
+        "actieve schrapers op",
+        "welke schrapers zitten",
+        "welke schrapers staan",
+    ]):
+        return "current_band_scrapers"
+
+    if any(w in q for w in [
+        "schraper status",
+        "band zonder schrapers",
+        "heeft deze band schrapers",
+        "actieve schrapers",
+    ]):
+        return "band_scrapers"
+
+    if any(w in q for w in ["oost", "west", "noord", "zuid", "midden", "boven", "onder", "positie", "zijde", "kant"]):
+        if not any(w in q for w in ["onderhoud", "onderhoudsplanning", "onderhoudsplan"]):
+            return "positions"
+
+    if any(
+        w in q
+        for w in [
+            "onderhoudslijst",
+            "actielijst",
+            "meest dringend",
+            "prioriteit",
+            "onderhoudsplanning",
+            "onderhoudsplan",
+            "planning",
+            "toplijst",
+            "top list",
+            "historische forecast",
+            "historisch gewogen",
+            "6mm",
+            "6 mm",
+            "3mm",
+            "3 mm",
+            "wat moet eerst",
+            "wat moet vervangen",
+        ]
+    ):
+        return "maintenance_positions"
+
+    if any(
+        w in q
+        for w in [
+            "word",
+            "doc",
+            "docx",
+            "config",
+            "configuratie",
+            "welke schrapers",
+            "scrapers in word",
+        ]
+    ):
+        return "word_config"
+
+    if any(
+        w in q
+        for w in [
+            "laatste inspecties",
+            "inspecties van",
+            "inspectieoverzicht",
+            "inspection summary",
+            "inspectie summary",
+            "opmerkingen bij band",
+            "vervangingen bij band",
+        ]
+    ):
+        return "inspection_summary"
+
+    if any(
+        w in q
+        for w in [
+            "onderhoudslijst",
+            "actielijst",
+            "meest dringend",
+            "prioriteit",
+            "onderhoudsplanning",
+        ]
+    ):
+        return "maintenance_positions"
+
+    if any(
+        w in q
+        for w in [
+            "forecast",
+            "3 mm",
+            "3mm",
+            "wanneer vervangen",
+            "dagen tot",
+            "levensduur",
+            "binnen 30 dagen",
+            "binnen 60 dagen",
+        ]
+    ):
+        return "forecast"
+
+    if any(
+        w in q
+        for w in [
+            "vervanglijst",
+            "overdue",
+            "binnen_2_weken",
+            "binnen 2 weken",
+            "binnen 1 maand",
+            "wat moet vervangen",
+        ]
+    ):
+        return "replacement"
+
+    if any(w in q for w in ["laatste meshoogte", "actuele meshoogte", "laatste stand"]):
+        return "latest_mes"
+
+    if any(w in q for w in ["lifecycle", "slijtage", "meshoogteverloop", "historie", "tijdlijn", "trend"]):
+        if band_code and scraper_type:
+            return "scraper_lifecycle"
+        if band_code:
+            return "band_lifecycle"
+        if scraper_type:
+            return "scraper_lifecycle"
+        return "lifecycle"
+
+    if band_code:
+        return "band"
+
+    if scraper_type:
+        return "scraper"
+
+    if lijn_code:
+        return "location"
+
+    if any(w in q for w in ["dataset", "overzicht", "hoeveel", "samenvatting", "summary", "totaal"]):
+        return "dataset"
+
+    return "dataset"
+
+
+
+
+def first_non_empty(rows: list[dict], key: str) -> Optional[Any]:
+    for row in rows:
+        value = row.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    return None
+
+def band_position_wear_overview(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    zijde: Optional[str],
+    include_history: bool,
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    if zijde:
+        conditions.append("physical_position_label_final = :zijde")
+        params["zijde"] = zijde
+
+    where_sql = " AND ".join(conditions)
+
+    summary_rows = fetch_all(f"""
+        SELECT
+            lijn_code,
+            locatie,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            scraper_role,
+            physical_position_label_final,
+            physical_position_source,
+
+            laatste_meting_datum,
+            actuele_meshoogte_mm,
+            laatste_vervanging_datum,
+
+            cyclus_start_datum,
+            cyclus_laatste_datum,
+            cyclus_meetpunten,
+            bruikbare_intervallen,
+
+            avg_slijtage_mm_per_dag,
+            max_slijtage_mm_per_dag,
+            vroege_slijtage_mm_per_dag,
+            recente_slijtage_mm_per_dag,
+            slijtage_curve_status,
+            slijtage_classes,
+
+            planning_prioriteit_historisch,
+            onderhoudsadvies,
+            planning_status_6mm_historisch,
+            dagen_tot_6mm_historisch,
+            geschatte_vervangdatum_bij_6mm_historisch,
+            planning_status_3mm_historisch,
+            dagen_tot_3mm_historisch,
+            geschatte_vervangdatum_bij_3mm_historisch,
+            inspectie_actualiteit,
+            data_quality_flag,
+
+            laatste_commentaar,
+            source_file,
+            sheet_raw,
+            sheet_analysis_key,
+            canonical_inspection_key
+        FROM public.vw_mes_band_position_wear_summary
+        WHERE {where_sql}
+        ORDER BY
+            planning_prioriteit_historisch NULLS LAST,
+            band_norm,
+            scraper_role,
+            physical_position_label_final,
+            scraper_family,
+            scraper_type_norm
+        LIMIT :limit
+    """, params)
+
+    history_rows: list[dict[str, Any]] = []
+
+    if include_history:
+        history_limit = min(limit * 20, 500)
+        history_params = dict(params)
+        history_params["history_limit"] = history_limit
+
+        history_rows = fetch_all(f"""
+            SELECT
+                inspected_on,
+                lijn_code,
+                band_norm,
+                scraper_family,
+                scraper_type_norm,
+                scraper_role,
+                physical_position_label_final,
+
+                meetpunt_nr,
+                vorige_meting_datum,
+                vorige_meshoogte_mm,
+                meshoogte_mm,
+                dagen_sinds_vorige_meting,
+                slijtage_interval_mm,
+                slijtage_interval_mm_per_dag,
+                slijtage_interval_classificatie,
+                replace_event,
+                commentaar,
+                source_file,
+                sheet_raw
+            FROM public.vw_mes_band_position_wear_history
+            WHERE {where_sql}
+            ORDER BY
+                inspected_on DESC NULLS LAST,
+                band_norm,
+                scraper_role,
+                physical_position_label_final,
+                scraper_family,
+                scraper_type_norm
+            LIMIT :history_limit
+        """, history_params)
+
+    urgent = [
+        r for r in summary_rows
+        if r.get("planning_prioriteit_historisch") in (1, 2, 3, 4)
+    ]
+
+    curves = {}
+    for r in summary_rows:
+        key = r.get("slijtage_curve_status") or "ONBEKEND"
+        curves[key] = curves.get(key, 0) + 1
+
+    return {
+        "intent": "band_position_wear_overview",
+        "entities": {
+            "lijn_code": lijn_code,
+            "band_code": band_code,
+            "scraper_type": scraper_type,
+            "zijde": zijde,
+        },
+        "kort_resultaat": (
+            f"{len(summary_rows)} actuele schraperposities gevonden."
+            if summary_rows
+            else "Geen actuele schraperposities gevonden."
+        ),
+        "samenvatting": {
+            "n_posities": len(summary_rows),
+            "n_urgent_prioriteit_1_tm_4": len(urgent),
+            "slijtage_curve_status": curves,
+            "history_included": include_history,
+            "history_rows": len(history_rows),
+        },
+        "resultaat": summary_rows,
+        "history": history_rows,
+    }
+
+def band_position_wear_unified_overview(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    zijde: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    if zijde:
+        conditions.append("position_display = :zijde")
+        params["zijde"] = zijde
+
+    where_sql = " AND ".join(conditions)
+
+    rows = fetch_all(f"""
+        SELECT
+            lijn_code,
+            band_norm,
+
+            position_display,
+            position_key_unified,
+            scraper_type_norm,
+            scraper_family,
+            scraper_material,
+            scraper_variant,
+
+            analyse_basis,
+            meshoogte_mm,
+            conditie_code,
+            mes_interpretatie,
+
+            slijtage_actie_pct,
+            betrouwbaarheid,
+            score_bron,
+
+            laatste_vervanging_datum,
+            dagen_sinds_vervanging,
+
+            replace_event,
+            planned_replace_signal,
+            mechanical_or_access_signal,
+
+            commentaar,
+            laatste_inspectiedatum,
+            source_file,
+            sheet,
+            row_nr,
+            inspection_key,
+
+            CASE
+                WHEN analyse_basis = 'MECHANICAL' THEN 'DIRECTE_ACTIE_MECHANISCH'
+                WHEN slijtage_actie_pct >= 90 THEN 'DIRECTE_ACTIE'
+                WHEN slijtage_actie_pct >= 70 THEN 'VERVANGEN_VOORBEREIDEN'
+                WHEN slijtage_actie_pct >= 55 THEN 'CONTROLEREN_BIJ_STOP'
+                WHEN slijtage_actie_pct >= 30 THEN 'MONITOREN'
+                ELSE 'OK'
+            END AS onderhoudsadvies_unified,
+
+            CASE
+                WHEN meshoogte_mm IS NOT NULL THEN meshoogte_mm::text || ' mm'
+                WHEN conditie_code IS NOT NULL THEN conditie_code
+                ELSE NULL
+            END AS laatste_waarde_display
+
+        FROM public.vw_scraper_wear_latest_unified_api_v1
+        WHERE {where_sql}
+        ORDER BY
+            CASE
+                WHEN analyse_basis = 'MECHANICAL' THEN 1
+                WHEN slijtage_actie_pct >= 90 THEN 2
+                WHEN slijtage_actie_pct >= 70 THEN 3
+                WHEN slijtage_actie_pct >= 55 THEN 4
+                ELSE 5
+            END,
+            slijtage_actie_pct DESC NULLS LAST,
+            band_norm,
+            position_display,
+            scraper_type_norm
+        LIMIT :limit
+    """, params)
+
+    urgent = [
+        r for r in rows
+        if r.get("onderhoudsadvies_unified") in (
+            "DIRECTE_ACTIE_MECHANISCH",
+            "DIRECTE_ACTIE",
+            "VERVANGEN_VOORBEREIDEN",
+        )
+    ]
+
+    basis_counts: dict[str, int] = {}
+    for r in rows:
+        key = r.get("analyse_basis") or "ONBEKEND"
+        basis_counts[key] = basis_counts.get(key, 0) + 1
+
+    return {
+        "intent": "band_position_wear_unified_overview",
+        "entities": {
+            "lijn_code": lijn_code,
+            "band_code": band_code,
+            "scraper_type": scraper_type,
+            "zijde": zijde,
+        },
+        "kort_resultaat": (
+            f"{len(rows)} actuele schraperposities gevonden, inclusief TPH/TPL-conditieanalyse."
+            if rows
+            else "Geen actuele schraperposities gevonden."
+        ),
+        "samenvatting": {
+            "n_posities": len(rows),
+            "n_urgent": len(urgent),
+            "analyse_basis": basis_counts,
+            "uitleg": {
+                "MEASUREMENT": "percentage berekend uit meshoogte",
+                "CONDITION": "percentage afgeleid uit conditiecode, leeftijd en commentaar",
+                "MECHANICAL": "actiepercentage door mechanisch/toegangsprobleem",
+            },
+        },
+        "resultaat": rows,
+    }
+
+def expand_band_codes_for_analysis(band_code: str | None) -> list[str]:
+    bc = normalize_code(band_code)
+
+    if not bc:
+        return []
+
+    if bc == "WG024":
+        return ["WG024", "WG02401", "WG02402"]
+
+    return [bc]
+
+# ---------------------------------------------------------
+# DATASET
+# ---------------------------------------------------------
+
+def summarize_dataset_question(
+    lijn_code: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    date_conditions, date_params = build_date_filters(date_from, date_to, "effective_date")
+    conditions.extend(date_conditions)
+    params.update(date_params)
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            COUNT(*) AS n_rows,
+            COUNT(*) FILTER (WHERE record_type = 'POSITION') AS n_positions,
+            COUNT(*) FILTER (WHERE record_type = 'OBSERVATION') AS n_observations,
+            COUNT(*) FILTER (WHERE mes_num IS NOT NULL) AS n_mesmetingen,
+            COUNT(*) FILTER (WHERE vervangen = TRUE) AS n_vervang_rows,
+            COUNT(*) FILTER (WHERE opmerking_raw IS NOT NULL) AS n_opmerkingen,
+            COUNT(DISTINCT lijn_code) AS n_lijnen,
+            COUNT(DISTINCT band_locatie_norm) FILTER (WHERE band_locatie_norm IS NOT NULL) AS n_bandcodes,
+            MIN(effective_date) AS eerste_datum,
+            MAX(effective_date) AS laatste_datum
+        FROM vw_inspection_full_dataset_v1
+        WHERE {where_sql}
+    """
+    summary = fetch_one(sql, params)
+
+    return {
+        "intent": "dataset",
+        "entities": {"lijn_code": lijn_code},
+        "kort_resultaat": (
+            f"Dataset bevat {summary['n_rows']} regels van {summary['eerste_datum']} tot {summary['laatste_datum']}."
+            if summary else "Ik vind geen dataset-samenvatting."
+        ),
+        "resultaat": summary,
+    }
+
+
+def crm_pipeline_quality(limit: int = 50) -> dict:
+    overview = fetch_all("""
+        SELECT
+            aanbevolen_actie,
+            actie_prioriteit,
+            COUNT(*) AS n,
+            SUM(verwachte_omzet) AS waarde
+        FROM crm.vw_crm_pipeline_action_v1
+        WHERE status = 'OPEN'
+        GROUP BY aanbevolen_actie, actie_prioriteit
+        ORDER BY waarde DESC
+    """, {})
+
+    top_actions = fetch_all("""
+        SELECT
+            account_name,
+            opportunity_name,
+            klanttype,
+            commercieel_spoor,
+            fase,
+            verwachte_omzet,
+            dagen_open,
+            kwaliteit_score,
+            aanbevolen_actie,
+            actie_prioriteit
+        FROM crm.vw_crm_pipeline_action_v1
+        WHERE status = 'OPEN'
+        ORDER BY
+            CASE actie_prioriteit
+                WHEN 'hoog' THEN 1
+                WHEN 'medium' THEN 2
+                ELSE 3
+            END,
+            verwachte_omzet DESC NULLS LAST
+        LIMIT :limit
+    """, {"limit": limit})
+
+    loss_reasons = fetch_all("""
+        SELECT
+            commercieel_spoor,
+            verliesreden,
+            COUNT(*) AS n,
+            SUM(verwachte_omzet) AS waarde
+        FROM crm.vw_crm_pipeline_action_v1
+        WHERE status = 'VERLOREN'
+        GROUP BY commercieel_spoor, verliesreden
+        ORDER BY waarde DESC NULLS LAST
+        LIMIT 30
+    """, {})
+
+    return {
+        "intent": "crm_pipeline_quality",
+        "kort_resultaat": "CRM-pipelinekwaliteit opgebouwd uit open kansen, ouderdom, klanttype, spoor en verliesredenen.",
+        "conclusie": [
+            "Grootste actiepunt is opschonen van oude open pipeline.",
+            "Asset owners met hoge score moeten actief opgevolgd worden.",
+            "OEM-kansen moeten via projectgating beoordeeld worden.",
+            "UNKNOWN-klanten moeten eerst geclassificeerd worden."
+        ],
+        "overview": overview,
+        "top_actions": top_actions,
+        "loss_reasons": loss_reasons,
+    }
+
+def crm_monthly_overview(year: int = 2026) -> dict:
+    rows = fetch_all("""
+        SELECT
+            TO_CHAR(date_trunc('month', aangemaakt_op), 'YYYY-MM') AS maand,
+
+            COUNT(*) AS totaal_kansen,
+
+            COUNT(*) FILTER (
+                WHERE status = 'OPEN'
+            ) AS open_kansen,
+
+            COUNT(*) FILTER (
+                WHERE status = 'VERLOREN'
+            ) AS verloren_kansen,
+
+            ROUND(SUM(verwachte_omzet)::numeric, 2) AS totale_pipeline,
+
+            ROUND(SUM(verwachte_omzet) FILTER (
+                WHERE status = 'OPEN'
+            )::numeric, 2) AS open_pipeline,
+
+            ROUND(SUM(verwachte_omzet) FILTER (
+                WHERE status = 'VERLOREN'
+            )::numeric, 2) AS verloren_pipeline,
+
+            ROUND(AVG(kwaliteit_score)::numeric, 1) AS avg_kwaliteit,
+
+            COUNT(*) FILTER (
+                WHERE klanttype = 'ASSET_OWNER'
+            ) AS asset_owner_kansen,
+
+            COUNT(*) FILTER (
+                WHERE klanttype = 'OEM'
+            ) AS oem_kansen,
+
+            COUNT(*) FILTER (
+                WHERE klanttype = 'CONTRACTOR'
+            ) AS contractor_kansen,
+
+            COUNT(*) FILTER (
+                WHERE klanttype = 'UNKNOWN'
+            ) AS unknown_kansen,
+
+            COUNT(*) FILTER (
+                WHERE stale_pipeline
+            ) AS stale_pipeline
+
+        FROM crm.vw_crm_pipeline_quality_v1
+
+        WHERE aangemaakt_op >= make_date(:year, 1, 1)
+          AND aangemaakt_op < make_date(:year + 1, 1, 1)
+
+        GROUP BY 1
+        ORDER BY 1
+    """, {"year": year})
+
+    return {
+        "intent": "crm_monthly_overview",
+        "year": year,
+        "kort_resultaat": f"CRM maandoverzicht voor {year}: {len(rows)} maanden gevonden.",
+        "months": rows,
+    }
+
+
+# ---------------------------------------------------------
+# WORD CONFIG
+# ---------------------------------------------------------
+
+def get_word_band_config(
+    band_code: Optional[str] = None,
+    lijn_code: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if band_code:
+        conditions.append("band_code = :band_code")
+        params["band_code"] = band_code
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            band_code,
+            last_doc_date,
+            lijn_code,
+            scraper_raw_list,
+            scraper_function_list,
+            scraper_brand_list,
+            n_primary,
+            n_secondary,
+            n_tertiary,
+            laatste_meting_datum,
+            scraper_type_norm,
+            position_hint,
+            meshoogte_mm,
+            commentaar
+        FROM vw_band_config_plus_condition_v1
+        WHERE {where_sql}
+        ORDER BY band_code, laatste_meting_datum DESC NULLS LAST, position_hint
+        LIMIT :limit
+    """
+    return fetch_all(sql, params)
+
+
+def get_word_scraper_rows(
+    band_code: Optional[str] = None,
+    lijn_code: Optional[str] = None,
+    limit: int = 100,
+) -> list[dict]:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if band_code:
+        conditions.append("band_code = :band_code")
+        params["band_code"] = band_code
+
+    if lijn_code:
+        conditions.append("line_hint = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            doc_key,
+            source_name,
+            doc_date,
+            line_hint,
+            matched_inspection_key,
+            match_status,
+            band_code,
+            scraper_raw,
+            scraper_model,
+            scraper_family_raw,
+            scraper_function,
+            scraper_brand,
+            position_hint,
+            direction_hint,
+            scraper_status_from_doc,
+            remark
+        FROM vw_word_scraper_config_v1
+        WHERE {where_sql}
+        ORDER BY doc_date DESC NULLS LAST, band_code, scraper_raw
+        LIMIT :limit
+    """
+    return fetch_all(sql, params)
+
+
+def summarize_word_config_question(
+    band_code: Optional[str],
+    lijn_code: Optional[str],
+    limit: int,
+) -> dict:
+    summary_rows = get_word_band_config(
+        band_code=band_code,
+        lijn_code=lijn_code,
+        limit=limit,
+    )
+    detail_rows = get_word_scraper_rows(
+        band_code=band_code,
+        lijn_code=lijn_code,
+        limit=limit,
+    )
+
+    if not summary_rows and not detail_rows:
+        return {
+            "intent": "word_config",
+            "entities": {"band_code": band_code, "lijn_code": lijn_code},
+            "kort_resultaat": "Geen Word-configuratie gevonden.",
+            "resultaat": [],
+            "scraper_rows": [],
+        }
+
+    if band_code:
+        kort_resultaat = (
+            f"Word-configuratie gevonden voor band {band_code}: "
+            f"{len(summary_rows)} samenvattingsregels en {len(detail_rows)} scraperregels."
+        )
+    elif lijn_code:
+        kort_resultaat = (
+            f"Word-configuratie gevonden voor lijn {lijn_code}: "
+            f"{len(summary_rows)} samenvattingsregels en {len(detail_rows)} scraperregels."
+        )
+    else:
+        kort_resultaat = (
+            f"Word-configuratie gevonden: {len(summary_rows)} samenvattingsregels en "
+            f"{len(detail_rows)} scraperregels."
+        )
+
+    return {
+        "intent": "word_config",
+        "entities": {"band_code": band_code, "lijn_code": lijn_code},
+        "kort_resultaat": kort_resultaat,
+        "resultaat": summary_rows,
+        "scraper_rows": detail_rows,
+    }
+
+
+# ---------------------------------------------------------
+# BAND SCRAPER STATUS / DETAILS
+# ---------------------------------------------------------
+
+def band_scraper_status(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_status: Optional[str],
+    only_without_scrapers: bool,
+    limit: int,
+    offset: int = 0,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {
+        "limit": limit,
+        "offset": offset,
+    }
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_locatie = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_status:
+        conditions.append("scraper_status = :scraper_status")
+        params["scraper_status"] = scraper_status
+
+    if only_without_scrapers:
+        conditions.append("scraper_status = 'BAND_ZONDER_SCHRAPERS'")
+
+    where_sql = " AND ".join(conditions)
+
+    count_sql = f"""
+        SELECT COUNT(*) AS total_count
+        FROM vw_band_scraper_api_v1
+        WHERE {where_sql}
+    """
+    count_row = fetch_one(count_sql, params) or {"total_count": 0}
+    total_count = int(count_row["total_count"])
+
+    sql = f"""
+        SELECT
+            inspection_key,
+            lijn_code,
+            band_locatie,
+            scraper_status,
+            n_rows_onder_band,
+            n_rows_met_merk_type,
+            n_duidelijke_schraper_rows,
+            n_schrapers_aanwezig,
+            n_schrapers_actief,
+
+            effective_date,
+            n_schrapers_geinspecteerd,
+            n_geblokkeerd,
+            n_config_bij_blokkade,
+            n_mesmetingen,
+            n_opmerkingen,
+            opmerkingen,
+            source_file,
+            sheet
+        FROM vw_band_scraper_api_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC NULLS LAST, lijn_code, band_locatie
+        LIMIT :limit
+        OFFSET :offset
+    """
+    rows = fetch_all(sql, params)
+
+    return {
+        "intent": "band_scraper_status",
+        "kort_resultaat": (
+            f"{len(rows)} band-statusregels teruggegeven "
+            f"(van totaal {total_count})."
+            if rows
+            else "Geen band-statusregels gevonden."
+        ),
+        "resultaat_count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "resultaat": rows,
+    }
+
+
+def band_scraper_details(
+    band_code: str,
+    lijn_code: Optional[str],
+    only_active: bool,
+    limit: int,
+    offset: int = 0,
+) -> dict:
+    conditions = ["band_locatie = :band_code"]
+    params: dict[str, Any] = {
+        "band_code": band_code,
+        "limit": limit,
+        "offset": offset,
+    }
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if only_active:
+        conditions.append("is_schraper_actief = 1")
+
+    where_sql = " AND ".join(conditions)
+
+    count_sql = f"""
+        SELECT COUNT(*) AS total_count
+        FROM vw_band_scraper_details_api_v1
+        WHERE {where_sql}
+    """
+    count_row = fetch_one(count_sql, params) or {"total_count": 0}
+    total_count = int(count_row["total_count"])
+
+    sql = f"""
+        SELECT
+            inspection_key,
+            lijn_code,
+            band_locatie,
+            row_nr,
+            merk_type,
+            position_hint,
+            vervangen,
+            meshoogte_raw,
+            meshoogte_mm,
+            meshoogte_code,
+            opmerkingen,
+            is_schraper_aanwezig,
+            is_schraper_actief,
+
+            effective_date,
+            is_schraper_geinspecteerd,
+            blocked_flag,
+            block_blocked_flag,
+            inspection_status,
+            semantic_deprecated_flag,
+            source_file,
+            sheet
+        FROM vw_band_scraper_details_api_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC NULLS LAST, row_nr
+        LIMIT :limit
+        OFFSET :offset
+    """
+    rows = fetch_all(sql, params)
+
+    return {
+        "intent": "band_scraper_details",
+        "kort_resultaat": (
+            f"{len(rows)} schraperdetailregels teruggegeven voor band {band_code} "
+            f"(van totaal {total_count})."
+            if rows
+            else f"Geen schraperdetailregels gevonden voor band {band_code}."
+        ),
+        "resultaat_count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "resultaat": rows,
+    }
+
+
+def line_band_scraper_summary(
+    lijn_code: str,
+    limit: int,
+    offset: int = 0,
+) -> dict:
+    count_sql = """
+        SELECT COUNT(*) AS total_count
+        FROM (
+            SELECT 1
+            FROM vw_band_scraper_api_v1
+            WHERE lijn_code = :lijn_code
+            GROUP BY lijn_code, scraper_status
+        ) x
+    """
+    count_row = fetch_one(count_sql, {"lijn_code": lijn_code}) or {"total_count": 0}
+    total_count = int(count_row["total_count"])
+
+    sql = """
+        SELECT
+            lijn_code,
+            scraper_status,
+            COUNT(*) AS n_banden,
+            SUM(n_schrapers_aanwezig) AS totaal_schrapers_aanwezig,
+            SUM(n_schrapers_actief) AS totaal_schrapers_actief
+        FROM vw_band_scraper_api_v1
+        WHERE lijn_code = :lijn_code
+        GROUP BY lijn_code, scraper_status
+        ORDER BY scraper_status, n_banden DESC
+        LIMIT :limit
+        OFFSET :offset
+    """
+    rows = fetch_all(sql, {"lijn_code": lijn_code, "limit": limit, "offset": offset})
+
+    return {
+        "intent": "line_band_scraper_summary",
+        "kort_resultaat": (
+            f"{len(rows)} samenvattingsregels voor lijn {lijn_code} "
+            f"(van totaal {total_count})."
+            if rows
+            else f"Geen bandschraper-samenvatting voor lijn {lijn_code}."
+        ),
+        "resultaat_count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "resultaat": rows,
+    }
+
+
+# ---------------------------------------------------------
+# MES / LIFECYCLE / FORECAST
+# ---------------------------------------------------------
+
+def collect_signal_comments_from_lifecycle(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    limit: int,
+) -> list[dict]:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        conditions.append("scraper_type_norm = :scraper_type")
+        params["scraper_type"] = scraper_type
+
+    signal_sql = " OR ".join([f"LOWER(COALESCE(commentaar, '')) LIKE '%{term}%'" for term in SIGNAL_TERMS])
+    conditions.append(f"({signal_sql})")
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            inspected_on,
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            COALESCE(physical_position_label_final, scraper_role, '') AS position_hint,
+            meshoogte_mm,
+            replace_event,
+            cycle_id,
+            commentaar
+        FROM vw_mes_lifecycle_cycles_clean
+        WHERE {where_sql}
+        ORDER BY inspected_on DESC NULLS LAST
+        LIMIT :limit
+    """
+    return fetch_all(sql, params)
+
+
+def evaluate_unusual_slijtage(
+    lifecycle_rows: list[dict],
+    forecast_rows: list[dict],
+    comment_rows: list[dict],
+) -> tuple[bool, list[str], list[str]]:
+    reasons: list[str] = []
+    hypotheses: list[str] = []
+
+    mes_values = [r.get("meshoogte_mm") for r in lifecycle_rows if r.get("meshoogte_mm") is not None]
+    replace_count = sum(1 for r in lifecycle_rows if r.get("replace_event"))
+    low_forecast = [r for r in forecast_rows if r.get("status_3mm") in ("NU VERVANGEN", "BINNEN 30 DAGEN")]
+
+    if len(mes_values) >= 3 and min(mes_values) <= 3:
+        reasons.append("lage meshoogte in lifecycle")
+    if replace_count >= 2:
+        reasons.append("meerdere vervangevents")
+    if len(low_forecast) >= 2:
+        reasons.append("meerdere urgente forecast-posities")
+
+    all_comments = " || ".join([(r.get("commentaar") or "").lower() for r in comment_rows])
+
+    if "scheef" in all_comments:
+        reasons.append("herhaalde signalen van scheefloop")
+        hypotheses.append("mogelijk bandloop of afstelling")
+    if "vervuil" in all_comments or "mors" in all_comments:
+        reasons.append("herhaalde signalen van vervuiling of mors")
+        hypotheses.append("mogelijk vervuiling of carryback")
+    if "trommel" in all_comments or "splice" in all_comments or "band" in all_comments:
+        reasons.append("band/trommel/splice-signalen in opmerkingen")
+        hypotheses.append("mogelijk band- of trommelconditie")
+    if "nat" in all_comments or "materiaalopbouw" in all_comments:
+        reasons.append("proces- of materiaalsignalen in opmerkingen")
+        hypotheses.append("mogelijk proces- of materiaalbelasting")
+    if "niet zichtbaar" in all_comments or "niet toegankelijk" in all_comments or "steiger" in all_comments:
+        hypotheses.append("mogelijk beperkte inspectiekwaliteit of bereikbaarheid")
+
+    unusual = len(reasons) > 0
+    return unusual, list(dict.fromkeys(reasons)), list(dict.fromkeys(hypotheses))
+
+
+def latest_meshoogte(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            laatste_meting_datum,
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            position_hint,
+            meshoogte_mm,
+            commentaar,
+            sheet_analysis_key,
+            sheet_instance_key,
+            sheet_period_key,
+            inspection_year,
+            week_no,
+            canonical_inspection_key,
+            source_file,
+            sheet_raw
+        FROM vw_meshoogte_latest_per_scraper_clean
+        WHERE {where_sql}
+        ORDER BY laatste_meting_datum DESC NULLS LAST, lijn_code, band_norm, position_hint
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    rows = dedupe_lifecycle_rows(
+        rows,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "laatste_meting_datum",
+            "meshoogte_mm",
+        ],
+    )
+
+    return {
+        "intent": "latest_mes",
+        "kort_resultaat": f"{len(rows)} laatste meshoogte-regels gevonden." if rows else "Geen laatste meshoogtes gevonden.",
+        "resultaat": rows[:20],
+    }
+
+
+def current_band_scrapers(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            laatste_meting_datum,
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            position_hint,
+            meshoogte_mm,
+            commentaar,
+            sheet_analysis_key,
+            sheet_instance_key,
+            sheet_period_key,
+            inspection_year,
+            week_no,
+            canonical_inspection_key,
+            source_file,
+            sheet_raw
+        FROM public.vw_meshoogte_current_band_scrapers_clean
+        WHERE {where_sql}
+        ORDER BY
+            laatste_meting_datum DESC NULLS LAST,
+            lijn_code,
+            band_norm,
+            position_hint,
+            scraper_type_norm
+        LIMIT :limit
+    """
+
+    rows = fetch_all(sql, params)
+
+    rows = dedupe_lifecycle_rows(
+        rows,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "laatste_meting_datum",
+            "meshoogte_mm",
+        ],
+    )
+
+    return {
+        "intent": "current_band_scrapers",
+        "kort_resultaat": (
+            f"{len(rows)} actuele band-schraperregels gevonden."
+            if rows
+            else "Geen actuele band-schrapers gevonden."
+        ),
+        "resultaat": rows[:limit],
+    }
+
+
+def lifecycle_analysis(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    date_conditions, date_params = build_date_filters(date_from, date_to, "inspected_on")
+    conditions.extend(date_conditions)
+    params.update(date_params)
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            inspected_on,
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            scraper_role,
+            physical_position_label_final,
+            COALESCE(physical_position_label_final, scraper_role, '') AS position_hint,
+            meshoogte_mm,
+            replace_event,
+            cycle_id,
+            commentaar,
+            sheet_analysis_key,
+            sheet_instance_key,
+            sheet_period_key,
+            inspection_year,
+            week_no,
+            canonical_inspection_key,
+            source_file,
+            sheet_raw
+        FROM vw_mes_lifecycle_cycles_clean
+        WHERE {where_sql}
+        ORDER BY
+            inspected_on DESC NULLS LAST,
+            lijn_code,
+            band_norm,
+            COALESCE(physical_position_label_final, scraper_role, '')
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    rows = dedupe_lifecycle_rows(
+        rows,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "cycle_id",
+            "inspected_on",
+            "meshoogte_mm",
+            "replace_event",
+        ],
+    )
+
+    replace_events = sum(1 for r in rows if r.get("replace_event"))
+    mes_values = [r.get("meshoogte_mm") for r in rows if r.get("meshoogte_mm") is not None]
+
+    trend_patronen = [f"{len(rows)} lifecycle-regels gevonden."]
+    if mes_values:
+        trend_patronen.append(f"Meshoogte varieert van {min(mes_values)} tot {max(mes_values)}.")
+    if replace_events:
+        trend_patronen.append(f"{replace_events} vervangevents gedetecteerd.")
+
+    return {
+        "intent": "lifecycle",
+        "kort_resultaat": f"{len(rows)} lifecycle-regels gevonden." if rows else "Geen lifecycle-data gevonden.",
+        "trend_patronen": trend_patronen,
+        "resultaat": rows,
+    }
+
+def enrich_performance_6mm(row: dict[str, Any]) -> dict[str, Any]:
+    """
+    Voegt 6mm-prestatiegrens toe aan forecast/maintenance rows.
+
+    6 mm = prestatie-/vervuilingsgrens.
+    3 mm = harde vervanggrens.
+    """
+    clean = dict(row)
+
+    eind = clean.get("eind_meshoogte_mm")
+    slijtage = clean.get("slijtage_mm_per_dag")
+    cycle_end = clean.get("cycle_end")
+
+    clean["prestatiegrens_mm"] = 6
+    clean["vervanggrens_mm"] = 3
+
+    clean["geschatte_dagen_tot_6mm"] = None
+    clean["geschatte_datum_bij_6mm"] = None
+    clean["dagen_tot_6mm_vanaf_vandaag"] = None
+    clean["status_6mm"] = "ONBEKEND"
+    clean["vervuilingsrisico"] = False
+    clean["prestatie_vervangmoment"] = None
+
+    if eind is None:
+        clean["status_6mm"] = "ONBEKEND"
+        return clean
+
+    try:
+        eind_float = float(eind)
+    except (TypeError, ValueError):
+        clean["status_6mm"] = "ONBEKEND"
+        return clean
+
+    # Datum normaliseren
+    cycle_end_date = None
+    if isinstance(cycle_end, date):
+        cycle_end_date = cycle_end
+    elif isinstance(cycle_end, str):
+        try:
+            cycle_end_date = date.fromisoformat(cycle_end[:10])
+        except ValueError:
+            cycle_end_date = None
+
+    today = date.today()
+
+    # Als de laatste meting al 6 mm of lager is, is de prestatiegrens bereikt.
+    if eind_float <= 6:
+        clean["geschatte_dagen_tot_6mm"] = 0
+        clean["geschatte_datum_bij_6mm"] = cycle_end_date.isoformat() if cycle_end_date else None
+
+        if cycle_end_date:
+            clean["dagen_tot_6mm_vanaf_vandaag"] = (cycle_end_date - today).days
+
+        clean["status_6mm"] = "OP_OF_ONDER_6MM"
+        clean["vervuilingsrisico"] = True
+        clean["prestatie_vervangmoment"] = "CONTROLEREN_PRESTATIEGRENS"
+        return clean
+
+    # Als er geen goede slijtage is, kunnen we geen betrouwbare 6mm datum berekenen.
+    if slijtage is None:
+        clean["status_6mm"] = "ONBEKEND"
+        return clean
+
+    try:
+        slijtage_float = float(slijtage)
+    except (TypeError, ValueError):
+        clean["status_6mm"] = "ONBEKEND"
+        return clean
+
+    if slijtage_float <= 0 or cycle_end_date is None:
+        clean["status_6mm"] = "ONBEKEND"
+        return clean
+
+    dagen_tot_6mm = round((eind_float - 6.0) / slijtage_float, 1)
+    datum_6mm = cycle_end_date + timedelta(days=round(dagen_tot_6mm))
+    dagen_vanaf_vandaag = (datum_6mm - today).days
+
+    clean["geschatte_dagen_tot_6mm"] = dagen_tot_6mm
+    clean["geschatte_datum_bij_6mm"] = datum_6mm.isoformat()
+    clean["dagen_tot_6mm_vanaf_vandaag"] = dagen_vanaf_vandaag
+
+    if dagen_vanaf_vandaag <= 0:
+        clean["status_6mm"] = "6MM_BEREIKT"
+        clean["vervuilingsrisico"] = True
+        clean["prestatie_vervangmoment"] = "CONTROLEREN_PRESTATIEGRENS"
+    elif dagen_vanaf_vandaag <= 30:
+        clean["status_6mm"] = "BINNEN_30_DAGEN_6MM"
+        clean["vervuilingsrisico"] = True
+        clean["prestatie_vervangmoment"] = "PLAN_CONTROLE_BINNEN_30_DAGEN"
+    elif dagen_vanaf_vandaag <= 60:
+        clean["status_6mm"] = "BINNEN_60_DAGEN_6MM"
+        clean["vervuilingsrisico"] = True
+        clean["prestatie_vervangmoment"] = "PLAN_CONTROLE_BINNEN_60_DAGEN"
+    else:
+        clean["status_6mm"] = "OK"
+        clean["vervuilingsrisico"] = False
+        clean["prestatie_vervangmoment"] = "GEEN_DIRECTE_ACTIE"
+
+    return clean
+
+def termijn_bucket(days: Any) -> str:
+    if days is None:
+        return "onbekend"
+
+    try:
+        d = int(days)
+    except (TypeError, ValueError):
+        return "onbekend"
+
+    if d <= 0:
+        return "nu_of_overdue"
+    if d <= 30:
+        return "binnen_30_dagen"
+    if d <= 60:
+        return "binnen_60_dagen"
+    if d <= 90:
+        return "binnen_90_dagen"
+    return "later"
+
+def forecast_3mm(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = [
+        "meetpunten >= 3",
+        "cycle_end >= CURRENT_DATE - INTERVAL '2 years'",
+    ]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            position_hint,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            start_meshoogte_mm,
+            eind_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm,
+            first_sheet_analysis_key,
+            last_sheet_analysis_key,
+            first_sheet_instance_key,
+            last_sheet_instance_key,
+            first_canonical_inspection_key,
+            last_canonical_inspection_key,
+            source_file,
+            sheet_raw
+        FROM vw_mes_cycle_analysis_clean
+        WHERE {where_sql}
+        ORDER BY
+            CASE status_3mm
+                WHEN 'NU VERVANGEN' THEN 1
+                WHEN 'BINNEN 30 DAGEN' THEN 2
+                WHEN 'BINNEN 60 DAGEN' THEN 3
+                ELSE 4
+            END,
+            geschatte_vervangdatum_bij_3mm ASC NULLS LAST
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    rows = dedupe_lifecycle_rows(
+        rows,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "cycle_start",
+            "cycle_end",
+        ],
+    )
+
+    rows = [enrich_performance_6mm(row) for row in rows]
+
+    urgent_3mm = [
+        r for r in rows
+        if r.get("status_3mm") in ("NU VERVANGEN", "BINNEN 30 DAGEN")
+    ]
+
+    risk_6mm = [
+        r for r in rows
+        if r.get("vervuilingsrisico")
+    ]
+
+    action = []
+
+    if urgent_3mm:
+        action.append(f"{len(urgent_3mm)} posities hebben urgente 3 mm-vervangstatus.")
+    else:
+        action.append("Geen directe urgente 3 mm-posities in selectie.")
+
+    if risk_6mm:
+        action.append(f"{len(risk_6mm)} posities zitten op of nabij de 6 mm-prestatiegrens.")
+    else:
+        action.append("Geen directe 6 mm-prestatiegrens signalen in selectie.")
+
+    return {
+        "intent": "forecast",
+        "kort_resultaat": f"{len(rows)} forecast-regels gevonden.",
+        "trend_patronen": action,
+        "resultaat": rows,
+    }
+
+def days_from_today(value: Any) -> int | None:
+    if not value:
+        return None
+
+    if isinstance(value, date):
+        target_date = value
+    elif isinstance(value, str):
+        try:
+            target_date = date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    else:
+        return None
+
+    return (target_date - date.today()).days
+
+def maintenance_positions_historical(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    where_sql = " AND ".join(conditions)
+
+    rows = fetch_all(f"""
+        SELECT
+            planning_prioriteit_historisch,
+            onderhoudsadvies,
+            inspectie_actualiteit,
+            data_quality_flag,
+
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            scraper_role,
+            physical_position_label_final,
+            position_display,
+
+            laatste_meting_datum,
+            actuele_meshoogte_mm,
+
+            analyse_start_datum,
+            analyse_dagen,
+            analyse_meetpunten,
+            bruikbare_intervallen,
+            gewogen_slijtage_mm_per_dag,
+
+            forecast_status,
+
+            planning_status_6mm_historisch,
+            dagen_tot_6mm_historisch,
+            geschatte_vervangdatum_bij_6mm_historisch,
+
+            planning_status_3mm_historisch,
+            dagen_tot_3mm_historisch,
+            geschatte_vervangdatum_bij_3mm_historisch,
+
+            source_file,
+            sheet_raw,
+            sheet_analysis_key,
+            canonical_inspection_key
+        FROM public.vw_mes_maintenance_toplist_historical
+        WHERE {where_sql}
+        ORDER BY
+            planning_prioriteit_historisch,
+            CASE inspectie_actualiteit
+                WHEN 'LAATSTE_METING_RECENT' THEN 1
+                WHEN 'LAATSTE_METING_OUDER_DAN_1_JAAR' THEN 2
+                WHEN 'LAATSTE_METING_OUDER_DAN_2_JAAR' THEN 3
+                ELSE 4
+            END,
+            geschatte_vervangdatum_bij_3mm_historisch NULLS LAST,
+            geschatte_vervangdatum_bij_6mm_historisch NULLS LAST,
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm
+        LIMIT :limit
+    """, params)
+
+    p_counts: dict[str, int] = {}
+    actualiteit_counts: dict[str, int] = {}
+    quality_counts: dict[str, int] = {}
+
+    for r in rows:
+        p = str(r.get("planning_prioriteit_historisch") or "ONBEKEND")
+        p_counts[p] = p_counts.get(p, 0) + 1
+
+        actualiteit = r.get("inspectie_actualiteit") or "ONBEKEND"
+        actualiteit_counts[actualiteit] = actualiteit_counts.get(actualiteit, 0) + 1
+
+        dq = r.get("data_quality_flag") or "ONBEKEND"
+        quality_counts[dq] = quality_counts.get(dq, 0) + 1
+
+    urgent = [
+        r for r in rows
+        if r.get("planning_prioriteit_historisch") in (1, 2, 3, 4)
+    ]
+
+    return {
+        "intent": "maintenance_positions_historical",
+        "entities": {
+            "lijn_code": lijn_code,
+            "band_code": band_code,
+        },
+        "kort_resultaat": (
+            f"{len(rows)} historische onderhoudsposities gevonden, "
+            f"waarvan {len(urgent)} prioriteit 1 t/m 4."
+            if rows
+            else "Geen historische onderhoudsposities gevonden."
+        ),
+        "samenvatting": {
+            "n_posities": len(rows),
+            "n_prioriteit_1_tm_4": len(urgent),
+            "prioriteiten": p_counts,
+            "inspectie_actualiteit": actualiteit_counts,
+            "data_quality": quality_counts,
+        },
+        "resultaat": rows,
+    }
+
+def maintenance_positions(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = [
+        "cycle_end >= CURRENT_DATE - INTERVAL '2 years'"
+    ]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if band_code:
+        conditions.append("band_norm = :band_code")
+        params["band_code"] = band_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            position_hint,
+            scraper_types,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            avg_meshoogte_mm,
+            start_meshoogte_mm,
+            eind_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm,
+            prioriteit,
+            first_sheet_analysis_key,
+            last_sheet_analysis_key,
+            first_sheet_instance_key,
+            last_sheet_instance_key,
+            first_canonical_inspection_key,
+            last_canonical_inspection_key,
+            source_file,
+            sheet_raw
+        FROM vw_mes_maintenance_positions_latest
+        WHERE {where_sql}
+        ORDER BY prioriteit, geschatte_vervangdatum_bij_3mm NULLS LAST, lijn_code, band_norm
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    clean_rows: list[dict[str, Any]] = []
+    for row in rows:
+        clean = dict(row)
+
+        cycle_end = clean.get("cycle_end")
+
+        cycle_end_date = None
+
+        if isinstance(cycle_end, date):
+            cycle_end_date = cycle_end
+        elif isinstance(cycle_end, str):
+            try:
+                cycle_end_date = date.fromisoformat(cycle_end[:10])
+            except ValueError:
+                cycle_end_date = None
+
+        if cycle_end_date:
+            clean["dagen_sinds_laatste_meting"] = (
+                date.today() - cycle_end_date
+            ).days
+        else:
+            clean["dagen_sinds_laatste_meting"] = None
+
+        raw_scraper_types = clean.get("scraper_types")
+        scrapers, accessories = split_lifecycle_scrapers_and_accessories(raw_scraper_types)
+
+        clean_scrapers = sorted({
+            normalize_scraper_type_canonical(s) or s
+            for s in scrapers
+            if s
+        })
+
+        clean_accessories = sorted({
+            normalize_accessory_name(a) or a
+            for a in accessories
+            if a
+        })
+
+        clean["scraper_types_raw"] = raw_scraper_types
+        clean["scraper_types_clean"] = " | ".join(clean_scrapers)
+        clean["position_accessories"] = clean_accessories
+        clean["scraper_types"] = clean["scraper_types_clean"]
+
+        clean = enrich_performance_6mm(clean)
+        clean_rows.append(clean)
+
+    seen: set[tuple[Any, ...]] = set()
+    deduped_rows: list[dict[str, Any]] = []
+
+    for row in clean_rows:
+        key = (
+            row.get("lijn_code"),
+            row.get("band_norm"),
+            row.get("position_hint"),
+            row.get("scraper_types_clean"),
+            row.get("cycle_start"),
+            row.get("cycle_end"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_rows.append(row)
+
+    p1 = sum(1 for r in deduped_rows if r.get("prioriteit") == 1)
+    p2 = sum(1 for r in deduped_rows if r.get("prioriteit") == 2)
+    p6 = sum(1 for r in deduped_rows if r.get("vervuilingsrisico"))
+    p6_onder = sum(1 for r in deduped_rows if r.get("status_6mm") == "OP_OF_ONDER_6MM")
+
+    return {
+        "intent": "maintenance_positions",
+        "kort_resultaat": f"{len(deduped_rows)} onderhoudsposities gevonden.",
+        "trend_patronen": [
+            f"Prioriteit 1: {p1}",
+            f"Prioriteit 2: {p2}",
+            f"Prestatiegrens 6 mm geraakt/nabij: {p6}",
+            f"Op of onder 6 mm: {p6_onder}",
+        ],
+        "resultaat": deduped_rows,
+    }
+
+def maintenance_planning(limit: int) -> dict:
+    sql = """
+        SELECT
+            lijn_code,
+            band_norm,
+            position_hint,
+            scraper_types,
+            cycle_start,
+            cycle_end,
+            prioriteit,
+            status_3mm
+        FROM vw_mes_maintenance_positions_latest
+        WHERE cycle_end >= CURRENT_DATE - INTERVAL '2 years'
+        ORDER BY prioriteit, geschatte_vervangdatum_bij_3mm NULLS LAST, lijn_code, band_norm
+        LIMIT 5000
+    """
+    rows = fetch_all(sql, {})
+
+    clean_rows: list[dict[str, Any]] = []
+    for row in rows:
+        clean = dict(row)
+
+        raw_scraper_types = clean.get("scraper_types")
+        scrapers, accessories = split_lifecycle_scrapers_and_accessories(raw_scraper_types)
+
+        clean_scrapers = sorted({
+            normalize_scraper_type_canonical(s) or s
+            for s in scrapers
+            if s
+        })
+
+        clean["scraper_types_raw"] = raw_scraper_types
+        clean["scraper_types_clean"] = " | ".join(clean_scrapers)
+        clean["scraper_types"] = clean["scraper_types_clean"]
+        clean["position_accessories"] = sorted({
+            normalize_accessory_name(a) or a
+            for a in accessories
+            if a
+        })
+
+        clean = enrich_performance_6mm(clean)
+
+        clean_rows.append(clean)
+
+    seen: set[tuple[Any, ...]] = set()
+    deduped_rows: list[dict[str, Any]] = []
+
+    for row in clean_rows:
+        key = (
+            row.get("lijn_code"),
+            row.get("band_norm"),
+            row.get("position_hint"),
+            row.get("scraper_types_clean"),
+            row.get("cycle_start"),
+            row.get("cycle_end"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_rows.append(row)
+
+    grouped: dict[str, dict[str, Any]] = {}
+
+    for row in deduped_rows:
+        lijn = row.get("lijn_code") or "ONBEKEND"
+        if lijn not in grouped:
+            grouped[lijn] = {
+                "lijn_code": lijn,
+                "n_posities": 0,
+                "nu_vervangen": 0,
+                "binnen_30_dagen": 0,
+                "binnen_60_dagen": 0,
+                "prestatiegrens_6mm": 0,
+                "op_of_onder_6mm": 0,
+                "ok": 0,
+            }
+
+        grouped[lijn]["n_posities"] += 1
+
+        prioriteit = row.get("prioriteit")
+        status = row.get("status_3mm")
+
+        if row.get("vervuilingsrisico"):
+            grouped[lijn]["prestatiegrens_6mm"] += 1
+
+        if row.get("status_6mm") == "OP_OF_ONDER_6MM":
+            grouped[lijn]["op_of_onder_6mm"] += 1
+
+        if prioriteit == 1 or status == "NU VERVANGEN":
+            grouped[lijn]["nu_vervangen"] += 1
+        elif prioriteit == 2 or status == "BINNEN 30 DAGEN":
+            grouped[lijn]["binnen_30_dagen"] += 1
+        elif prioriteit == 3 or status == "BINNEN 60 DAGEN":
+            grouped[lijn]["binnen_60_dagen"] += 1
+        else:
+            grouped[lijn]["ok"] += 1
+
+    result = sorted(
+        grouped.values(),
+        key=lambda r: (
+            -r["nu_vervangen"],
+            -r["binnen_30_dagen"],
+            -r["binnen_60_dagen"],
+            r["lijn_code"],
+        ),
+    )[:limit]
+
+    return {
+        "intent": "maintenance_planning",
+        "kort_resultaat": f"{len(result)} lijnen in onderhoudsplanning.",
+        "resultaat": result,
+    }
+
+def maintenance_blade_summary(
+    lijn_code: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = [
+        "cycle_end >= CURRENT_DATE - INTERVAL '2 years'"
+    ]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    rows = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            position_hint,
+            scraper_types,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            avg_meshoogte_mm,
+            start_meshoogte_mm,
+            eind_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm,
+            prioriteit
+        FROM vw_mes_maintenance_positions_latest
+        WHERE {where_sql}
+        ORDER BY lijn_code, band_norm
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    clean_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        clean = dict(row)
+
+        raw_scraper_types = clean.get("scraper_types")
+        scrapers, accessories = split_lifecycle_scrapers_and_accessories(raw_scraper_types)
+
+        clean_scrapers = sorted({
+            normalize_scraper_type_canonical(s) or s
+            for s in scrapers
+            if s
+        })
+
+        clean["scraper_types_raw"] = raw_scraper_types
+        clean["scraper_types_clean"] = " | ".join(clean_scrapers)
+        clean["scraper_types"] = clean["scraper_types_clean"]
+        clean["position_accessories"] = sorted({
+            normalize_accessory_name(a) or a
+            for a in accessories
+            if a
+        })
+
+        clean = enrich_performance_6mm(clean)
+
+        clean["dagen_tot_3mm_vanaf_vandaag"] = days_from_today(
+            clean.get("geschatte_vervangdatum_bij_3mm")
+        )
+
+        clean["bucket_6mm"] = termijn_bucket(
+            clean.get("dagen_tot_6mm_vanaf_vandaag")
+        )
+        clean["bucket_3mm"] = termijn_bucket(
+            clean.get("dagen_tot_3mm_vanaf_vandaag")
+        )
+
+        clean_rows.append(clean)
+
+    # Dedup gelijk aan maintenance_positions
+    seen: set[tuple[Any, ...]] = set()
+    deduped_rows: list[dict[str, Any]] = []
+
+    for row in clean_rows:
+        key = (
+            row.get("lijn_code"),
+            row.get("band_norm"),
+            row.get("position_hint"),
+            row.get("scraper_types_clean"),
+            row.get("cycle_start"),
+            row.get("cycle_end"),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        deduped_rows.append(row)
+
+    grouped: dict[str, dict[str, Any]] = {}
+
+    for row in deduped_rows:
+        scraper_type = row.get("scraper_types_clean") or row.get("scraper_types") or "ONBEKEND"
+
+        if scraper_type not in grouped:
+            grouped[scraper_type] = {
+                "scraper_type": scraper_type,
+                "n_posities": 0,
+
+                "prestatie_6mm_nu_of_overdue": 0,
+                "prestatie_6mm_binnen_30_dagen": 0,
+                "prestatie_6mm_binnen_60_dagen": 0,
+                "prestatie_6mm_binnen_90_dagen": 0,
+                "prestatie_6mm_later": 0,
+                "prestatie_6mm_onbekend": 0,
+
+                "vervang_3mm_nu_of_overdue": 0,
+                "vervang_3mm_binnen_30_dagen": 0,
+                "vervang_3mm_binnen_60_dagen": 0,
+                "vervang_3mm_binnen_90_dagen": 0,
+                "vervang_3mm_later": 0,
+                "vervang_3mm_onbekend": 0,
+
+                "min_eind_meshoogte_mm": None,
+                "eerstvolgende_6mm_datum": None,
+                "eerstvolgende_3mm_datum": None,
+                "voorbeeld_posities": [],
+            }
+
+        g = grouped[scraper_type]
+        g["n_posities"] += 1
+
+        bucket_6 = row.get("bucket_6mm")
+        bucket_3 = row.get("bucket_3mm")
+
+        if bucket_6 == "nu_of_overdue":
+            g["prestatie_6mm_nu_of_overdue"] += 1
+        elif bucket_6 == "binnen_30_dagen":
+            g["prestatie_6mm_binnen_30_dagen"] += 1
+        elif bucket_6 == "binnen_60_dagen":
+            g["prestatie_6mm_binnen_60_dagen"] += 1
+        elif bucket_6 == "binnen_90_dagen":
+            g["prestatie_6mm_binnen_90_dagen"] += 1
+        elif bucket_6 == "later":
+            g["prestatie_6mm_later"] += 1
+        else:
+            g["prestatie_6mm_onbekend"] += 1
+
+        if bucket_3 == "nu_of_overdue":
+            g["vervang_3mm_nu_of_overdue"] += 1
+        elif bucket_3 == "binnen_30_dagen":
+            g["vervang_3mm_binnen_30_dagen"] += 1
+        elif bucket_3 == "binnen_60_dagen":
+            g["vervang_3mm_binnen_60_dagen"] += 1
+        elif bucket_3 == "binnen_90_dagen":
+            g["vervang_3mm_binnen_90_dagen"] += 1
+        elif bucket_3 == "later":
+            g["vervang_3mm_later"] += 1
+        else:
+            g["vervang_3mm_onbekend"] += 1
+
+        eind = row.get("eind_meshoogte_mm")
+        if eind is not None:
+            try:
+                eind_float = float(eind)
+                if g["min_eind_meshoogte_mm"] is None or eind_float < g["min_eind_meshoogte_mm"]:
+                    g["min_eind_meshoogte_mm"] = eind_float
+            except (TypeError, ValueError):
+                pass
+
+        datum_6 = row.get("geschatte_datum_bij_6mm")
+        if datum_6 and (
+            g["eerstvolgende_6mm_datum"] is None
+            or str(datum_6) < str(g["eerstvolgende_6mm_datum"])
+        ):
+            g["eerstvolgende_6mm_datum"] = datum_6
+
+        datum_3 = row.get("geschatte_vervangdatum_bij_3mm")
+        if datum_3 and (
+            g["eerstvolgende_3mm_datum"] is None
+            or str(datum_3) < str(g["eerstvolgende_3mm_datum"])
+        ):
+            g["eerstvolgende_3mm_datum"] = datum_3
+
+        if len(g["voorbeeld_posities"]) < 8:
+            g["voorbeeld_posities"].append({
+                "lijn_code": row.get("lijn_code"),
+                "band_norm": row.get("band_norm"),
+                "position_hint": row.get("position_hint"),
+                "eind_meshoogte_mm": row.get("eind_meshoogte_mm"),
+                "status_6mm": row.get("status_6mm"),
+                "geschatte_datum_bij_6mm": row.get("geschatte_datum_bij_6mm"),
+                "status_3mm": row.get("status_3mm"),
+                "geschatte_vervangdatum_bij_3mm": row.get("geschatte_vervangdatum_bij_3mm"),
+            })
+
+    result = sorted(
+        grouped.values(),
+        key=lambda r: (
+            -r["vervang_3mm_nu_of_overdue"],
+            -r["vervang_3mm_binnen_30_dagen"],
+            -r["vervang_3mm_binnen_60_dagen"],
+            -r["prestatie_6mm_nu_of_overdue"],
+            -r["prestatie_6mm_binnen_30_dagen"],
+            r["scraper_type"],
+        ),
+    )
+
+    totaal = {
+        "n_types": len(result),
+        "n_posities": len(deduped_rows),
+        "prestatie_6mm_nu_of_overdue": sum(r["prestatie_6mm_nu_of_overdue"] for r in result),
+        "prestatie_6mm_binnen_30_dagen": sum(r["prestatie_6mm_binnen_30_dagen"] for r in result),
+        "prestatie_6mm_binnen_60_dagen": sum(r["prestatie_6mm_binnen_60_dagen"] for r in result),
+        "prestatie_6mm_binnen_90_dagen": sum(r["prestatie_6mm_binnen_90_dagen"] for r in result),
+        "vervang_3mm_nu_of_overdue": sum(r["vervang_3mm_nu_of_overdue"] for r in result),
+        "vervang_3mm_binnen_30_dagen": sum(r["vervang_3mm_binnen_30_dagen"] for r in result),
+        "vervang_3mm_binnen_60_dagen": sum(r["vervang_3mm_binnen_60_dagen"] for r in result),
+        "vervang_3mm_binnen_90_dagen": sum(r["vervang_3mm_binnen_90_dagen"] for r in result),
+    }
+
+    return {
+        "intent": "maintenance_blade_summary",
+        "kort_resultaat": (
+            f"{totaal['n_types']} schrapertypes gebundeld over "
+            f"{totaal['n_posities']} onderhoudsposities."
+        ),
+        "lijn_code": lijn_code,
+        "grenzen": {
+            "prestatiegrens_mm": 6,
+            "vervanggrens_mm": 3,
+        },
+        "totaal": totaal,
+        "resultaat": result,
+    }
+
+def replacement_advice(
+    lijn_code: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["status IN ('OVERDUE','BINNEN_2_WEKEN','BINNEN_1_MAAND')"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            next_due_date,
+            days_to_due,
+            typical_mes_qty,
+            status
+        FROM vw_all_replacement_advice
+        WHERE {where_sql}
+        ORDER BY
+            CASE status
+                WHEN 'OVERDUE' THEN 1
+                WHEN 'BINNEN_2_WEKEN' THEN 2
+                WHEN 'BINNEN_1_MAAND' THEN 3
+                ELSE 4
+            END,
+            next_due_date ASC NULLS LAST
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    return {
+        "intent": "replacement",
+        "kort_resultaat": f"{len(rows)} vervangadviezen gevonden.",
+        "resultaat": rows,
+    }
+
+def normalize_scraper_type_canonical(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+
+    s = normalize_scraper_type(value)
+    s_compact = re.sub(r"[^A-Z0-9]", "", s)
+
+    # U-schrapers
+    if s_compact in {"U140", "U1400", "U140INOX", "U1400INOX"}:
+        return "U 1400 INOX" if "INOX" in s_compact or s_compact in {"U140", "U1400"} else "U 1400"
+
+    # TPH 1400 varianten
+    if s_compact.startswith("TPH1400"):
+        if "HDI" in s_compact:
+            return "TPH 1400 HDI"
+        if "HD" in s_compact:
+            return "TPH 1400 HD"
+        return "TPH 1400"
+
+    return s
+
+def infer_position_hint(
+    raw_position: Optional[str],
+    scraper_type: Optional[str],
+    commentaar: Optional[str],
+    check_code: Optional[str] = None,
+) -> str:
+    text = " ".join([
+        raw_position or "",
+        scraper_type or "",
+        commentaar or "",
+        check_code or "",
+    ]).lower()
+
+    if any(w in text for w in ["kop", "head", "trommel"]):
+        return "kop"
+    if any(w in text for w in ["retour", "return"]):
+        return "retour"
+    if any(w in text for w in ["primair", "primary"]):
+        return "primair"
+    if any(w in text for w in ["secundair", "secondary"]):
+        return "secundair"
+    if any(w in text for w in ["tertiair", "tertiary"]):
+        return "tertiair"
+    if "oost" in text:
+        return "oost"
+    if "west" in text:
+        return "west"
+    if "noord" in text:
+        return "noord"
+    if "zuid" in text:
+        return "zuid"
+
+    return ""
+
+ACCESSORY_TYPES = {
+    "DUO-SEAL",
+    "DUO SEAL",
+    "DUO-SEALING",
+    "DUOSEAL",
+}
+
+
+def normalize_accessory_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+
+    compact = re.sub(r"[^A-Z0-9]", "", value.upper())
+
+    if compact in {"DUOSEAL"}:
+        return "DUO-SEAL"
+
+    return None
+
+
+def split_lifecycle_scrapers_and_accessories(scraper_types_raw: Optional[str]) -> tuple[list[str], list[str]]:
+    scrapers: list[str] = []
+    accessories: list[str] = []
+
+    for part in (scraper_types_raw or "").split("|"):
+        item = part.strip()
+        if not item:
+            continue
+
+        accessory = normalize_accessory_name(item)
+        if accessory:
+            accessories.append(accessory)
+        else:
+            scrapers.append(item)
+
+    return scrapers, accessories
+
+
+def canonicalize_lifecycle_row(row: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normaliseert lifecycle rows op API-outputniveau.
+    Hiermee blijven oude DB-views werken, maar toont de API schone namen.
+    """
+    clean = dict(row)
+
+    raw_type = clean.get("scraper_type_norm")
+    clean_type = normalize_scraper_type_canonical(raw_type)
+
+    if clean_type:
+        clean["scraper_type_norm_raw"] = raw_type
+        clean["scraper_type_norm"] = clean_type
+
+    return clean
+
+
+def dedupe_lifecycle_rows(
+    rows: list[dict[str, Any]],
+    key_fields: list[str],
+) -> list[dict[str, Any]]:
+    """
+    Verwijdert dubbele lifecycle/forecast/point rows na canonicalisatie.
+    Voorbeeld: U 140 INOX en U 1400 INOX worden allebei U 1400 INOX,
+    dus dezelfde cyclus/meetpunt hoeft maar één keer terug te komen.
+    """
+    seen: set[tuple[Any, ...]] = set()
+    result: list[dict[str, Any]] = []
+
+    for row in rows:
+        clean = canonicalize_lifecycle_row(row)
+        key = tuple(clean.get(field) for field in key_fields)
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        result.append(clean)
+
+    return result
+
+def clean_word_config_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Canonicaliseert word_config rows op API-outputniveau.
+    Houdt raw scraper_type_norm zichtbaar, maar toont scraper_type_norm schoon.
+    Dedupliceert dubbele regels zoals U 140 INOX / U 1400 INOX.
+    """
+    clean_rows: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+
+    for row in rows:
+        clean = dict(row)
+
+        raw_type = clean.get("scraper_type_norm")
+        clean_type = normalize_scraper_type_canonical(raw_type)
+
+        if clean_type:
+            clean["scraper_type_norm_raw"] = raw_type
+            clean["scraper_type_norm"] = clean_type
+
+        # scraper_raw_list ook netjes splitsen, zonder DUO-SEAL als schraper
+        raw_list = clean.get("scraper_raw_list")
+        scrapers_raw, accessories_raw = split_lifecycle_scrapers_and_accessories(raw_list)
+
+        clean_scrapers = sorted({
+            normalize_scraper_type_canonical(s) or s
+            for s in scrapers_raw
+            if s and normalize_accessory_name(s) is None
+        })
+
+        clean_accessories = sorted({
+            normalize_accessory_name(a) or a
+            for a in accessories_raw
+            if a
+        })
+
+        clean["scraper_raw_list_raw"] = raw_list
+        clean["scraper_raw_list_clean"] = " | ".join(clean_scrapers)
+        clean["position_accessories"] = clean_accessories
+
+        key = (
+            clean.get("band_code"),
+            clean.get("lijn_code"),
+            clean.get("last_doc_date"),
+            clean.get("scraper_raw_list_clean"),
+            clean.get("scraper_type_norm"),
+            clean.get("position_hint"),
+            clean.get("laatste_meting_datum"),
+            clean.get("meshoogte_mm"),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        clean_rows.append(clean)
+
+    return clean_rows
+
+def filter_recent_scraper_status_rows(
+    rows: list[dict[str, Any]],
+    max_rows: int = 5,
+) -> list[dict[str, Any]]:
+    """
+    Houdt scraper_status beperkt, zodat oude historische BAND_ZONDER_SCHRAPERS
+    regels niet meer dominant in performance-v1 terugkomen.
+    """
+    if not rows:
+        return []
+
+    # De inspection_key bevat vaak datumachtige info, maar we sorteren defensief op key.
+    # Belangrijkste doel: maximeren en oude bulk beperken.
+    return rows[:max_rows]
+
+def get_excel_clean_scraper_context(
+    lijn_code: Optional[str],
+    band_code: Optional[str],
+    scraper_type: Optional[str] = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """
+    Schone Excel/lifecycle-context op basis van public.vw_excel_positions_clean_v1.
+
+    Doel:
+    - echte schrapers apart tonen
+    - accessories zoals DUO-SEAL apart tonen
+    - false positives / datumrommel / persoonsnamen uitsluiten
+    - clean scraper_type_norm gebruiken
+    """
+
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = normalize_code(lijn_code)
+
+    if band_code:
+        conditions.append("""
+            REPLACE(
+                UPPER(COALESCE(band_locatie_norm, locatie_raw, '')),
+                ' ',
+                ''
+            ) = :band_code
+        """)
+        params["band_code"] = normalize_code(band_code)
+
+    if scraper_type:
+        clean_scraper_type = normalize_scraper_type_canonical(scraper_type)
+        conditions.append("""
+            (
+                scraper_type_norm_clean = :scraper_type
+                OR scraper_type_norm_clean ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm_clean, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = clean_scraper_type
+        params["scraper_type_like"] = f"%{clean_scraper_type}%"
+
+    where_sql = " AND ".join(conditions)
+
+    scrapers = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            COALESCE(band_locatie_norm, locatie_raw) AS band_code,
+            scraper_type_norm_clean,
+            scraper_family_clean,
+            scraper_mount_status_clean,
+            COUNT(*) AS n,
+            COUNT(*) FILTER (WHERE scraper_mount_status_clean = 'GEDEMONTEERD') AS n_gemonteerd_weg,
+            COUNT(*) FILTER (WHERE scraper_mount_status_clean = 'OK') AS n_ok
+        FROM public.vw_excel_positions_clean_v1
+        WHERE {where_sql}
+          AND is_false_positive = false
+          AND is_position_accessory = false
+          AND scraper_mount_status_clean NOT IN ('GEEN_SCHRAPER', 'POSITION_ACCESSORY')
+          AND scraper_type_norm_clean IS NOT NULL
+          AND TRIM(scraper_type_norm_clean) <> ''
+        GROUP BY
+            lijn_code,
+            COALESCE(band_locatie_norm, locatie_raw),
+            scraper_type_norm_clean,
+            scraper_family_clean,
+            scraper_mount_status_clean
+        ORDER BY n DESC, scraper_type_norm_clean
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    accessories = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            COALESCE(band_locatie_norm, locatie_raw) AS band_code,
+            scraper_type_norm_clean AS accessory_name,
+            accessory_type,
+            scraper_mount_status_clean,
+            COUNT(*) AS n
+        FROM public.vw_excel_positions_clean_v1
+        WHERE {where_sql}
+          AND is_position_accessory = true
+        GROUP BY
+            lijn_code,
+            COALESCE(band_locatie_norm, locatie_raw),
+            scraper_type_norm_clean,
+            accessory_type,
+            scraper_mount_status_clean
+        ORDER BY n DESC, accessory_name
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    false_positives = fetch_all(
+        f"""
+        SELECT
+            scraper_type_norm,
+            scraper_type_norm_clean,
+            scraper_mount_status_clean,
+            COUNT(*) AS n
+        FROM public.vw_excel_positions_clean_v1
+        WHERE {where_sql}
+          AND is_false_positive = true
+        GROUP BY
+            scraper_type_norm,
+            scraper_type_norm_clean,
+            scraper_mount_status_clean
+        ORDER BY n DESC
+        LIMIT 20
+        """,
+        params,
+    )
+
+    scraper_names = sorted({
+        row.get("scraper_type_norm_clean")
+        for row in scrapers
+        if row.get("scraper_type_norm_clean")
+    })
+
+    accessory_names = sorted({
+        row.get("accessory_name")
+        for row in accessories
+        if row.get("accessory_name")
+    })
+
+    return {
+        "scrapers_excel_clean": scrapers,
+        "scraper_names_excel_clean": scraper_names,
+        "position_accessories_excel_clean": accessories,
+        "position_accessory_names_excel_clean": accessory_names,
+        "false_positives_excel_clean": false_positives,
+        "data_quality": {
+            "has_excel_clean_context": bool(scrapers or accessories),
+            "n_clean_scraper_types": len(scraper_names),
+            "n_position_accessory_types": len(accessory_names),
+            "n_false_positive_groups": len(false_positives),
+        },
+    }
+
+def scraper_graph_points_unified(
+    lijn_code: Optional[str],
+    band_code: str,
+    scraper_type: Optional[str],
+    position_hint: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    norm_band_code = normalize_code(band_code)
+    norm_lijn_code = normalize_code(lijn_code)
+    norm_scraper_type = normalize_scraper_type_canonical(scraper_type)
+
+    band_codes = expand_band_codes_for_analysis(norm_band_code)
+
+    conditions = ["band_norm = ANY(:band_codes)"]
+    params: dict[str, Any] = {
+        "band_codes": band_codes,
+        "limit": limit,
+    }
+
+    if norm_lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = norm_lijn_code
+
+    if norm_scraper_type:
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = norm_scraper_type
+        params["scraper_type_like"] = f"%{norm_scraper_type}%"
+
+    if position_hint:
+        conditions.append("LOWER(COALESCE(position_hint, '')) = LOWER(:position_hint)")
+        params["position_hint"] = position_hint.strip()
+
+    if date_from:
+        conditions.append("datum >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        conditions.append("datum <= :date_to")
+        params["date_to"] = date_to
+
+    where_sql = " AND ".join(conditions)
+
+    return fetch_all(
+        f"""
+        select
+            datum,
+            lijn_code,
+            band_norm,
+            position_hint,
+            scraper_type_norm,
+            cycle_id,
+            grafieklijn,
+            grafiek_type,
+            grafiekwaarde_0_10,
+            meshoogte_mm,
+            slijtage_actie_pct,
+            tph_rest_pct,
+            vervangmoment,
+            marker_label,
+            commentaar
+        from public.vw_scraper_graph_points_unified_v1
+        where {where_sql}
+        order by
+            datum,
+            band_norm,
+            position_hint,
+            scraper_type_norm,
+            grafieklijn,
+            grafiek_type
+        limit :limit
+        """,
+        params,
+    )
+
+def scraper_position_analysis(
+    band_code: str,
+    lijn_code: Optional[str],
+    scraper_type: Optional[str],
+    position_hint: Optional[str],
+    include_points: bool,
+    include_inspecties: bool,
+    limit: int,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> dict:
+    norm_band_code = normalize_code(band_code)
+    norm_lijn_code = normalize_code(lijn_code)
+    norm_scraper_type = normalize_scraper_type_canonical(scraper_type)
+
+    band_codes = expand_band_codes_for_analysis(norm_band_code)
+
+    conditions = ["band_norm = ANY(:band_codes)"]
+    params: dict[str, Any] = {
+        "band_codes": band_codes,
+        "limit": limit,
+    }
+
+    if norm_lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = norm_lijn_code
+
+    if norm_scraper_type:
+        conditions.append("""
+            (
+                scraper_type_norm = :scraper_type
+                OR scraper_type_norm ILIKE :scraper_type_like
+                OR REPLACE(scraper_type_norm, ' ', '') ILIKE REPLACE(:scraper_type_like, ' ', '')
+            )
+        """)
+        params["scraper_type"] = norm_scraper_type
+        params["scraper_type_like"] = f"%{norm_scraper_type}%"
+
+    if position_hint:
+        conditions.append("LOWER(COALESCE(position_hint, '')) = LOWER(:position_hint)")
+        params["position_hint"] = position_hint.strip()
+
+    where_sql = " AND ".join(conditions)
+
+    cycles = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            position_hint,
+            cycle_id,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            min_meshoogte_mm,
+            max_meshoogte_mm,
+            avg_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm,
+            n_check_rows,
+            n_inspectiedagen,
+            n_dagen_met_opmerkingen,
+            n_dagen_met_nok,
+            n_dagen_met_vervanging,
+            n_vervuiling_signal,
+            n_scheefloop_signal,
+            n_bandloop_signal,
+            n_toegankelijkheid_signal,
+            has_replace_event,
+            laatste_lifecycle_commentaar
+        FROM vw_mes_cycle_context_v1
+        WHERE {where_sql}
+        ORDER BY cycle_end DESC NULLS LAST
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    cycles = dedupe_lifecycle_rows(
+        cycles,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "cycle_id",
+            "cycle_start",
+            "cycle_end",
+        ],
+    )
+
+    latest = fetch_all(
+        f"""
+        SELECT
+            laatste_meting_datum,
+            lijn_code,
+            band_norm,
+            scraper_family,
+            scraper_type_norm,
+            position_hint,
+            meshoogte_mm,
+            commentaar
+        FROM vw_meshoogte_latest_per_scraper_clean
+        WHERE {where_sql}
+        ORDER BY laatste_meting_datum DESC NULLS LAST
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    latest = dedupe_lifecycle_rows(
+        latest,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "laatste_meting_datum",
+            "meshoogte_mm",
+        ],
+    )
+
+    forecast = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            position_hint,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            start_meshoogte_mm,
+            eind_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm
+        FROM vw_mes_cycle_analysis_clean
+        WHERE {where_sql}
+          AND meetpunten >= 3
+        ORDER BY
+            cycle_end DESC NULLS LAST,
+            cycle_start DESC NULLS LAST
+        LIMIT :limit
+        """,
+        params,
+    )
+
+    forecast = dedupe_lifecycle_rows(
+        forecast,
+        key_fields=[
+            "lijn_code",
+            "band_norm",
+            "scraper_type_norm",
+            "position_hint",
+            "cycle_start",
+            "cycle_end",
+        ],
+    )
+
+    points: list[dict[str, Any]] = []
+    graph_points_unified: list[dict[str, Any]] = []
+
+    if include_points:
+        points = fetch_all(
+            f"""
+            SELECT
+                lijn_code,
+                band_norm,
+                scraper_type_norm,
+                position_hint,
+                cycle_id,
+                inspected_on,
+                meshoogte_mm,
+                replace_event,
+                commentaar
+            FROM vw_mes_cycle_points_v1
+            WHERE {where_sql}
+            ORDER BY inspected_on DESC NULLS LAST
+            LIMIT :limit
+            """,
+            params,
+        )
+
+        points = dedupe_lifecycle_rows(
+            points,
+            key_fields=[
+                "lijn_code",
+                "band_norm",
+                "scraper_type_norm",
+                "position_hint",
+                "cycle_id",
+                "inspected_on",
+                "meshoogte_mm",
+                "replace_event",
+            ],
+        )
+
+        graph_points_unified = scraper_graph_points_unified(
+            lijn_code=norm_lijn_code,
+            band_code=norm_band_code,
+            scraper_type=norm_scraper_type,
+            position_hint=position_hint,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+    else:
+        graph_points_unified = []
+
+    inspecties: list[dict[str, Any]] = []
+    if include_inspecties:
+        inspection_conditions = [
+            """
+            REPLACE(
+                UPPER(COALESCE(band_code, locatie_raw, '')),
+                ' ',
+                ''
+            ) = ANY(:band_codes)
+            """
+        ]
+
+        inspection_params: dict[str, Any] = {
+            "band_codes": band_codes,
+            "limit": limit,
+        }
+
+        if norm_lijn_code:
+            inspection_conditions.append("line_hint = :lijn_code")
+            inspection_params["lijn_code"] = norm_lijn_code
+
+        if norm_scraper_type:
+            inspection_conditions.append("""
+                (
+                    scraper_type_raw ILIKE :scraper_like
+                    OR REPLACE(UPPER(scraper_type_raw), ' ', '') ILIKE REPLACE(UPPER(:scraper_like), ' ', '')
+                )
+            """)
+            inspection_params["scraper_like"] = f"%{norm_scraper_type}%"
+
+        inspection_where = " AND ".join(inspection_conditions)
+
+        inspecties = fetch_all(
+            f"""
+            SELECT
+                inspection_key,
+                document_date,
+                line_hint,
+                band_code,
+                locatie_raw,
+                scraper_type_raw,
+                meshoogte_mm,
+                mes_vervangen,
+                commentaar,
+                check_code,
+                status,
+                source_file,
+                source_system
+            FROM vw_fact_inspection_combined_v2
+            WHERE {inspection_where}
+            ORDER BY document_date DESC NULLS LAST
+            LIMIT :limit
+            """,
+            inspection_params,
+        )
+
+    doc_scrapers: list[dict[str, Any]] = []
+    doc_position_accessories: list[dict[str, Any]] = []
+    lifecycle_band_accessories: list[str] = []
+
+    excel_clean_context = get_excel_clean_scraper_context(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=norm_scraper_type,
+        limit=limit,
+    )
+
+    if norm_lijn_code and norm_band_code:
+        doc_scrapers = fetch_all(
+            """
+            SELECT
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                was_split_from_combi,
+                COUNT(*) AS n
+            FROM public.vw_doc_scraper_observations_expanded_with_line_v1
+            WHERE lijn_code_norm = :lijn_code
+              AND band_code = :band_code
+              AND scraper_family NOT IN ('SEALING')
+              AND supplier_type IN ('PROMATI', 'EXTERN', 'CONCURRENT')
+            GROUP BY
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                was_split_from_combi
+            ORDER BY n DESC, scraper_type_norm
+            LIMIT :limit
+            """,
+            {
+                "lijn_code": norm_lijn_code,
+                "band_code": norm_band_code,
+                "limit": limit,
+            },
+        )
+
+        doc_position_accessories = fetch_all(
+            """
+            SELECT
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm AS accessory_name,
+                scraper_family AS accessory_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                COUNT(*) AS n
+            FROM public.vw_doc_scraper_observations_expanded_with_line_v1
+            WHERE lijn_code_norm = :lijn_code
+              AND band_code = :band_code
+              AND scraper_family = 'SEALING'
+            GROUP BY
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status
+            ORDER BY n DESC, accessory_name
+            LIMIT :limit
+            """,
+            {
+                "lijn_code": norm_lijn_code,
+                "band_code": norm_band_code,
+                "limit": limit,
+            },
+        )
+
+        band_perf = fetch_one(
+            """
+            SELECT scraper_types
+            FROM vw_band_performance_v1
+            WHERE lijn_code = :lijn_code
+              AND band_code = :band_code
+            """,
+            {
+                "lijn_code": norm_lijn_code,
+                "band_code": norm_band_code,
+            },
+        )
+
+        if band_perf:
+            _, accessories = split_lifecycle_scrapers_and_accessories(
+                band_perf.get("scraper_types")
+            )
+            lifecycle_band_accessories.extend(accessories)
+
+    lifecycle_scrapers_raw: list[str] = []
+    lifecycle_position_accessories: list[str] = []
+
+    for row in cycles:
+        raw_type = row.get("scraper_type_norm")
+        scrapers, accessories = split_lifecycle_scrapers_and_accessories(raw_type)
+
+        lifecycle_scrapers_raw.extend(scrapers)
+        lifecycle_position_accessories.extend(accessories)
+
+    lifecycle_scrapers_raw = sorted(set(lifecycle_scrapers_raw))
+    lifecycle_position_accessories = sorted(set(lifecycle_position_accessories))
+
+    latest_cycle = cycles[0] if cycles else None
+    latest_mes = latest[0] if latest else None
+
+    current_forecast = None
+    if latest_cycle:
+        for row in forecast:
+            if (
+                row.get("cycle_start") == latest_cycle.get("cycle_start")
+                and row.get("cycle_end") == latest_cycle.get("cycle_end")
+                and row.get("scraper_type_norm") == latest_cycle.get("scraper_type_norm")
+                and row.get("position_hint") == latest_cycle.get("position_hint")
+            ):
+                current_forecast = row
+                break
+
+    next_forecast = current_forecast or (forecast[0] if forecast else None)
+
+    current_forecast_6mm = enrich_performance_6mm(
+        latest_cycle or next_forecast or {}
+    ) if (latest_cycle or next_forecast) else {}
+
+    waarschuwingen: list[str] = []
+    acties: list[str] = []
+
+    if not cycles:
+        waarschuwingen.append("Geen cyclusdata gevonden voor deze combinatie.")
+    if not latest:
+        waarschuwingen.append("Geen actuele meshoogte gevonden voor deze combinatie.")
+    if norm_scraper_type is None:
+        waarschuwingen.append("Geen scraper_type opgegeven; resultaat kan meerdere schrapers combineren.")
+    if position_hint is None:
+        waarschuwingen.append("Geen position_hint opgegeven; resultaat kan meerdere posities combineren.")
+
+    if latest_cycle:
+        status_3mm = latest_cycle.get("status_3mm")
+        vervangdatum = latest_cycle.get("geschatte_vervangdatum_bij_3mm")
+        laatste_mes = latest_mes.get("meshoogte_mm") if latest_mes else None
+
+        if status_3mm == "NU VERVANGEN":
+            acties.append("Plan directe vervanging; actuele cyclus zit op of voorbij de 3 mm-grens.")
+        elif status_3mm == "BINNEN 30 DAGEN":
+            acties.append("Plan vervanging op korte termijn; actuele cyclus nadert de 3 mm-grens.")
+        elif status_3mm == "BINNEN 60 DAGEN":
+            acties.append("Neem vervanging mee in de korte onderhoudsplanning.")
+        elif vervangdatum:
+            acties.append(f"Slijtage is nu OK; monitor richting verwachte 3 mm datum: {vervangdatum}.")
+        else:
+            acties.append("Slijtage is nu OK; blijf regulier monitoren.")
+
+        if laatste_mes is not None:
+            acties.append(f"Laatste gemeten meshoogte: {laatste_mes} mm.")
+    else:
+        acties.append("Geen actuele cyclus gevonden; controleer lifecycle-opbouw.")
+
+    nok_summary: dict[str, int] = {}
+    for row in inspecties:
+        if row.get("status") == "NOK":
+            check = row.get("check_code") or "onbekend"
+            nok_summary[check] = nok_summary.get(check, 0) + 1
+
+    doc_scraper_names = sorted({
+        row.get("scraper_type_norm")
+        for row in doc_scrapers
+        if row.get("scraper_type_norm")
+           and row.get("supplier_type") == "PROMATI"
+           and row.get("scraper_mount_status") != "CONCURRENT_HOSCH"
+    })
+
+    lifecycle_scraper_names = sorted({
+        normalize_scraper_type_canonical(name) or name
+        for name in lifecycle_scrapers_raw
+        if normalize_accessory_name(name) is None
+    })
+
+    source_disagreement = bool(doc_scraper_names and lifecycle_scraper_names and set(doc_scraper_names) != set(lifecycle_scraper_names))
+
+    source_mapping_hint = []
+    if source_disagreement:
+        source_mapping_hint.append(
+            "Lifecycle/Excel en documentbron gebruiken verschillende schraperlabels; gebruik documentbron als fijnere configuratiebron."
+        )
+
+    position_accessories_combined = sorted(set(
+        lifecycle_position_accessories
+        + lifecycle_band_accessories
+        + excel_clean_context.get("position_accessory_names_excel_clean", [])
+        + [
+            row.get("accessory_name")
+            for row in doc_position_accessories
+            if row.get("accessory_name")
+        ]
+    ))
+
+    datakwaliteit = {
+        "granulariteit": "goed" if norm_scraper_type and position_hint else "beperkt",
+        "heeft_cycles": bool(cycles),
+        "heeft_latest": bool(latest),
+        "heeft_forecast": bool(forecast),
+        "heeft_points": bool(points),
+        "heeft_inspecties": bool(inspecties),
+        "heeft_doc_scrapers_clean": bool(doc_scrapers),
+        "heeft_excel_clean_context": excel_clean_context.get("data_quality", {}).get("has_excel_clean_context", False),
+        "heeft_position_accessories": bool(position_accessories_combined),
+        "source_disagreement": source_disagreement,
+        "source_mapping_hint": source_mapping_hint,
+        "waarschuwingen": waarschuwingen,
+    }
+
+    return {
+        "intent": "scraper_position_analysis",
+        "entities": {
+            "lijn_code": norm_lijn_code,
+            "band_code": norm_band_code,
+            "scraper_type": norm_scraper_type,
+            "position_hint": position_hint,
+        },
+        "kort_resultaat": (
+            f"{len(cycles)} cycli, {len(latest)} actuele metingen en "
+            f"{len(forecast)} forecastregels gevonden."
+        ),
+        "huidige_staat": latest_mes,
+        "laatste_cyclus": latest_cycle,
+        "forecast_3mm": {
+            "source": "actuele_cyclus" if latest_cycle else "forecast_query",
+            "cycle_start": latest_cycle.get("cycle_start") if latest_cycle else (next_forecast or {}).get("cycle_start"),
+            "cycle_end": latest_cycle.get("cycle_end") if latest_cycle else (next_forecast or {}).get("cycle_end"),
+            "meetpunten": latest_cycle.get("meetpunten") if latest_cycle else (next_forecast or {}).get("meetpunten"),
+            "slijtage_mm_per_dag": latest_cycle.get("slijtage_mm_per_dag") if latest_cycle else (next_forecast or {}).get("slijtage_mm_per_dag"),
+            "geschatte_dagen_tot_3mm": latest_cycle.get("geschatte_dagen_tot_3mm") if latest_cycle else (next_forecast or {}).get("geschatte_dagen_tot_3mm"),
+            "geschatte_vervangdatum_bij_3mm": latest_cycle.get("geschatte_vervangdatum_bij_3mm") if latest_cycle else (next_forecast or {}).get("geschatte_vervangdatum_bij_3mm"),
+            "status_3mm": latest_cycle.get("status_3mm") if latest_cycle else (next_forecast or {}).get("status_3mm"),
+        },
+        "forecast_6mm": {
+            "source": "actuele_cyclus" if latest_cycle else "forecast_query",
+            "cycle_start": current_forecast_6mm.get("cycle_start"),
+            "cycle_end": current_forecast_6mm.get("cycle_end"),
+            "meetpunten": current_forecast_6mm.get("meetpunten"),
+            "slijtage_mm_per_dag": current_forecast_6mm.get("slijtage_mm_per_dag"),
+            "eind_meshoogte_mm": current_forecast_6mm.get("eind_meshoogte_mm"),
+            "geschatte_dagen_tot_6mm": current_forecast_6mm.get("geschatte_dagen_tot_6mm"),
+            "geschatte_datum_bij_6mm": current_forecast_6mm.get("geschatte_datum_bij_6mm"),
+            "dagen_tot_6mm_vanaf_vandaag": current_forecast_6mm.get("dagen_tot_6mm_vanaf_vandaag"),
+            "status_6mm": current_forecast_6mm.get("status_6mm"),
+            "vervuilingsrisico": current_forecast_6mm.get("vervuilingsrisico"),
+            "prestatie_vervangmoment": current_forecast_6mm.get("prestatie_vervangmoment"),
+        },
+        "actuele_forecast_3mm": {
+            "source": "latest_cycle",
+            "cycle_start": latest_cycle.get("cycle_start") if latest_cycle else None,
+            "cycle_end": latest_cycle.get("cycle_end") if latest_cycle else None,
+            "meetpunten": latest_cycle.get("meetpunten") if latest_cycle else None,
+            "slijtage_mm_per_dag": latest_cycle.get("slijtage_mm_per_dag") if latest_cycle else None,
+            "geschatte_dagen_tot_3mm": latest_cycle.get("geschatte_dagen_tot_3mm") if latest_cycle else None,
+            "geschatte_vervangdatum_bij_3mm": latest_cycle.get("geschatte_vervangdatum_bij_3mm") if latest_cycle else None,
+            "status_3mm": latest_cycle.get("status_3mm") if latest_cycle else None,
+        },
+        "cycli": cycles,
+        "meetpunten": points,
+        "grafiekpunten_unified": graph_points_unified,
+        "inspecties": inspecties,
+
+        "schrapers_document_clean": doc_scrapers,
+
+        "schrapers_excel_clean": excel_clean_context.get("scrapers_excel_clean", []),
+        "schrapers_lifecycle_clean": lifecycle_scraper_names,
+
+        "position_accessories": position_accessories_combined,
+        "position_accessories_detail": (
+            doc_position_accessories
+            + excel_clean_context.get("position_accessories_excel_clean", [])
+        ),
+
+        "false_positives_excel_clean": excel_clean_context.get("false_positives_excel_clean", []),
+
+        "source_comparison": {
+            "lifecycle_scrapers": lifecycle_scraper_names,
+            "excel_clean_scrapers": excel_clean_context.get("scraper_names_excel_clean", []),
+            "document_scrapers": doc_scraper_names,
+            "position_accessories": position_accessories_combined,
+            "source_disagreement": source_disagreement,
+        },
+
+        "operationele_signalen": {
+            "nok_per_check": nok_summary,
+            "n_nok": sum(nok_summary.values()),
+        },
+        "datakwaliteit": datakwaliteit,
+        "actie": acties,
+    }
+
+# ---------------------------------------------------------
+# BAND / LOCATIE / SCRAPER
+# ---------------------------------------------------------
+
+def summarize_band_question(
+    band_code: str,
+    lijn_code: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+) -> dict:
+    conditions = ["band_code = :band_code"]
+    params: dict[str, Any] = {"band_code": band_code}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    date_conditions, date_params = build_date_filters(date_from, date_to, "effective_date")
+    conditions.extend(date_conditions)
+    params.update(date_params)
+
+    where_sql = " AND ".join(conditions)
+
+    summary = fetch_one(
+        f"""
+        SELECT *
+        FROM vw_band_performance_v1
+        WHERE {where_sql}
+        """,
+        params,
+    )
+
+    trend = fetch_all(
+        f"""
+        SELECT *
+        FROM vw_band_signal_trend_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC
+        LIMIT 20
+        """,
+        params,
+    )
+
+    recent_rows = fetch_all(
+        """
+        SELECT
+            inspection_key,
+            lijn_code,
+            effective_date,
+            source_file,
+            sheet,
+            row_nr,
+            scraper_type_effective_norm,
+            mes_num,
+            vervangen,
+            reinigen,
+            demontage,
+            montage,
+            afstellen,
+            hosch_flag,
+            opmerking_raw
+        FROM vw_inspection_full_dataset_v1
+        WHERE band_locatie_norm = :band_code
+          AND (:lijn_code IS NULL OR lijn_code = :lijn_code)
+          AND (:date_from IS NULL OR effective_date >= :date_from)
+          AND (:date_to IS NULL OR effective_date <= :date_to)
+        ORDER BY effective_date DESC, row_nr
+        LIMIT 20
+        """,
+        {
+            "band_code": band_code,
+            "lijn_code": lijn_code,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+    )
+
+    word_config_raw = get_word_band_config(band_code=band_code, lijn_code=lijn_code, limit=50)
+    word_config = clean_word_config_rows(word_config_raw)
+
+    word_scrapers = get_word_scraper_rows(band_code=band_code, lijn_code=lijn_code, limit=50)
+
+    scraper_status = band_scraper_status(
+        lijn_code=lijn_code,
+        band_code=band_code,
+        scraper_status=None,
+        only_without_scrapers=False,
+        limit=20,
+    )
+
+    scraper_status_clean = filter_recent_scraper_status_rows(
+        scraper_status.get("resultaat", []),
+        max_rows=5,
+    )
+
+    excel_clean_context = get_excel_clean_scraper_context(
+        lijn_code=lijn_code,
+        band_code=band_code,
+        scraper_type=None,
+        limit=100,
+    )
+
+    doc_scrapers_clean: list[dict[str, Any]] = []
+    doc_position_accessories: list[dict[str, Any]] = []
+
+    if lijn_code and band_code:
+        doc_scrapers_clean = fetch_all(
+            """
+            SELECT
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                was_split_from_combi,
+                COUNT(*) AS n
+            FROM public.vw_doc_scraper_observations_expanded_with_line_v1
+            WHERE lijn_code_norm = :lijn_code
+              AND band_code = :band_code
+              AND scraper_family NOT IN ('SEALING')
+              AND supplier_type IN ('PROMATI', 'EXTERN', 'CONCURRENT')
+            GROUP BY
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                was_split_from_combi
+            ORDER BY n DESC, scraper_type_norm
+            LIMIT 100
+            """,
+            {
+                "lijn_code": lijn_code,
+                "band_code": band_code,
+            },
+        )
+
+        doc_position_accessories = fetch_all(
+            """
+            SELECT
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm AS accessory_name,
+                scraper_family AS accessory_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status,
+                COUNT(*) AS n
+            FROM public.vw_doc_scraper_observations_expanded_with_line_v1
+            WHERE lijn_code_norm = :lijn_code
+              AND band_code = :band_code
+              AND scraper_family = 'SEALING'
+            GROUP BY
+                lijn_code_norm,
+                line_hint_raw,
+                band_code,
+                scraper_type_norm,
+                scraper_family,
+                supplier_type,
+                position_hint_clean,
+                scraper_mount_status
+            ORDER BY n DESC, accessory_name
+            LIMIT 100
+            """,
+            {
+                "lijn_code": lijn_code,
+                "band_code": band_code,
+            },
+        )
+
+    doc_scraper_names = sorted({
+        row.get("scraper_type_norm")
+        for row in doc_scrapers_clean
+        if row.get("scraper_type_norm")
+           and row.get("supplier_type") == "PROMATI"
+           and row.get("scraper_mount_status") != "CONCURRENT_HOSCH"
+    })
+
+    position_accessories = sorted(set(
+        excel_clean_context.get("position_accessory_names_excel_clean", [])
+        + [
+            row.get("accessory_name")
+            for row in doc_position_accessories
+            if row.get("accessory_name")
+        ]
+    ))
+
+    if not summary and not word_config and not word_scrapers and not scraper_status.get("resultaat"):
+        return {
+            "intent": "band",
+            "entities": {"band_code": band_code, "lijn_code": lijn_code},
+            "kort_resultaat": kort_resultaat,
+            "resultaat": summary,
+            "trend_patronen": trend_patronen,
+            "recent_rows": recent_rows,
+            "word_config": word_config,
+            "word_config_raw": word_config_raw,
+            "word_scrapers": word_scrapers,
+            "scraper_status": scraper_status_clean,
+            "scraper_status_raw_count": len(scraper_status.get("resultaat", [])),
+
+            "schrapers_excel_clean": excel_clean_context.get("scrapers_excel_clean", []),
+            "schrapers_document_clean": doc_scrapers_clean,
+            "position_accessories": position_accessories,
+            "position_accessories_detail": (
+                doc_position_accessories
+                + excel_clean_context.get("position_accessories_excel_clean", [])
+            ),
+            "false_positives_excel_clean": excel_clean_context.get("false_positives_excel_clean", []),
+
+            "source_comparison": {
+                "excel_clean_scrapers": excel_clean_context.get("scraper_names_excel_clean", []),
+                "document_scrapers": doc_scraper_names,
+                "position_accessories": position_accessories,
+                "source_disagreement": bool(
+                    doc_scraper_names
+                    and excel_clean_context.get("scraper_names_excel_clean", [])
+                    and set(doc_scraper_names) != set(excel_clean_context.get("scraper_names_excel_clean", []))
+                ),
+            },
+
+            "datakwaliteit": {
+                "heeft_excel_clean_context": excel_clean_context.get("data_quality", {}).get("has_excel_clean_context", False),
+                "heeft_doc_scrapers_clean": bool(doc_scrapers_clean),
+                "heeft_position_accessories": bool(position_accessories),
+            },
+        }
+
+    if summary:
+        kort_resultaat = (
+            f"Band {band_code} heeft {summary['n_rows']} regels tussen {summary['eerste_datum']} en {summary['laatste_datum']}. "
+            f"Mesmetingen: {summary['n_mesmetingen']}, gemiddelde {summary['avg_mes_num']}. "
+            f"Vervangingen: {summary['n_vervangen']}."
+        )
+    else:
+        kort_resultaat = f"Band {band_code}: geen performance-samenvatting, maar wel detail- of schraperdata beschikbaar."
+
+    trend_patronen = []
+    if trend:
+        latest_avg = first_non_empty(trend, "avg_mes_num")
+        trend_patronen.append(f"{len(trend)} tijdpunten beschikbaar.")
+        if latest_avg is not None:
+            trend_patronen.append(f"Recente gemiddelde meshoogte: {latest_avg}.")
+
+    clean_scraper_names = excel_clean_context.get("scraper_names_excel_clean", [])
+    clean_accessory_names = excel_clean_context.get("position_accessory_names_excel_clean", [])
+
+    if clean_scraper_names:
+        trend_patronen.append(
+            "Schone schrapercontext: "
+            + " | ".join(clean_scraper_names)
+            + "."
+        )
+
+    if clean_accessory_names:
+        trend_patronen.append(
+            "Position accessories: "
+            + " | ".join(clean_accessory_names)
+            + "."
+        )
+
+    if scraper_status_clean:
+        trend_patronen.append(
+            "Historische scraper_status aanwezig; gebruik clean context als leidend."
+        )
+
+    summary_clean = dict(summary) if summary else None
+
+    if summary_clean:
+        raw_scraper_types = summary_clean.get("scraper_types")
+        scrapers_raw, accessories_raw = split_lifecycle_scrapers_and_accessories(raw_scraper_types)
+
+        clean_scrapers_from_summary = sorted({
+            normalize_scraper_type_canonical(s) or s
+            for s in scrapers_raw
+            if s and normalize_accessory_name(s) is None
+        })
+
+        clean_accessories_from_summary = sorted({
+            normalize_accessory_name(a) or a
+            for a in accessories_raw
+            if a
+        })
+
+        summary_clean["scraper_types_raw"] = raw_scraper_types
+        summary_clean["scraper_types_clean"] = " | ".join(clean_scrapers_from_summary)
+        summary_clean["scraper_types"] = summary_clean["scraper_types_clean"]
+        summary_clean["position_accessories"] = clean_accessories_from_summary
+
+    return {
+        "intent": "band",
+        "entities": {"band_code": band_code, "lijn_code": lijn_code},
+        "kort_resultaat": kort_resultaat,
+        "resultaat": summary_clean,
+        "trend_patronen": trend_patronen,
+        "recent_rows": recent_rows,
+        "word_config": word_config,
+        "word_config_raw": word_config_raw,
+        "word_scrapers": word_scrapers,
+        "scraper_status_historisch": scraper_status_clean,
+        "scraper_status_raw_count": len(scraper_status.get("resultaat", [])),
+
+        "schrapers_excel_clean": excel_clean_context.get("scrapers_excel_clean", []),
+        "schrapers_document_clean": doc_scrapers_clean,
+        "position_accessories": position_accessories,
+        "position_accessories_detail": (
+            doc_position_accessories
+            + excel_clean_context.get("position_accessories_excel_clean", [])
+        ),
+        "false_positives_excel_clean": excel_clean_context.get("false_positives_excel_clean", []),
+
+        "source_comparison": {
+            "excel_clean_scrapers": excel_clean_context.get("scraper_names_excel_clean", []),
+            "document_scrapers": doc_scraper_names,
+            "position_accessories": position_accessories,
+            "source_disagreement": bool(
+                doc_scraper_names
+                and excel_clean_context.get("scraper_names_excel_clean", [])
+                and set(doc_scraper_names) != set(excel_clean_context.get("scraper_names_excel_clean", []))
+            ),
+        },
+
+        "datakwaliteit": {
+            "heeft_excel_clean_context": excel_clean_context.get("data_quality", {}).get("has_excel_clean_context", False),
+            "heeft_doc_scrapers_clean": bool(doc_scrapers_clean),
+            "heeft_position_accessories": bool(position_accessories),
+        },
+    }
+
+
+def summarize_location_question(
+    lijn_code: str,
+    date_from: Optional[str],
+    date_to: Optional[str],
+) -> dict:
+    summary = fetch_one(
+        """
+        SELECT *
+        FROM vw_location_performance_v1
+        WHERE lijn_code = :lijn_code
+        """,
+        {"lijn_code": lijn_code},
+    )
+
+    bands = fetch_all(
+        """
+        SELECT *
+        FROM vw_band_performance_v1
+        WHERE lijn_code = :lijn_code
+        ORDER BY n_rows DESC, band_code
+        LIMIT 20
+        """,
+        {"lijn_code": lijn_code},
+    )
+
+    scraper_rows = line_band_scraper_summary(lijn_code=lijn_code, limit=20)
+
+    return {
+        "intent": "location",
+        "entities": {"lijn_code": lijn_code},
+        "kort_resultaat": (
+            f"Locatie {lijn_code} heeft {summary['n_rows']} regels tussen {summary['eerste_datum']} en {summary['laatste_datum']}."
+            if summary else f"Geen locatie-performance voor {lijn_code}."
+        ),
+        "resultaat": summary,
+        "bands": bands,
+        "band_scrapers": scraper_rows.get("resultaat", []),
+    }
+
+
+def summarize_scraper_question(
+    scraper_type: str,
+    lijn_code: Optional[str],
+) -> dict:
+    conditions = ["scraper_type = :scraper_type"]
+    params: dict[str, Any] = {"scraper_type": scraper_type}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    rows = fetch_all(
+        f"""
+        SELECT *
+        FROM vw_scraper_performance_v1
+        WHERE {where_sql}
+        ORDER BY lijn_code
+        LIMIT 20
+        """,
+        params,
+    )
+
+    if not rows:
+        return {
+            "intent": "scraper",
+            "entities": {"scraper_type": scraper_type, "lijn_code": lijn_code},
+            "kort_resultaat": f"Ik vind geen performance-data voor scrapertype {scraper_type}.",
+            "resultaat": [],
+        }
+
+    total_rows = sum(r.get("n_rows", 0) or 0 for r in rows)
+    total_bands = sum(r.get("n_banden", 0) or 0 for r in rows)
+
+    return {
+        "intent": "scraper",
+        "entities": {"scraper_type": scraper_type, "lijn_code": lijn_code},
+        "kort_resultaat": f"Scrapertype {scraper_type} komt {total_rows} keer voor over {total_bands} bandkoppelingen.",
+        "resultaat": rows,
+    }
+
+def build_unified_action_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    urgent = []
+    action_texts = []
+
+    basis_counts: dict[str, int] = {}
+    advies_counts: dict[str, int] = {}
+
+    for r in rows:
+        basis = r.get("analyse_basis") or "ONBEKEND"
+        basis_counts[basis] = basis_counts.get(basis, 0) + 1
+
+        advies = r.get("onderhoudsadvies_unified") or "ONBEKEND"
+        advies_counts[advies] = advies_counts.get(advies, 0) + 1
+
+        pct = r.get("slijtage_actie_pct")
+        analyse_basis = r.get("analyse_basis")
+        band = r.get("band_norm")
+        pos = r.get("position_display")
+        scraper = r.get("scraper_type_norm")
+        commentaar = r.get("commentaar")
+
+        try:
+            pct_float = float(pct) if pct is not None else None
+        except (TypeError, ValueError):
+            pct_float = None
+
+        if analyse_basis == "MECHANICAL":
+            urgent.append(r)
+            action_texts.append(
+                f"{band} {pos} {scraper}: mechanische actie nodig"
+                + (f" — {commentaar}" if commentaar else ".")
+            )
+        elif pct_float is not None and pct_float >= 90:
+            urgent.append(r)
+            action_texts.append(
+                f"{band} {pos} {scraper}: directe actie, slijtage/actie {pct_float:g}%."
+            )
+        elif pct_float is not None and pct_float >= 70:
+            urgent.append(r)
+            action_texts.append(
+                f"{band} {pos} {scraper}: vervanging voorbereiden, slijtage/actie {pct_float:g}%."
+            )
+
+    return {
+        "n_posities": len(rows),
+        "n_urgent": len(urgent),
+        "analyse_basis": basis_counts,
+        "onderhoudsadvies": advies_counts,
+        "actiepunten": action_texts[:10],
+    }
+
+def band_deep_analysis(
+    band_code: str,
+    lijn_code: Optional[str],
+    limit: int,
+) -> dict:
+    norm_band_code = normalize_code(band_code)
+    norm_lijn_code = normalize_code(lijn_code) if lijn_code else None
+
+    latest = latest_meshoogte(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=None,
+        limit=limit,
+    )
+
+    lifecycle = lifecycle_analysis(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=None,
+        date_from=None,
+        date_to=None,
+        limit=limit,
+    )
+
+    forecast = forecast_3mm(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=None,
+        limit=limit,
+    )
+
+    comments = collect_signal_comments_from_lifecycle(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=None,
+        limit=limit,
+    )
+
+    unusual, reasons, hypotheses = evaluate_unusual_slijtage(
+        lifecycle_rows=lifecycle.get("resultaat", []),
+        forecast_rows=forecast.get("resultaat", []),
+        comment_rows=comments,
+    )
+
+    scraper_info = band_scraper_status(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_status=None,
+        only_without_scrapers=False,
+        limit=10,
+    )
+
+    gecombineerde = band_position_wear_unified_overview(
+        lijn_code=norm_lijn_code,
+        band_code=norm_band_code,
+        scraper_type=None,
+        zijde=None,
+        limit=limit,
+    )
+
+    gecombineerde_rows = gecombineerde.get("resultaat", [])
+
+    canonical_positions = build_canonical_position_projection(
+        current_rows=gecombineerde_rows,
+        lifecycle_rows=lifecycle.get("resultaat", []),
+        forecast_rows=forecast.get("resultaat", []),
+    )
+
+    gecombineerde_summary = build_unified_action_summary(gecombineerde_rows)
+
+    action_lines = []
+
+    for item in gecombineerde_summary.get("actiepunten", []):
+        action_lines.append(item)
+
+    if not action_lines:
+        action_lines.append("Geen directe unified actiepunten gevonden; regulier monitoren of fysiek controleren bij twijfel.")
+
+    return {
+        "intent": "band_deep_analysis",
+        "entities": {
+            "band_code": norm_band_code,
+            "lijn_code": norm_lijn_code,
+        },
+        "kort_resultaat": (
+            f"Analyse voor band {norm_band_code}: "
+            f"{len(latest.get('resultaat', []))} laatste meshoogte-posities, "
+            f"{len(lifecycle.get('resultaat', []))} lifecycle-regels, "
+            f"{len(forecast.get('resultaat', []))} forecastregels en "
+            f"{len(gecombineerde_rows)} gecombineerde slijtage-/conditieposities."
+        ),
+
+        "gecombineerde_slijtage_samenvatting": gecombineerde_summary,
+        "gecombineerde_slijtage": gecombineerde_rows,
+        "canonical_positions": canonical_positions,
+
+        "laatste_meshoogte": latest.get("resultaat", []),
+        "lifecycle": lifecycle.get("resultaat", []),
+        "forecast_3mm": forecast.get("resultaat", []),
+        "relevante_opmerkingen": comments[:10],
+
+        "ongewone_slijtage": {
+            "ja_nee": unusual,
+            "waarom": reasons,
+        },
+        "mogelijke_oorzaak": hypotheses,
+
+        "scraper_status": scraper_info.get("resultaat", []),
+
+        "uitleg_gecombineerde_slijtage": {
+            "MEASUREMENT": "percentage berekend uit echte meshoogte",
+            "CONDITION": "percentage afgeleid uit conditiecode, leeftijd sinds vervanging en commentaar",
+            "MECHANICAL": "actiepercentage door mechanisch of toegankelijkheidsprobleem",
+            "slijtage_actie_pct": "één vergelijkbaar percentage voor mm-slijtage én TPH/TPL-conditie",
+        },
+
+        "actie": action_lines,
+    }
+
+
+
+# ---------------------------------------------------------
+# MONTEURS
+# ---------------------------------------------------------
+
+def monteur_performance_v4(
+    monteur: Optional[str],
+    lijn_code: Optional[str],
+    min_inspecties: int,
+    limit: int,
+) -> dict:
+    conditions = ["n_inspecties >= :min_inspecties"]
+    params: dict[str, Any] = {
+        "min_inspecties": min_inspecties,
+        "limit": limit,
+    }
+
+    if monteur:
+        conditions.append("monteur ILIKE :monteur")
+        params["monteur"] = f"%{monteur}%"
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT *
+        FROM vw_monteur_performance_v4
+        WHERE {where_sql}
+        ORDER BY score DESC, n_inspecties DESC, monteur
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    if lijn_code:
+        filtered_rows = []
+        for row in rows:
+            hit = fetch_one(
+                """
+                SELECT 1
+                FROM vw_monteur_findings_v4
+                WHERE monteur = :monteur
+                  AND lijn_code = :lijn_code
+                LIMIT 1
+                """,
+                {"monteur": row["monteur"], "lijn_code": lijn_code},
+            )
+            if hit:
+                filtered_rows.append(row)
+        rows = filtered_rows
+
+    return {
+        "intent": "monteur_performance",
+        "kort_resultaat": f"{len(rows)} monteurs gevonden." if rows else "Geen monteurs gevonden.",
+        "resultaat": rows,
+    }
+
+
+def monteur_findings_v4(
+    monteur: str,
+    lijn_code: Optional[str],
+    only_problems: bool,
+    limit: int,
+) -> dict:
+    conditions = ["monteur = :monteur"]
+    params: dict[str, Any] = {
+        "monteur": monteur,
+        "limit": limit,
+    }
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    if only_problems:
+        conditions.append(
+            """
+            (
+                vervuiling_flag > 0
+                OR scheefloop_flag > 0
+                OR bandschade_flag > 0
+                OR afdichting_flag > 0
+            )
+            """
+        )
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            monteur,
+            inspection_key,
+            lijn_code,
+            n_check_rows,
+            vervuiling_flag,
+            scheefloop_flag,
+            bandschade_flag,
+            afdichting_flag,
+            opmerkingen,
+            advies,
+            inspecteurs,
+            toezichthouders,
+            (
+                vervuiling_flag * 1.0 +
+                scheefloop_flag * 1.5 +
+                bandschade_flag * 2.0 +
+                afdichting_flag * 1.2
+            ) AS probleemscore
+        FROM vw_monteur_findings_v4
+        WHERE {where_sql}
+        ORDER BY probleemscore DESC, inspection_key DESC
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    return {
+        "intent": "monteur_findings",
+        "kort_resultaat": f"{len(rows)} bevindingen gevonden voor {monteur}." if rows else f"Geen bevindingen gevonden voor {monteur}.",
+        "resultaat": rows,
+    }
+
+
+def monteur_top_problemen_v4(
+    monteur: str,
+    lijn_code: Optional[str],
+    limit: int,
+) -> dict:
+    conditions = ["monteur = :monteur"]
+    params: dict[str, Any] = {
+        "monteur": monteur,
+        "limit": limit,
+    }
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    conditions.append(
+        """
+        (
+            vervuiling_flag > 0
+            OR scheefloop_flag > 0
+            OR bandschade_flag > 0
+            OR afdichting_flag > 0
+        )
+        """
+    )
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            monteur,
+            inspection_key,
+            lijn_code,
+            n_check_rows,
+            vervuiling_flag,
+            scheefloop_flag,
+            bandschade_flag,
+            afdichting_flag,
+            opmerkingen,
+            advies,
+            inspecteurs,
+            toezichthouders,
+            (
+                vervuiling_flag * 1.0 +
+                scheefloop_flag * 1.5 +
+                bandschade_flag * 2.0 +
+                afdichting_flag * 1.2
+            ) AS probleemscore
+        FROM vw_monteur_findings_v4
+        WHERE {where_sql}
+        ORDER BY probleemscore DESC, inspection_key DESC
+        LIMIT :limit
+    """
+    rows = fetch_all(sql, params)
+
+    return {
+        "intent": "monteur_top_problemen",
+        "kort_resultaat": f"{len(rows)} top-problemen gevonden voor {monteur}." if rows else f"Geen probleembevindingen gevonden voor {monteur}.",
+        "resultaat": rows,
+    }
+
+
+# ---------------------------------------------------------
+# INSPECTION SUMMARY
+# ---------------------------------------------------------
+
+def inspection_summary(
+    band_code: Optional[str],
+    lijn_code: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    min_meshoogte: Optional[float],
+    only_replacement: bool,
+    only_opmerkingen: bool,
+    limit: int,
+    installation_code: Optional[str] = None,
+) -> dict:
+    # PROMATI_GOVERNED_INSPECTION_EVIDENCE_V13_1
+    #
+    # Belangrijk:
+    # - fact_inspection_checks bevat historische DOCX-checkfacts;
+    # - inspection_key op die facts kan een oude/onjuiste Excel-match zijn;
+    # - source_name + line_hint zijn de DOCX-bronidentiteit;
+    # - daarom gebruiken we voor DOCX een eigen evidence_key;
+    # - de ruwe legacy match-key wordt niet als primaire provenance
+    #   aan de gebruiker gepresenteerd;
+    # - COUNT(*) heet fact_rows, niet "aantal inspecties".
+    #
+    # De ruwe tabellen worden NIET gewijzigd.
+
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if band_code:
+        conditions.append(
+            """
+            (
+                REPLACE(COALESCE(band_code, ''), ' ', '')
+                    = REPLACE(:band_code, ' ', '')
+                OR REPLACE(COALESCE(locatie_raw, ''), ' ', '')
+                    = REPLACE(:band_code, ' ', '')
+            )
+            """
+        )
+        params["band_code"] = band_code
+
+    if lijn_code:
+        conditions.append("line_hint = :lijn_code")
+        params["lijn_code"] = normalize_code(lijn_code)
+
+    canonical_installation = normalize_code(
+        installation_code
+    )
+
+    if canonical_installation:
+        # DOCX-facts worden op hun eigen bron-line_hint begrensd.
+        #
+        # Voor Excel blijft band_code de primaire assetfilter. De huidige
+        # assetcatalogus heeft unieke bandcodes; een toekomstige situatie
+        # met duplicate bandcodes vereist een expliciete Excel-source
+        # installation mapping.
+        conditions.append(
+            """
+            (
+                source_system <> 'docx_fact'
+                OR UPPER(COALESCE(line_hint, ''))
+                    = :installation_code
+            )
+            """
+        )
+        params["installation_code"] = canonical_installation
+
+    date_conditions, date_params = build_date_filters(
+        date_from,
+        date_to,
+        "document_date",
+    )
+    conditions.extend(date_conditions)
+    params.update(date_params)
+
+    if min_meshoogte is not None:
+        conditions.append(
+            "meshoogte_mm IS NOT NULL "
+            "AND meshoogte_mm <= :min_meshoogte"
+        )
+        params["min_meshoogte"] = min_meshoogte
+
+    if only_replacement:
+        conditions.append("mes_vervangen = TRUE")
+
+    if only_opmerkingen:
+        conditions.append(
+            "NULLIF(TRIM(COALESCE(commentaar, '')), '') "
+            "IS NOT NULL"
+        )
+
+    where_sql = " AND ".join(conditions)
+
+    evidence_cte = """
+        WITH inspection_evidence AS (
+            SELECT
+                (
+                    'DOCX|'
+                    || COALESCE(NULLIF(TRIM(f.line_hint), ''), 'UNKNOWN')
+                    || '|'
+                    || COALESCE(
+                        NULLIF(TRIM(f.source_name), ''),
+                        'UNKNOWN_SOURCE'
+                    )
+                    || '|'
+                    || COALESCE(
+                        f.document_date::text,
+                        'UNKNOWN_DATE'
+                    )
+                ) AS inspection_key,
+                f.document_date,
+                f.line_hint,
+                f.band_code,
+                NULL::text AS locatie_raw,
+                NULL::text AS scraper_type_raw,
+                NULL::numeric AS band_width_mm,
+                NULL::numeric AS meshoogte_mm,
+                NULL::text AS meshoogte_code,
+                NULL::boolean AS mes_vervangen,
+                NULL::boolean AS competitor_hosch,
+                NULL::text AS commentaar,
+                f.check_code,
+                f.status,
+                NULL::text AS source_file,
+                f.source_name,
+                'docx_fact'::text AS source_system,
+                'docx_source_identity'::text AS provenance_basis
+            FROM fact_inspection_checks f
+
+            UNION ALL
+
+            SELECT
+                e.inspection_key,
+                e.document_date,
+                e.line_hint,
+                e.band_code,
+                e.locatie_raw,
+                e.scraper_type_raw,
+                e.band_width_mm,
+                e.meshoogte_mm,
+                e.meshoogte_code,
+                e.mes_vervangen,
+                e.competitor_hosch,
+                e.commentaar,
+                e.check_code,
+                e.status,
+                e.source_file,
+                NULL::text AS source_name,
+                e.source_system,
+                'excel_inspection_key'::text AS provenance_basis
+            FROM vw_fact_inspection_excel_v2 e
+        )
+    """
+
+    rows_sql = f"""
+        {evidence_cte}
+        SELECT
+            inspection_key,
+            document_date,
+            line_hint,
+            band_code,
+            locatie_raw,
+            scraper_type_raw,
+            band_width_mm,
+            meshoogte_mm,
+            meshoogte_code,
+            mes_vervangen,
+            competitor_hosch,
+            commentaar,
+            check_code,
+            status,
+            source_file,
+            source_name,
+            source_system,
+            provenance_basis
+        FROM inspection_evidence
+        WHERE {where_sql}
+        ORDER BY
+            document_date DESC,
+            inspection_key DESC,
+            check_code
+        LIMIT :limit
+    """
+
+    rows = fetch_all(
+        rows_sql,
+        params,
+    )
+
+    summary_sql = f"""
+        {evidence_cte}
+        SELECT
+            MIN(document_date) AS eerste_datum,
+            MAX(document_date) AS laatste_datum,
+
+            COUNT(*) AS n_fact_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) AS n_evidence_documents,
+            COUNT(
+                DISTINCT document_date
+            ) AS n_distinct_document_dates,
+
+            COUNT(*) FILTER (
+                WHERE source_system = 'excel'
+            ) AS n_excel_fact_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) FILTER (
+                WHERE source_system = 'excel'
+            ) AS n_excel_inspection_keys,
+
+            COUNT(*) FILTER (
+                WHERE source_system = 'docx_fact'
+            ) AS n_docx_fact_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) FILTER (
+                WHERE source_system = 'docx_fact'
+            ) AS n_docx_documents,
+
+            COUNT(*) FILTER (
+                WHERE meshoogte_mm IS NOT NULL
+            ) AS n_mesmeasurement_fact_rows,
+            MIN(meshoogte_mm) AS min_meshoogte,
+            MAX(meshoogte_mm) AS max_meshoogte,
+            AVG(meshoogte_mm)::numeric(10,2)
+                AS avg_meshoogte,
+
+            COUNT(*) FILTER (
+                WHERE mes_vervangen = TRUE
+            ) AS n_replacement_fact_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) FILTER (
+                WHERE mes_vervangen = TRUE
+            ) AS n_replacement_inspection_keys,
+
+            COUNT(*) FILTER (
+                WHERE NULLIF(
+                    TRIM(COALESCE(commentaar, '')),
+                    ''
+                ) IS NOT NULL
+            ) AS n_remark_fact_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) FILTER (
+                WHERE NULLIF(
+                    TRIM(COALESCE(commentaar, '')),
+                    ''
+                ) IS NOT NULL
+            ) AS n_remark_inspection_keys,
+
+            COUNT(*) FILTER (
+                WHERE status = 'NOK'
+            ) AS n_nok_check_rows,
+            COUNT(
+                DISTINCT inspection_key
+            ) FILTER (
+                WHERE status = 'NOK'
+            ) AS n_nok_evidence_documents
+        FROM inspection_evidence
+        WHERE {where_sql}
+    """
+
+    summary = fetch_one(
+        summary_sql,
+        {
+            key: value
+            for key, value in params.items()
+            if key != "limit"
+        },
+    )
+
+    fact_rows = int(
+        (summary or {}).get("n_fact_rows")
+        or 0
+    )
+
+    if fact_rows:
+        kort_resultaat = (
+            f"{fact_rows} inspectie-factregels gevonden"
+            f" van {summary['eerste_datum']}"
+            f" t/m {summary['laatste_datum']}. "
+            f"Bronitems: "
+            f"{summary.get('n_excel_inspection_keys') or 0} "
+            "Excel-inspection keys en "
+            f"{summary.get('n_docx_documents') or 0} "
+            "DOCX-documenten. "
+            f"NOK-checkregels: "
+            f"{summary.get('n_nok_check_rows') or 0}. "
+            f"Vervangings-factregels: "
+            f"{summary.get('n_replacement_fact_rows') or 0} "
+            "op "
+            f"{summary.get('n_replacement_inspection_keys') or 0} "
+            "Excel-inspection keys."
+        )
+    else:
+        kort_resultaat = (
+            "Geen inspectie-factregels gevonden."
+        )
+
+    return {
+        "intent": "inspection_summary",
+        "entities": {
+            "band_code": band_code,
+            "lijn_code": lijn_code,
+            "installation_code": canonical_installation,
+            "date_from": date_from,
+            "date_to": date_to,
+            "min_meshoogte": min_meshoogte,
+            "only_replacement": only_replacement,
+            "only_opmerkingen": only_opmerkingen,
+        },
+        "kort_resultaat": kort_resultaat,
+        "summary": summary,
+        "total_count": fact_rows,
+        "count_semantics": "inspection_fact_rows",
+        "evidence_document_semantics": (
+            "excel_inspection_keys_plus_docx_source_documents"
+        ),
+        "data_quality": {
+            "raw_fact_table_modified": False,
+            "docx_identity_basis": (
+                "line_hint + source_name + document_date"
+            ),
+            "docx_legacy_match_key_exposed": False,
+            "note": (
+                "DOCX fact inspection_key was historisch ook als "
+                "Excel-match gebruikt en is daarom niet de primaire "
+                "DOCX-provenance in dit antwoord."
+            ),
+        },
+        "resultaat_count": len(rows),
+        "resultaat": rows,
+    }
+
+
+def band_diagnose(
+    band_code: str,
+    lijn_code: Optional[str],
+    limit: int,
+    include_points: bool = False,
+    include_inspecties: bool = False,
+    include_all_cycles: bool = False,
+) -> dict:
+    norm_band_code = normalize_code(band_code)
+
+    params: dict[str, Any] = {
+        "band_code": norm_band_code,
+    }
+
+    extra_where = ""
+    if lijn_code:
+        extra_where = "AND lijn_code = :lijn_code"
+        params["lijn_code"] = normalize_code(lijn_code)
+
+    cycle_limit_sql = ""
+    if not include_all_cycles:
+        cycle_limit_sql = "LIMIT :limit"
+        params["limit"] = limit
+
+    cycle_rows = fetch_all(
+        f"""
+        SELECT
+            lijn_code,
+            band_norm,
+            scraper_type_norm,
+            position_hint,
+            cycle_id,
+            cycle_start,
+            cycle_end,
+            meetpunten,
+            min_meshoogte_mm,
+            max_meshoogte_mm,
+            avg_meshoogte_mm,
+            slijtage_mm_per_dag,
+            geschatte_dagen_tot_3mm,
+            geschatte_vervangdatum_bij_3mm,
+            status_3mm,
+            n_check_rows,
+            n_inspectiedagen,
+            n_dagen_met_opmerkingen,
+            n_dagen_met_nok,
+            n_dagen_met_vervanging,
+            n_vervuiling_signal,
+            n_scheefloop_signal,
+            n_bandloop_signal,
+            n_toegankelijkheid_signal,
+            has_replace_event,
+            laatste_lifecycle_commentaar
+        FROM vw_mes_cycle_context_v1
+        WHERE band_norm = :band_code
+        {extra_where}
+        ORDER BY cycle_end DESC
+        {cycle_limit_sql}
+        """,
+        params,
+    )
+
+    point_rows: list[dict[str, Any]] = []
+    if include_points:
+        point_params = {
+            "band_code": norm_band_code,
+            "limit": limit,
+        }
+        point_extra_where = ""
+        if lijn_code:
+            point_extra_where = "AND lijn_code = :lijn_code"
+            point_params["lijn_code"] = normalize_code(lijn_code)
+
+        point_rows = fetch_all(
+            f"""
+            SELECT
+                lijn_code,
+                band_norm,
+                scraper_type_norm,
+                position_hint,
+                cycle_id,
+                inspected_on,
+                meshoogte_mm,
+                replace_event,
+                commentaar
+            FROM vw_mes_cycle_points_v1
+            WHERE band_norm = :band_code
+            {point_extra_where}
+            ORDER BY inspected_on DESC
+            LIMIT :limit
+            """,
+            point_params,
+        )
+
+    inspection_rows: list[dict[str, Any]] = []
+    if include_inspecties:
+        inspection_params = {
+            "band_code": norm_band_code,
+            "limit": limit,
+        }
+        inspection_extra_where = ""
+        if lijn_code:
+            inspection_extra_where = "AND line_hint = :lijn_code"
+            inspection_params["lijn_code"] = normalize_code(lijn_code)
+
+        inspection_rows = fetch_all(
+            f"""
+            SELECT
+                inspection_key,
+                document_date,
+                line_hint,
+                band_code,
+                locatie_raw,
+                scraper_type_raw,
+                meshoogte_mm,
+                mes_vervangen,
+                commentaar,
+                check_code,
+                status,
+                source_file,
+                source_system
+            FROM vw_fact_inspection_combined_v2
+            WHERE REPLACE(COALESCE(band_code, locatie_raw, ''), ' ', '') = :band_code
+            {inspection_extra_where}
+            ORDER BY document_date DESC
+            LIMIT :limit
+            """,
+            inspection_params,
+        )
+
+    latest_cycle = cycle_rows[0] if cycle_rows else None
+
+    slijtagebeeld = None
+    operationele_context = None
+    interpretatie: list[str] = []
+    actie: list[str] = []
+    risico_niveau = "laag"
+    slijtage_oordeel = "onbekend"
+    operationeel_oordeel = "onbekend"
+
+    if latest_cycle:
+        slijtagebeeld = {
+            "cycle_id": latest_cycle["cycle_id"],
+            "cycle_start": latest_cycle["cycle_start"],
+            "cycle_end": latest_cycle["cycle_end"],
+            "meetpunten": latest_cycle["meetpunten"],
+            "min_meshoogte_mm": latest_cycle["min_meshoogte_mm"],
+            "max_meshoogte_mm": latest_cycle["max_meshoogte_mm"],
+            "avg_meshoogte_mm": latest_cycle["avg_meshoogte_mm"],
+            "slijtage_mm_per_dag": latest_cycle["slijtage_mm_per_dag"],
+            "status_3mm": latest_cycle["status_3mm"],
+            "geschatte_dagen_tot_3mm": latest_cycle["geschatte_dagen_tot_3mm"],
+            "geschatte_vervangdatum_bij_3mm": latest_cycle["geschatte_vervangdatum_bij_3mm"],
+        }
+
+        operationele_context = {
+            "n_check_rows": latest_cycle["n_check_rows"],
+            "n_inspectiedagen": latest_cycle["n_inspectiedagen"],
+            "n_dagen_met_opmerkingen": latest_cycle["n_dagen_met_opmerkingen"],
+            "n_dagen_met_nok": latest_cycle["n_dagen_met_nok"],
+            "n_dagen_met_vervanging": latest_cycle["n_dagen_met_vervanging"],
+            "n_vervuiling_signal": latest_cycle["n_vervuiling_signal"],
+            "n_scheefloop_signal": latest_cycle["n_scheefloop_signal"],
+            "n_bandloop_signal": latest_cycle["n_bandloop_signal"],
+            "n_toegankelijkheid_signal": latest_cycle["n_toegankelijkheid_signal"],
+        }
+
+        status_3mm = latest_cycle["status_3mm"]
+        n_nok = latest_cycle["n_dagen_met_nok"] or 0
+        n_opm = latest_cycle["n_dagen_met_opmerkingen"] or 0
+        n_vervuiling = latest_cycle["n_vervuiling_signal"] or 0
+        n_scheef = latest_cycle["n_scheefloop_signal"] or 0
+        n_bandloop = latest_cycle["n_bandloop_signal"] or 0
+
+        if status_3mm == "NU VERVANGEN":
+            slijtage_oordeel = "kritisch"
+            interpretatie.append("Mes zit op of voorbij de vervanggrens.")
+            actie.append("Plan directe vervanging.")
+            risico_niveau = "hoog"
+        elif status_3mm == "BINNEN 30 DAGEN":
+            slijtage_oordeel = "bijna vervangen"
+            interpretatie.append("Mes nadert snel de vervanggrens.")
+            actie.append("Plan vervanging op korte termijn.")
+            risico_niveau = "hoog"
+        elif latest_cycle["slijtage_mm_per_dag"] is not None:
+            slijtage_oordeel = "normaal"
+
+        if n_nok >= 3:
+            operationeel_oordeel = "instabiel"
+            interpretatie.append("Herhaalde NOK-signalen in recente cyclus.")
+            actie.append("Controleer oorzaak achter terugkerende NOK-meldingen.")
+            if risico_niveau != "hoog":
+                risico_niveau = "medium"
+
+        if n_opm >= 2:
+            if operationeel_oordeel == "onbekend":
+                operationeel_oordeel = "aandacht nodig"
+            interpretatie.append("Er zijn meerdere inspectiedagen met opmerkingen.")
+
+        if n_vervuiling > 0:
+            if operationeel_oordeel in ("onbekend", "normaal"):
+                operationeel_oordeel = "vervuiling"
+            interpretatie.append("Er zijn signalen van vervuiling of mors.")
+            actie.append("Controleer carryback, reiniging en afvoer.")
+            if risico_niveau == "laag":
+                risico_niveau = "medium"
+
+        if n_scheef > 0 or n_bandloop > 0:
+            operationeel_oordeel = "bandloop risico"
+            interpretatie.append("Er zijn signalen van bandloop, trommel of scheefloop.")
+            actie.append("Controleer bandloop, uitlijning en trommels.")
+            if risico_niveau == "laag":
+                risico_niveau = "medium"
+
+        if not interpretatie:
+            interpretatie.append("Slijtagebeeld oogt technisch stabiel zonder dominante storingssignalen.")
+            actie.append("Blijf regulier monitoren.")
+            if operationeel_oordeel == "onbekend":
+                operationeel_oordeel = "normaal"
+            if slijtage_oordeel == "onbekend":
+                slijtage_oordeel = "normaal"
+
+    summary = {
+        "slijtage_oordeel": slijtage_oordeel,
+        "operationeel_oordeel": operationeel_oordeel,
+        "risico_niveau": risico_niveau,
+    }
+
+    if latest_cycle:
+        kort_resultaat = (
+            f"Diagnose voor band {norm_band_code}: "
+            f"slijtage={slijtage_oordeel}, "
+            f"operationeel={operationeel_oordeel}, "
+            f"risico={risico_niveau}."
+        )
+    elif inspection_rows:
+        kort_resultaat = (
+            f"Geen lifecyclecyclus gevonden voor band {norm_band_code}; "
+            f"wel {len(inspection_rows)} inspectieregels gevonden."
+        )
+    else:
+        kort_resultaat = (
+            f"Geen lifecycle- of inspectiedata gevonden voor band "
+            f"{norm_band_code}."
+        )
+
+    return {
+        "intent": "band_diagnose",
+        "entities": {
+            "band_code": norm_band_code,
+            "lijn_code": normalize_code(lijn_code) if lijn_code else None,
+        },
+        "kort_resultaat": kort_resultaat,
+        "summary": summary,
+        "slijtagebeeld": slijtagebeeld,
+        "operationele_context": operationele_context,
+        "interpretatie": interpretatie,
+        "actie": actie,
+        "aantal_cycles": len(cycle_rows),
+        "aantal_punten": len(point_rows),
+        "aantal_inspecties": len(inspection_rows),
+        "resultaat": cycle_rows,
+        "punten": point_rows,
+        "inspecties": inspection_rows,
+    }
+
+
+
+# ---------------------------------------------------------
+# ROUTES
+# ---------------------------------------------------------
+
+@router.get("/health")
+def analysis_health() -> dict:
+    try:
+        row = fetch_one("SELECT 1 AS ok", {})
+        return {"status": "ok", "db": row}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/band-position-wear")
+def api_band_position_wear(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    zijde: Optional[str] = Query(default=None),
+    include_history: bool = Query(default=False),
+    include_condition: bool = Query(default=True),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    if include_condition:
+        return band_position_wear_unified_overview(
+            lijn_code=normalize_code(lijn_code) if lijn_code else None,
+            band_code=normalize_code(band_code) if band_code else None,
+            scraper_type=normalize_scraper_type(scraper_type) if scraper_type else None,
+            zijde=normalize_side(zijde) if zijde else None,
+            limit=limit,
+        )
+
+    return band_position_wear_overview(
+        lijn_code=normalize_code(lijn_code) if lijn_code else None,
+        band_code=normalize_code(band_code) if band_code else None,
+        scraper_type=normalize_scraper_type(scraper_type) if scraper_type else None,
+        zijde=normalize_side(zijde) if zijde else None,
+        include_history=include_history,
+        limit=limit,
+    )
+
+@router.get("/dataset/summary")
+def get_dataset_summary(
+    lijn_code: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+):
+    return summarize_dataset_question(
+        lijn_code=normalize_code(lijn_code),
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get("/band/{band_code}/diagnose")
+def get_band_diagnose(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    include_points: bool = Query(default=False),
+    include_inspecties: bool = Query(default=False),
+    include_all_cycles: bool = Query(default=False),
+):
+    return band_diagnose(
+        band_code=band_code,
+        lijn_code=lijn_code,
+        limit=limit,
+        include_points=include_points,
+        include_inspecties=include_inspecties,
+        include_all_cycles=include_all_cycles,
+    )
+
+
+@router.get("/inspection-summary")
+def get_inspection_summary(
+    band_code: Optional[str] = Query(default=None),
+    lijn_code: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    min_meshoogte: Optional[float] = Query(default=None),
+    only_replacement: bool = Query(default=False),
+    only_opmerkingen: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=1000),
+):
+    return inspection_summary(
+        band_code=band_code.strip() if band_code else None,
+        lijn_code=normalize_code(lijn_code),
+        date_from=date_from,
+        date_to=date_to,
+        min_meshoogte=min_meshoogte,
+        only_replacement=only_replacement,
+        only_opmerkingen=only_opmerkingen,
+        limit=limit,
+    )
+
+
+@router.get("/inspections/recent")
+def get_recent_inspections(
+    limit: int = Query(default=5, ge=1, le=100),
+    include_word_docs: bool = Query(default=True),
+):
+    """
+    Toont de meest recente inspecties uit:
+    1. sb_inspections_v0 = Excel/logboek-inspecties
+    2. stg_doc_inspections = Word/PDF inspectiedocumenten
+
+    Dit endpoint is bedoeld voor PromatiGPT Actions.
+    """
+
+    excel_rows = fetch_all("""
+        SELECT
+            id,
+            inspection_key,
+            inspected_on,
+            lijn_code,
+            sheet,
+            sheet_kind,
+            performed_by,
+            row_count,
+            source_file,
+            customer_code,
+            site_code,
+            'excel_logbook' AS source_type
+        FROM sb_inspections_v0
+        WHERE inspected_on IS NOT NULL
+        ORDER BY inspected_on DESC, id DESC
+        LIMIT :limit
+    """, {"limit": limit})
+
+    word_rows = []
+    if include_word_docs:
+        word_rows = fetch_all("""
+            SELECT
+                doc_key,
+                document_date,
+                line_hint,
+                performed_by_raw,
+                supervisor,
+                title,
+                source_name,
+                match_status,
+                'word_doc_inspection' AS source_type
+            FROM stg_doc_inspections
+            WHERE document_date IS NOT NULL
+            ORDER BY document_date DESC, imported_at DESC
+            LIMIT :limit
+        """, {"limit": limit})
+
+    combined = []
+
+    for row in excel_rows:
+        combined.append({
+            "source_type": row.get("source_type"),
+            "date": row.get("inspected_on"),
+            "lijn_code": row.get("lijn_code"),
+            "title": row.get("title") if row.get("title") else row.get("sheet"),
+            "performed_by": row.get("performed_by"),
+            "row_count": row.get("row_count"),
+            "source_file": row.get("source_file"),
+            "inspection_key": row.get("inspection_key"),
+            "raw": row,
+        })
+
+    for row in word_rows:
+        combined.append({
+            "source_type": row.get("source_type"),
+            "date": row.get("document_date"),
+            "lijn_code": row.get("line_hint"),
+            "title": row.get("title"),
+            "performed_by": row.get("performed_by_raw"),
+            "supervisor": row.get("supervisor"),
+            "source_file": row.get("source_name"),
+            "match_status": row.get("match_status"),
+            "doc_key": row.get("doc_key"),
+            "raw": row,
+        })
+
+    combined = sorted(
+        combined,
+        key=lambda r: str(r.get("date") or ""),
+        reverse=True,
+    )[:limit]
+
+    return {
+        "status": "ok",
+        "context_type": "recent_inspections",
+        "limit": limit,
+        "include_word_docs": include_word_docs,
+        "excel_count": len(excel_rows),
+        "word_doc_count": len(word_rows),
+        "result_count": len(combined),
+        "recent_inspections": combined,
+        "write_actions_available": False,
+    }
+
+@router.get("/inspection/latest-v2")
+def get_latest_inspections_v2(
+    band_code: str,
+    limit: int = Query(default=10, ge=1, le=200),
+):
+    sql = """
+        SELECT
+            inspection_key,
+            document_date,
+            line_hint,
+            band_code,
+            locatie_raw,
+            scraper_type_raw,
+            band_width_mm,
+            meshoogte_mm,
+            meshoogte_code,
+            mes_vervangen,
+            competitor_hosch,
+            commentaar,
+            check_code,
+            status,
+            source_file,
+            source_system
+        FROM vw_fact_inspection_combined_v2
+        WHERE band_code = :band_code
+        ORDER BY document_date DESC
+        LIMIT :limit
+    """
+    return {
+        "band_code": band_code,
+        "rows": fetch_all(sql, {"band_code": band_code, "limit": limit}),
+    }
+
+
+@router.get("/dataset/full")
+def get_full_dataset(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    record_type: Optional[Literal["POSITION", "OBSERVATION"]] = Query(default=None),
+    data_quality_flag: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=10000),
+):
+    conditions = ["1=1"]
+    params: dict[str, Any] = {"limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = normalize_code(lijn_code)
+
+    if band_code:
+        conditions.append("band_locatie_norm = :band_code")
+        params["band_code"] = normalize_code(band_code)
+
+    if scraper_type:
+        conditions.append("scraper_type_effective_norm = :scraper_type")
+        params["scraper_type"] = normalize_scraper_type(scraper_type)
+
+    if record_type:
+        conditions.append("record_type = :record_type")
+        params["record_type"] = record_type
+
+    if data_quality_flag:
+        conditions.append("data_quality_flag = :data_quality_flag")
+        params["data_quality_flag"] = data_quality_flag
+
+    if date_from:
+        conditions.append("effective_date >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        conditions.append("effective_date <= :date_to")
+        params["date_to"] = date_to
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            inspection_key,
+            lijn_code,
+            effective_date,
+            source_file,
+            sheet,
+            row_nr,
+            record_type,
+            data_quality_flag,
+            band_locatie_norm,
+            locatie_effective,
+            scraper_type_effective_norm,
+            scraper_family,
+            scraper_material,
+            mes_num,
+            mes_code,
+            mes_interpretatie,
+            demontage,
+            reinigen,
+            vervangen,
+            montage,
+            afstellen,
+            hosch_flag,
+            opmerking_raw,
+            record_role,
+            parse_confidence
+        FROM vw_inspection_full_dataset_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC, lijn_code, inspection_key, row_nr
+        LIMIT :limit
+    """
+    return fetch_all(sql, params)
+
+
+@router.get("/word/config")
+def get_word_config_endpoint(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return summarize_word_config_question(
+        band_code=normalize_code(band_code),
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/band/{band_code}/word-config")
+def get_band_word_config_endpoint(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return summarize_word_config_question(
+        band_code=normalize_code(band_code),
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/band/{band_code}/performance-v1")
+def get_band_performance_v1(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    return summarize_band_question(
+        band_code=normalize_code(band_code),
+        lijn_code=normalize_code(lijn_code),
+        date_from=None,
+        date_to=None,
+    )
+
+
+@router.get("/band/{band_code}/analysis-v7")
+def get_band_analysis_v7(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    return band_deep_analysis(
+        band_code=normalize_code(band_code),
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/location/{locatie_code}/performance-v1")
+def get_location_performance_v1(
+    locatie_code: str,
+):
+    return summarize_location_question(
+        lijn_code=normalize_code(locatie_code),
+        date_from=None,
+        date_to=None,
+    )
+
+
+@router.get("/scraper/{scraper_type}/performance-v1")
+def get_scraper_performance_v1(
+    scraper_type: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    return summarize_scraper_question(
+        scraper_type=normalize_scraper_type(scraper_type),
+        lijn_code=normalize_code(lijn_code),
+    )
+
+
+@router.get("/mes/latest")
+def get_meshoogte_latest(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return latest_meshoogte(
+        lijn_code=normalize_code(lijn_code),
+        band_code=normalize_code(band_code),
+        scraper_type=extract_scraper_type("", scraper_type),
+        limit=limit,
+    )
+
+
+@router.get("/mes/current-band-scrapers")
+def get_current_band_scrapers(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return current_band_scrapers(
+        lijn_code=normalize_code(lijn_code),
+        band_code=normalize_code(band_code),
+        scraper_type=extract_scraper_type("", scraper_type),
+        limit=limit,
+    )
+
+
+@router.get("/mes/lifecycle")
+def get_mes_lifecycle(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=500),
+):
+    return lifecycle_analysis(
+        lijn_code=normalize_code(lijn_code),
+        band_code=normalize_code(band_code),
+        scraper_type=extract_scraper_type("", scraper_type),
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+
+
+@router.get("/mes/forecast-3mm")
+def get_mes_forecast_3mm(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return forecast_3mm(
+        lijn_code=normalize_code(lijn_code),
+        band_code=normalize_code(band_code),
+        scraper_type=extract_scraper_type("", scraper_type),
+        limit=limit,
+    )
+
+
+@router.get("/replacement/advice")
+def get_replacement_advice(
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return replacement_advice(
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/maintenance/positions")
+def get_maintenance_positions(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return maintenance_positions(
+        lijn_code=normalize_code(lijn_code),
+        band_code=normalize_code(band_code),
+        limit=limit,
+    )
+
+
+@router.get("/maintenance/planning")
+def get_maintenance_planning(
+    limit: int = Query(default=20, ge=1, le=200),
+):
+    return maintenance_planning(limit=limit)
+
+
+@router.get("/maintenance/blade-summary")
+def get_maintenance_blade_summary(
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=5000),
+):
+    return maintenance_blade_summary(
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/monteurs/performance")
+def get_monteur_performance(
+    monteur: Optional[str] = Query(default=None),
+    lijn_code: Optional[str] = Query(default=None),
+    min_inspecties: int = Query(default=3, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    return monteur_performance_v4(
+        monteur=normalize_person_name(monteur),
+        lijn_code=normalize_code(lijn_code),
+        min_inspecties=min_inspecties,
+        limit=limit,
+    )
+
+
+@router.get("/monteurs/{monteur}/findings")
+def get_monteur_findings(
+    monteur: str,
+    lijn_code: Optional[str] = Query(default=None),
+    only_problems: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=1000),
+):
+    return monteur_findings_v4(
+        monteur=normalize_person_name(monteur) or monteur,
+        lijn_code=normalize_code(lijn_code),
+        only_problems=only_problems,
+        limit=limit,
+    )
+
+
+@router.get("/monteurs/{monteur}/top-problemen")
+def get_monteur_top_problemen(
+    monteur: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    return monteur_top_problemen_v4(
+        monteur=normalize_person_name(monteur) or monteur,
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+    )
+
+
+@router.get("/banden/scraper-status")
+def get_band_scraper_status(
+    lijn_code: Optional[str] = Query(default=None),
+    band_code: Optional[str] = Query(default=None),
+    scraper_status: Optional[str] = Query(default=None),
+    only_without_scrapers: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0, le=1000000),
+):
+    return band_scraper_status(
+        lijn_code=normalize_code(lijn_code),
+        band_code=band_code,
+        scraper_status=scraper_status,
+        only_without_scrapers=only_without_scrapers,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/banden/{band_code}/scrapers")
+def get_band_scrapers(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    only_active: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0, le=1000000),
+):
+    return band_scraper_details(
+        band_code=band_code,
+        lijn_code=normalize_code(lijn_code),
+        only_active=only_active,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/lijnen/{lijn_code}/bands")
+def get_line_band_scrapers(
+    lijn_code: str,
+    limit: int = Query(default=100, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0, le=1000000),
+):
+    return line_band_scraper_summary(
+        lijn_code=normalize_code(lijn_code),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/band/{band_code}/scraper-analysis")
+def get_scraper_position_analysis(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    scraper_type: Optional[str] = Query(default=None),
+    position_hint: Optional[str] = Query(default=None),
+    include_points: bool = Query(default=False),
+    include_inspecties: bool = Query(default=False),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
+):
+    return scraper_position_analysis(
+        band_code=band_code,
+        lijn_code=lijn_code,
+        scraper_type=scraper_type,
+        position_hint=position_hint,
+        include_points=include_points,
+        include_inspecties=include_inspecties,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+
+def _analysis_assistant_ask_impl(payload: AssistantAskRequest):
+    vraag = (payload.vraag or "").strip()
+    if not vraag:
+        raise HTTPException(status_code=400, detail="vraag is verplicht")
+
+    lijn_code = extract_lijn_code(vraag, payload.lijn_code)
+    band_code = payload.band_code.strip() if payload.band_code else extract_band_code(vraag)
+    scraper_type = extract_scraper_type(vraag, payload.scraper_type)
+    zijde = extract_side(vraag, payload.zijde)
+    intent = detect_intent(vraag, band_code, lijn_code, scraper_type)
+    limit = max(1, min(payload.limit, 5000))
+
+    q_lc = vraag.lower()
+
+    graph_terms = [
+        "grafiek",
+        "grafiektabel",
+        "grafiekpunten",
+        "meshoogtetabel",
+        "meshoogte tabel",
+        "slijtagegrafiek",
+        "trendgrafiek",
+    ]
+
+    if band_code and any(term in q_lc for term in graph_terms):
+        # Belangrijk:
+        # Gebruik alleen expliciet opgegeven scraper_type.
+        # Niet het automatisch uit de vraag gedetecteerde scraper_type,
+        # want woorden zoals "per" kunnen als scraper_type "PER" worden gelezen.
+        graph_scraper_type = (
+            normalize_scraper_type_canonical(payload.scraper_type)
+            if payload.scraper_type
+            else None
+        )
+
+        graph_points = scraper_graph_points_unified(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=graph_scraper_type,
+            position_hint=None,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            limit=limit,
+        )
+
+        counts: dict[str, int] = {}
+        for row in graph_points:
+            key = row.get("grafiek_type") or "ONBEKEND"
+            counts[key] = counts.get(key, 0) + 1
+
+        latest_points = sorted(
+            graph_points,
+            key=lambda r: (
+                str(r.get("datum") or ""),
+                str(r.get("band_norm") or ""),
+                str(r.get("position_hint") or ""),
+                str(r.get("scraper_type_norm") or ""),
+                str(r.get("grafiek_type") or ""),
+            ),
+            reverse=True,
+        )[:20]
+
+        return {
+            "intent": "scraper_graph_points_unified",
+            "entities": {
+                "lijn_code": lijn_code,
+                "band_code": band_code,
+                "scraper_type": graph_scraper_type,
+                "date_from": payload.date_from,
+                "date_to": payload.date_to,
+            },
+            "kort_resultaat": (
+                f"{len(graph_points)} grafiekpunten gevonden voor band {band_code}."
+                if graph_points
+                else f"Geen grafiekpunten gevonden voor band {band_code}."
+            ),
+            "aantal_grafiekpunten": len(graph_points),
+            "aantallen_per_grafiek_type": counts,
+            "laatste_grafiekpunten": latest_points,
+            "grafiekpunten_unified": graph_points,
+        }
+
+    deep_analysis_terms = [
+        "diepe analyse",
+        "diepe onderhoud",
+        "diepe inspectie",
+        "deep analysis",
+        "onderhouds- en inspectieanalyse",
+        "combineer actuele meshoogtes",
+        "combineer stand",
+        "combineer trend",
+        "volledige analyse",
+        "uitgebreide analyse",
+    ]
+
+    if band_code and any(term in q_lc for term in deep_analysis_terms):
+        return band_deep_analysis(
+            band_code=band_code,
+            lijn_code=lijn_code,
+            limit=limit,
+        )
+
+    # Onderhoudsplanning is geen positie- of scrapertype-vraag.
+    # Voorkomt false positives zoals scraper_type='HOOGSTE PRIORITEIT'
+    # en zijde='ONDER' uit het woord 'onderhoudsplanning'.
+    if intent == "maintenance_positions":
+        scraper_type = None
+        zijde = None
+
+
+    # Voor band/positie/slijtageoverzicht mag de API geen scrapertype
+    # automatisch uit vrije tekst afleiden.
+    # Alleen een expliciet meegegeven payload.scraper_type blijft geldig.
+    if intent == "band_position_wear_overview" and not payload.scraper_type:
+        scraper_type = None
+
+    if intent == "band_position_wear_overview":
+        return band_position_wear_unified_overview(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=scraper_type,
+            zijde=zijde,
+            limit=limit,
+        )
+
+    if intent == "crm_monthly_overview":
+        year_match = re.search(r"(20\d{2})", vraag.lower())
+        year = int(year_match.group(1)) if year_match else 2026
+        return crm_monthly_overview(year=year)
+
+    if intent == "crm_pipeline":
+        return crm_pipeline_quality(limit=limit)
+
+    if intent == "current_band_scrapers":
+        # Voor natuurlijke vragen zoals "wat zit er nu op band R5?"
+        # géén automatisch geëxtraheerd scraper_type gebruiken.
+        # Anders kan "op" foutief als P-schraper worden gezien.
+        explicit_scraper_type = (
+            normalize_scraper_type_canonical(payload.scraper_type)
+            if payload.scraper_type
+            else None
+        )
+
+        return current_band_scrapers(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=explicit_scraper_type,
+            limit=limit,
+        )
+
+    if band_code and any(
+        w in vraag.lower()
+        for w in [
+            "diagnose",
+            "wat is er mis",
+            "wat is er aan de hand",
+            "slijt",
+            "slijtage",
+            "verklaar",
+            "waarom",
+            "probleem",
+            "problemen",
+            "instabiel",
+        ]
+    ):
+        return band_diagnose(
+            band_code=band_code,
+            lijn_code=lijn_code,
+            limit=limit,
+            include_points=False,
+            include_inspecties=True,
+            include_all_cycles=False,
+        )
+
+    if intent == "band_scrapers":
+        return band_scraper_status(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_status=None,
+            only_without_scrapers=False,
+            limit=limit,
+        )
+
+    if intent == "monteur":
+        return monteur_performance_v4(
+            monteur=None,
+            lijn_code=lijn_code,
+            min_inspecties=3,
+            limit=limit,
+        )
+
+    if intent == "word_config":
+        return summarize_word_config_question(
+            band_code=band_code,
+            lijn_code=lijn_code,
+            limit=limit,
+        )
+
+    if intent == "maintenance_positions":
+        q_low = vraag.lower()
+
+        historical_terms = [
+            "historisch",
+            "historische",
+            "historiek",
+            "historical",
+            "historisch gewogen",
+        ]
+
+        if any(term in q_low for term in historical_terms):
+            return maintenance_positions_historical(
+                lijn_code=lijn_code,
+                band_code=band_code,
+                limit=limit,
+            )
+
+        return maintenance_positions(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            limit=limit,
+        )
+
+    if intent == "forecast":
+        return forecast_3mm(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=scraper_type,
+            limit=limit,
+        )
+
+    if intent == "replacement":
+        return replacement_advice(
+            lijn_code=lijn_code,
+            limit=limit,
+        )
+
+    if intent == "latest_mes":
+        return latest_meshoogte(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=scraper_type,
+            limit=limit,
+        )
+
+    if intent in {"lifecycle", "band_lifecycle", "scraper_lifecycle"}:
+        return lifecycle_analysis(
+            lijn_code=lijn_code,
+            band_code=band_code,
+            scraper_type=scraper_type,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            limit=limit,
+        )
+
+    if intent == "inspection_summary":
+        only_replacement = "vervang" in vraag.lower()
+        only_opmerkingen = "opmerking" in vraag.lower() or "comment" in vraag.lower()
+
+        min_meshoogte = None
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*mm", vraag.lower())
+        if m:
+            min_meshoogte = float(m.group(1).replace(",", "."))
+
+        return inspection_summary(
+            band_code=band_code,
+            lijn_code=lijn_code,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            min_meshoogte=min_meshoogte,
+            only_replacement=only_replacement,
+            only_opmerkingen=only_opmerkingen,
+            limit=limit,
+            installation_code=payload.installation_code,
+        )
+
+    if intent == "band" and band_code:
+        return band_deep_analysis(
+            band_code=band_code,
+            lijn_code=lijn_code,
+            limit=limit,
+        )
+
+    if intent == "scraper" and scraper_type:
+        return summarize_scraper_question(
+            scraper_type=scraper_type,
+            lijn_code=lijn_code,
+        )
+
+    if intent == "location" and lijn_code:
+        return summarize_location_question(
+            lijn_code=lijn_code,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+        )
+
+    return summarize_dataset_question(
+        lijn_code=lijn_code,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+    )
+
+
+@router.post("/assistant/ask")
+def analysis_assistant_ask(payload: AssistantAskRequest):
+    """
+    Dunne asset-resolution wrapper.
+
+    De bestaande analysis-logica blijft in
+    _analysis_assistant_ask_impl volledig ongemoeid.
+    """
+
+    vraag = (payload.vraag or "").strip()
+
+    # Bestaande validatiegedrag behouden.
+    if not vraag:
+        return _analysis_assistant_ask_impl(payload)
+
+    structured_scope_code = (
+        payload.scope_code
+        or payload.installation_code
+        or payload.area_code
+    )
+
+    # Canonical area/installatie zonder band:
+    # gebruik de nieuwe bounded, read-only scope analysis service.
+    if structured_scope_code and not payload.band_code:
+        return analyze_scope_question(
+            question=vraag,
+            scope_code=structured_scope_code,
+            scope_type=payload.scope_type,
+
+            # PROMATI_SCOPE_SCRAPER_FAMILY_FILTER_V1
+            scraper_family=payload.scraper_family,
+
+            limit=payload.limit,
+        )
+
+    # Alleen voor resolver-detectie behandelen we een koppelteken
+    # als scheidingsteken. Hierdoor werken o.a. R-5 en E-401
+    # zonder bestaande extractors globaal te wijzigen.
+    resolver_vraag = vraag.replace("-", " ")
+
+    lijn_hint = extract_lijn_code(
+        resolver_vraag,
+        payload.lijn_code,
+    )
+
+    # Voor band + canonical scope gebruiken we de scope alleen
+    # voor asset-validatie, niet als legacy lijn_code-filter.
+    if structured_scope_code:
+        lijn_hint = structured_scope_code
+
+    band_hint = (
+        payload.band_code.strip()
+        if payload.band_code
+        else extract_band_code(resolver_vraag)
+    )
+
+    # Geen band gedetecteerd:
+    # exact de bestaande analysis-flow gebruiken.
+    if not band_hint:
+        return _analysis_assistant_ask_impl(payload)
+
+    try:
+        resolution = resolve_asset(
+            band_code=band_hint,
+        )
+    except Exception:
+        # Resolver mag de bestaande analysis-API niet uitschakelen.
+        result = _analysis_assistant_ask_impl(payload)
+
+        if isinstance(result, dict):
+            result = dict(result)
+            result.setdefault("asset_context", None)
+            result["asset_resolution"] = {
+                "status": "unavailable",
+                "match_count": 0,
+            }
+
+        return result
+
+    status = resolution.get("status")
+
+    # Bij toekomstige dubbele bandcodes proberen we eerst
+    # installatie OF gebied als context te gebruiken.
+    if status == "ambiguous" and lijn_hint:
+        hint_norm = normalize_asset_code(lijn_hint)
+
+        narrowed = []
+
+        for candidate in resolution.get("candidates", []):
+            candidate_installation = normalize_asset_code(
+                candidate.get("installation_code")
+            )
+            candidate_area = normalize_asset_code(
+                candidate.get("area_code")
+            )
+
+            if hint_norm in {
+                candidate_installation,
+                candidate_area,
+            }:
+                narrowed.append(candidate)
+
+        if len(narrowed) == 1:
+            resolution = {
+                **resolution,
+                "status": "resolved",
+                "match_count": 1,
+                "asset_context": narrowed[0],
+                "candidates": [],
+            }
+            status = "resolved"
+
+        elif len(narrowed) > 1:
+            resolution = {
+                **resolution,
+                "match_count": len(narrowed),
+                "candidates": narrowed,
+            }
+
+    if status == "ambiguous":
+        return {
+            "intent": "asset_clarification",
+            "status": "clarification_required",
+            "message": (
+                "Meerdere assets passen bij deze bandcode. "
+                "Geef installatie of gebied op."
+            ),
+            "entities": {
+                "lijn_code": lijn_hint,
+                "band_code": band_hint,
+            },
+            "asset_resolution": {
+                "status": "ambiguous",
+                "match_count": resolution.get(
+                    "match_count",
+                    0,
+                ),
+            },
+            "asset_context": None,
+            "candidates": resolution.get(
+                "candidates",
+                [],
+            ),
+        }
+
+    if status == "resolved":
+        context = resolution.get("asset_context") or {}
+
+        canonical_installation = context.get(
+            "installation_code"
+        )
+        canonical_band = context.get(
+            "band_code_norm"
+        )
+
+        # Een lijnhint mag zowel de installatie als het gebied zijn.
+        # Bijvoorbeeld:
+        # R5 + MV1 -> geldig
+        # R5 + GSL -> geldig
+        # R5 + MV2 -> conflict
+        if lijn_hint:
+            hint_norm = normalize_asset_code(lijn_hint)
+
+            allowed_context = {
+                normalize_asset_code(
+                    context.get("installation_code")
+                ),
+                normalize_asset_code(
+                    context.get("area_code")
+                ),
+            }
+
+            allowed_context.discard(None)
+
+            if (
+                hint_norm
+                and allowed_context
+                and hint_norm not in allowed_context
+            ):
+                return {
+                    "intent": "asset_clarification",
+                    "status": "clarification_required",
+                    "message": (
+                        "De opgegeven installatie of het gebied "
+                        "komt niet overeen met de gevonden band."
+                    ),
+                    "entities": {
+                        "lijn_code": lijn_hint,
+                        "band_code": band_hint,
+                    },
+                    "asset_resolution": {
+                        "status": "context_conflict",
+                        "match_count": 1,
+                    },
+                    "asset_context": context,
+                    "candidates": [context],
+                }
+
+        canonical_payload = payload.model_copy(
+            update={
+                # Canonical installation is NIET automatisch
+                # hetzelfde als de legacy analysis lijn_code.
+                # Bij een unieke canonical band is band_code
+                # voldoende; alleen expliciet meegegeven legacy
+                # lijn_code blijft als filter behouden.
+                "lijn_code": payload.lijn_code,
+                "band_code": canonical_band,
+                "installation_code": (
+                    payload.installation_code
+                    or canonical_installation
+                ),
+                "scope_code": (
+                    payload.scope_code
+                    or canonical_installation
+                ),
+                "scope_type": (
+                    payload.scope_type
+                    or "installation"
+                ),
+            }
+        )
+
+        result = _analysis_assistant_ask_impl(
+            canonical_payload
+        )
+
+        if isinstance(result, dict):
+            result = dict(result)
+
+            result["asset_context"] = context
+            result["asset_resolution"] = {
+                "status": "resolved",
+                "match_count": 1,
+                "normalized_band_code": (
+                    resolution.get(
+                        "normalized_band_code"
+                    )
+                ),
+                "normalized_installation_code": (
+                    normalize_asset_code(
+                        canonical_installation
+                    )
+                ),
+            }
+
+        return result
+
+    # not_found:
+    # voorlopig backward compatible blijven.
+    # Historische/legacy bandcodes mogen dus nog door de
+    # bestaande analysis-logica worden afgehandeld.
+    result = _analysis_assistant_ask_impl(payload)
+
+    if isinstance(result, dict):
+        result = dict(result)
+        result.setdefault("asset_context", None)
+        result["asset_resolution"] = {
+            "status": "not_found",
+            "match_count": 0,
+            "normalized_band_code": (
+                resolution.get(
+                    "normalized_band_code"
+                )
+            ),
+        }
+
+    return result
+
+
+@router.get("/crm/monthly-overview")
+def get_crm_monthly_overview(
+    year: int = Query(default=2026, ge=2000, le=2100),
+):
+    return crm_monthly_overview(year=year)
+
+
+@router.get("/crm/pipeline-quality")
+def get_crm_pipeline_quality(
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    return crm_pipeline_quality(limit=limit)
+
+
+@router.get("/band/{band_code}/deep-analysis")
+def get_band_deep_analysis(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return band_deep_analysis(
+        band_code=band_code,
+        lijn_code=lijn_code,
+        limit=limit,
+    )

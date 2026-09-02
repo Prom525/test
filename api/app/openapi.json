@@ -1,0 +1,10 @@
+app = FastAPI(
+    title="Promati AI Platform",
+    version="10.0.1",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    servers=[
+        {"url": "https://uninveighing-nguyet-hilly.ngrok-free.dev"}
+    ],
+)
