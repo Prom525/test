@@ -604,6 +604,10 @@ INTENT_REQUIREMENT_ALIASES = MappingProxyType(
         # controlled PRODUCT_RECORD evidence as product_lookup.
         "product_selection": "product_lookup",
         "advantages_disadvantages": "product_lookup",
+
+        # PROMATI_PRICE_STOCK_REQUIREMENT_ALIASES_P4_5B5
+        "inventory_lookup": "price_stock",
+        "price_lookup": "price_stock",
     }
 )
 

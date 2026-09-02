@@ -35,7 +35,7 @@ from app.orchestrator.research_agent import (
 
 # PROMATI_PRODUCT_FAMILY_EVIDENCE_P4_5B4
 PRODUCT_FAMILY_EVIDENCE_CONTRACT_VERSION = (
-    "promati.orchestrator.product_family_evidence.v1"
+    "promati.orchestrator.product_family_evidence.v2"
 )
 
 PRODUCT_LOOKUP_REQUIREMENT_SET_ID = (
@@ -127,170 +127,90 @@ def _product_requirement_row(
 
 def assess_product_family_coverage(
     requirement_set: EvidenceRequirementSet,
-    evidence_items: tuple[
-        EvidenceItem,
-        ...,
-    ],
+    evidence_items: tuple[EvidenceItem, ...],
     plan: Any,
     *,
     now: datetime,
 ) -> dict[str, Any]:
-    """
-    Assess PRODUCT_RECORD independently for each explicit
-    product family.
-
-    Existing assess_evidence() remains authoritative.
-    No widening of target_entity_ids is needed.
-    """
-
-    family_codes = (
-        _ordered_family_codes(
-            plan
-        )
-    )
-
+    """Assess every required product requirement for every explicit family."""
+    family_codes = _ordered_family_codes(plan)
     requirement_set_id = str(
-        getattr(
-            requirement_set,
-            "requirement_set_id",
-            "",
-        )
-        or ""
+        getattr(requirement_set, "requirement_set_id", "") or ""
     )
-
-    applicable = (
-        requirement_set_id
-        == PRODUCT_LOOKUP_REQUIREMENT_SET_ID
-        and len(family_codes) >= 2
-    )
-
+    required_ids_by_set = {
+        "product_lookup.v1": ("PRODUCT_RECORD",),
+        "price_stock.v1": ("CURRENT_PRICE", "CURRENT_STOCK"),
+    }
+    required_ids = required_ids_by_set.get(requirement_set_id, ())
+    applicable = bool(required_ids) and len(family_codes) >= 2
     if not applicable:
         return {
-            "contract_version":
-                PRODUCT_FAMILY_EVIDENCE_CONTRACT_VERSION,
-            "applicable":
-                False,
-            "family_codes":
-                list(family_codes),
-            "families":
-                [],
-            "missing_family_codes":
-                [],
-            "all_satisfied":
-                None,
+            "contract_version": PRODUCT_FAMILY_EVIDENCE_CONTRACT_VERSION,
+            "applicable": False,
+            "requirement_set_id": requirement_set_id,
+            "required_requirement_ids": list(required_ids),
+            "family_codes": list(family_codes),
+            "families": [],
+            "missing_family_codes": [],
+            "all_satisfied": None,
         }
 
-    rows: list[
-        dict[str, Any]
-    ] = []
-
-    missing: list[str] = []
-
+    rows = []
+    missing = []
     for family_code in family_codes:
-
         assessment = assess_evidence(
             requirement_set,
-            tuple(
-                evidence_items
-            ),
-            target_entity_ids={
-                "product":
-                    family_code,
-            },
+            tuple(evidence_items),
+            target_entity_ids={"product": family_code},
             now=now,
         )
-
-        requirement_row = (
-            _product_requirement_row(
-                assessment
-            )
-        )
-
-        status = (
-            getattr(
-                requirement_row,
-                "status",
-                None,
-            )
-            if requirement_row
-            is not None
-            else None
-        )
-
-        status_value = _value(
-            status
-        ).lower()
-
-        satisfied = (
-            status_value
-            == (
-                RequirementAssessmentStatus
-                .SATISFIED
-                .value
-            )
-        )
-
-        if not satisfied:
-            missing.append(
-                family_code
-            )
-
-        rows.append(
-            {
-                "family_code":
-                    family_code,
-
-                "status":
-                    (
-                        status_value
-                        or "missing"
-                    ),
-
-                "satisfied":
-                    satisfied,
-
-                "matched_evidence_ids":
-                    list(
-                        getattr(
-                            requirement_row,
-                            "matched_evidence_ids",
-                            (),
-                        )
-                        or ()
-                    ),
-
-                "reasons":
-                    list(
-                        getattr(
-                            requirement_row,
-                            "reasons",
-                            (),
-                        )
-                        or ()
-                    ),
-            }
-        )
-
+        by_id = {
+            str(getattr(item, "requirement_id", "")): item
+            for item in (getattr(assessment, "requirement_results", None) or ())
+        }
+        requirement_rows = []
+        family_satisfied = True
+        for requirement_id in required_ids:
+            item = by_id.get(requirement_id)
+            status_value = _value(getattr(item, "status", None)).lower()
+            satisfied = status_value == RequirementAssessmentStatus.SATISFIED.value
+            family_satisfied = family_satisfied and satisfied
+            requirement_rows.append({
+                "requirement_id": requirement_id,
+                "status": status_value or "missing",
+                "satisfied": satisfied,
+                "matched_evidence_ids": list(
+                    getattr(item, "matched_evidence_ids", ()) or ()
+                ),
+                "reasons": list(getattr(item, "reasons", ()) or ()),
+            })
+        if not family_satisfied:
+            missing.append(family_code)
+        rows.append({
+            "family_code": family_code,
+            "status": "satisfied" if family_satisfied else "missing",
+            "satisfied": family_satisfied,
+            "requirements": requirement_rows,
+            "matched_evidence_ids": sorted({
+                evidence_id
+                for row in requirement_rows
+                for evidence_id in row["matched_evidence_ids"]
+            }),
+            "reasons": sorted({
+                reason
+                for row in requirement_rows
+                for reason in row["reasons"]
+            }),
+        })
     return {
-        "contract_version":
-            PRODUCT_FAMILY_EVIDENCE_CONTRACT_VERSION,
-
-        "applicable":
-            True,
-
-        "family_codes":
-            list(
-                family_codes
-            ),
-
-        "families":
-            rows,
-
-        "missing_family_codes":
-            missing,
-
-        "all_satisfied":
-            not missing,
+        "contract_version": PRODUCT_FAMILY_EVIDENCE_CONTRACT_VERSION,
+        "applicable": True,
+        "requirement_set_id": requirement_set_id,
+        "required_requirement_ids": list(required_ids),
+        "family_codes": list(family_codes),
+        "families": rows,
+        "missing_family_codes": missing,
+        "all_satisfied": not missing,
     }
 
 

@@ -395,6 +395,129 @@ def _product_knowledge_evidence(
     return tuple(evidence_items)
 
 
+
+# PROMATI_PRODUCT_PRICE_STOCK_EVIDENCE_P4_5B5
+def _product_price_stock_evidence(
+    execution_result: ExecutionResult,
+    *,
+    retrieved_at: datetime,
+) -> tuple[EvidenceItem, ...]:
+    """Normalize only explicit live config_options price/stock fields."""
+    raw_result = execution_result.result
+    if not isinstance(raw_result, dict):
+        return ()
+    if (_nonempty_string(raw_result.get("status")) or "").casefold() != "ok":
+        return ()
+
+    family_code = _nonempty_string(raw_result.get("detected_family_code"))
+    config = raw_result.get("config_options")
+    if family_code is None or not isinstance(config, dict):
+        return ()
+    rows = config.get("results")
+    if not isinstance(rows, list):
+        return ()
+
+    source_name = _nonempty_string(config.get("source_view")) or "config_options"
+    output: list[EvidenceItem] = []
+    for index, raw_row in enumerate(rows):
+        if not isinstance(raw_row, dict):
+            continue
+        row = copy.deepcopy(raw_row)
+        internal_ref = _nonempty_string(row.get("internal_ref"))
+        label = _nonempty_string(row.get("product_name")) or internal_ref or family_code
+        source_reference = f"{source_name}:{internal_ref or family_code}"
+        base_provenance = {
+            "family_code": family_code,
+            "internal_ref": internal_ref,
+            "source_view": source_name,
+        }
+
+        sale_price = row.get("sale_price")
+        if isinstance(sale_price, (int, float)) and not isinstance(sale_price, bool):
+            price_record = {
+                "family_code": family_code,
+                "internal_ref": internal_ref,
+                "product_name": label,
+                "sale_price": sale_price,
+                "currency": row.get("currency"),
+            }
+            output.append(EvidenceItem(
+                contract_version=EVIDENCE_CONTRACT_VERSION,
+                evidence_id=_stable_evidence_id(
+                    execution_result=execution_result,
+                    record={"kind": "current_price", "record": price_record},
+                    index=index * 2,
+                ),
+                execution_step_id=execution_result.step_id,
+                specialist_id=execution_result.action,
+                domain=execution_result.domain,
+                subject=f"{family_code} {label} actuele prijs",
+                entity_type="product",
+                entity_id=family_code,
+                evidence_type=EvidenceType.RECORD,
+                source_type=EvidenceSourceType.LIVE_CANONICAL,
+                source_name=source_name,
+                source_reference=source_reference,
+                source_priority=None,
+                observed_at=retrieved_at,
+                retrieved_at=retrieved_at,
+                effective_at=retrieved_at,
+                value=price_record,
+                unit=_nonempty_string(row.get("currency")),
+                claim_scope=("CURRENT_PRICE",),
+                freshness_status=EvidenceFreshnessStatus.CURRENT,
+                grounding_status=EvidenceGroundingStatus.GROUNDED,
+                quality_status=EvidenceQualityStatus.VALID,
+                direct_or_derived=EvidenceDirectness.DIRECT,
+                derivation_reference=None,
+                provenance={**base_provenance, "evidence_kind": "CURRENT_PRICE"},
+            ))
+
+        available_qty = row.get("available_qty")
+        if isinstance(available_qty, (int, float)) and not isinstance(available_qty, bool):
+            stock_record = {
+                "family_code": family_code,
+                "internal_ref": internal_ref,
+                "product_name": label,
+                "available_qty": available_qty,
+                "expected_qty": row.get("expected_qty"),
+                "uom": row.get("uom"),
+            }
+            output.append(EvidenceItem(
+                contract_version=EVIDENCE_CONTRACT_VERSION,
+                evidence_id=_stable_evidence_id(
+                    execution_result=execution_result,
+                    record={"kind": "current_stock", "record": stock_record},
+                    index=index * 2 + 1,
+                ),
+                execution_step_id=execution_result.step_id,
+                specialist_id=execution_result.action,
+                domain=execution_result.domain,
+                subject=f"{family_code} {label} actuele voorraad",
+                entity_type="product",
+                entity_id=family_code,
+                evidence_type=EvidenceType.STATUS,
+                source_type=EvidenceSourceType.LIVE_CANONICAL,
+                source_name=source_name,
+                source_reference=source_reference,
+                source_priority=None,
+                observed_at=retrieved_at,
+                retrieved_at=retrieved_at,
+                effective_at=retrieved_at,
+                value=stock_record,
+                unit=_nonempty_string(row.get("uom")),
+                claim_scope=("CURRENT_STOCK",),
+                freshness_status=EvidenceFreshnessStatus.CURRENT,
+                grounding_status=EvidenceGroundingStatus.GROUNDED,
+                quality_status=EvidenceQualityStatus.VALID,
+                direct_or_derived=EvidenceDirectness.DIRECT,
+                derivation_reference=None,
+                provenance={**base_provenance, "evidence_kind": "CURRENT_STOCK"},
+            ))
+
+    return tuple(output)
+
+
 def _product_article_evidence(
     execution_result: ExecutionResult,
     *,
@@ -4584,6 +4707,10 @@ def normalize_execution_result_evidence(
                 retrieved_at=retrieved_at,
             )
             + _product_article_evidence(
+                execution_result,
+                retrieved_at=retrieved_at,
+            )
+            + _product_price_stock_evidence(
                 execution_result,
                 retrieved_at=retrieved_at,
             )

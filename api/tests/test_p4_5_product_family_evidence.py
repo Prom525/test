@@ -84,20 +84,11 @@ def test_advantages_maps_to_product_record_requirement():
     )
 
 
-def test_price_and_inventory_are_deliberately_not_changed_in_b4():
-    assert (
-        get_requirement_set(
-            "inventory_lookup"
-        )
-        is None
-    )
-
-    assert (
-        get_requirement_set(
-            "price_lookup"
-        )
-        is None
-    )
+def test_price_and_inventory_advance_to_price_stock_in_b5():
+    for intent in ("inventory_lookup", "price_lookup"):
+        requirement_set = get_requirement_set(intent)
+        assert requirement_set is not None
+        assert requirement_set.requirement_set_id == "price_stock.v1"
 
 
 def test_family_coverage_assesses_each_family_independently(
