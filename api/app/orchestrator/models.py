@@ -63,6 +63,36 @@ class ExecutionBlocker(BaseModel):
     candidate_value: Any = None
     reason: str = "entity_grounding_unresolved"
 
+class IntentTask(BaseModel):
+    """Additive shadow contract for one semantic task inside a compound query.
+
+    V1 is deliberately non-executable: planner, executor and evidence pipeline
+    continue to use the legacy QueryPlan fields until later activation steps.
+    """
+
+    task_id: str
+    domain: Domain
+    intent: str
+
+    requested_information: list[str] = Field(
+        default_factory=list
+    )
+
+    scope: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    primary: bool = False
+
+    # PROMATI_MULTI_INTENT_TASK_EVIDENCE_REQUIREMENT_SHADOW_V3
+    # Additive metadata only. Runtime Phase C still resolves and executes the
+    # legacy QueryPlan.intent requirement set until a later activation step.
+    evidence_requirement_set_id: str | None = None
+
+    source: str = "deterministic_domain_shadow_v1"
+
+
+# PROMATI_MULTI_INTENT_TASK_SHADOW_V1
 class QueryPlan(BaseModel):
     original_question: str
     normalized_question: str
@@ -76,6 +106,11 @@ class QueryPlan(BaseModel):
     )
 
     intent: str = "unknown"
+
+    # Additive only: not consumed by planner/executor/evidence in V1.
+    intent_tasks: list[IntentTask] = Field(
+        default_factory=list
+    )
 
     entities: dict[str, DetectedEntity] = Field(
         default_factory=dict

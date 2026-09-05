@@ -162,6 +162,23 @@ class ResearchToolCall:
         }
 
 
+# PROMATI_TASK_RESEARCH_CALL_GUARD_V7
+@dataclass(frozen=True)
+class ResearchCallGuard:
+    allowed_action: str
+    pinned_params: dict[str, Any] = field(default_factory=dict)
+    target_requirement_ids: tuple[str, ...] = field(default_factory=tuple)
+    max_follow_up_calls: int = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "allowed_action": self.allowed_action,
+            "pinned_params": dict(self.pinned_params),
+            "target_requirement_ids": list(self.target_requirement_ids),
+            "max_follow_up_calls": self.max_follow_up_calls,
+        }
+
+
 @dataclass(frozen=True)
 class ResearchPlannerDecision:
     status: str
@@ -681,7 +698,113 @@ def _validate_analysis_scope_params(
 
     return clean
 
-def _validate_call(raw_call: Any) -> ResearchToolCall:
+
+def normalize_research_call_guard(
+    guard: ResearchCallGuard,
+) -> ResearchCallGuard:
+    if not isinstance(guard, ResearchCallGuard):
+        raise ValueError("task research call guard heeft een ongeldig type.")
+
+    allowed_action = str(guard.allowed_action or "").strip()
+    if allowed_action not in ALLOWED_RESEARCH_ACTIONS:
+        raise ValueError(
+            "task research call guard bevat een niet-toegestane action: "
+            + (allowed_action or "[leeg]")
+        )
+
+    try:
+        max_follow_up_calls = int(guard.max_follow_up_calls)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "task research call guard max_follow_up_calls moet een geheel getal zijn."
+        ) from exc
+    if not 1 <= max_follow_up_calls <= MAX_FOLLOW_UP_CALLS_PER_ROUND:
+        raise ValueError(
+            "task research call guard max_follow_up_calls valt buiten de toegestane range."
+        )
+
+    raw_pinned = guard.pinned_params
+    if not isinstance(raw_pinned, dict):
+        raise ValueError("task research call guard pinned_params moet een object zijn.")
+
+    allowed_params = ALLOWED_RESEARCH_ACTIONS[allowed_action]
+    pinned_params: dict[str, Any] = {}
+    for raw_key, value in raw_pinned.items():
+        key = str(raw_key)
+        if key == "vraag":
+            raise ValueError(
+                "task research call guard mag de modelvraag niet als scopeparameter pinnen."
+            )
+        if key not in allowed_params:
+            raise ValueError(
+                f"task research call guard parameter niet toegestaan voor {allowed_action}: {key}"
+            )
+        if _is_sensitive_key(key):
+            raise ValueError(
+                f"Gevoelige task research call guard parameter geblokkeerd: {key}"
+            )
+        pinned_params[key] = _validate_scalar_param(
+            allowed_action,
+            key,
+            value,
+        )
+
+    if allowed_action == "analysis_assistant":
+        pinned_params = _validate_analysis_scope_params(pinned_params)
+
+    target_requirement_ids = tuple(
+        sorted(
+            {
+                str(item).strip()
+                for item in tuple(guard.target_requirement_ids or ())
+                if str(item).strip()
+            }
+        )
+    )
+    if len(target_requirement_ids) > 20:
+        raise ValueError(
+            "task research call guard bevat te veel target requirement IDs."
+        )
+
+    return ResearchCallGuard(
+        allowed_action=allowed_action,
+        pinned_params=dict(pinned_params),
+        target_requirement_ids=target_requirement_ids,
+        max_follow_up_calls=max_follow_up_calls,
+    )
+
+
+def enforce_research_tool_call_guard(
+    call: ResearchToolCall,
+    guard: ResearchCallGuard | None,
+) -> None:
+    if guard is None:
+        return
+
+    normalized = normalize_research_call_guard(guard)
+    if call.action != normalized.allowed_action:
+        raise ValueError(
+            "task research call guard action mismatch: "
+            f"expected {normalized.allowed_action}, got {call.action}"
+        )
+
+    params = dict(call.params or {})
+    for key, expected in normalized.pinned_params.items():
+        if key not in params:
+            raise ValueError(
+                f"task research call guard pinned parameter ontbreekt: {key}"
+            )
+        if params[key] != expected:
+            raise ValueError(
+                f"task research call guard pinned parameter mismatch: {key}"
+            )
+
+
+def _validate_call(
+    raw_call: Any,
+    *,
+    call_guard: ResearchCallGuard | None = None,
+) -> ResearchToolCall:
     if not isinstance(raw_call, dict):
         raise ValueError("Iedere research-call moet een object zijn.")
 
@@ -694,6 +817,20 @@ def _validate_call(raw_call: Any) -> ResearchToolCall:
     action = str(raw_call.get("action") or "").strip()
     if action not in ALLOWED_RESEARCH_ACTIONS:
         raise ValueError(f"Niet-toegestane research-action: {action or '[leeg]'}")
+
+    normalized_guard = (
+        normalize_research_call_guard(call_guard)
+        if call_guard is not None
+        else None
+    )
+    if (
+        normalized_guard is not None
+        and action != normalized_guard.allowed_action
+    ):
+        raise ValueError(
+            "task research call guard weigert cross-action research-call: "
+            f"expected {normalized_guard.allowed_action}, got {action}"
+        )
 
     reason = str(raw_call.get("reason") or "").strip()
     if not reason:
@@ -722,6 +859,17 @@ def _validate_call(raw_call: Any) -> ResearchToolCall:
         for key, value in params.items()
     }
 
+    if normalized_guard is not None:
+        for key, pinned_value in normalized_guard.pinned_params.items():
+            if (
+                key in clean_params
+                and clean_params[key] != pinned_value
+            ):
+                raise ValueError(
+                    f"task research call guard blokkeert scope-override: {key}"
+                )
+            clean_params[key] = pinned_value
+
     if action == "analysis_assistant":
         clean_params = _validate_analysis_scope_params(
             clean_params
@@ -733,16 +881,20 @@ def _validate_call(raw_call: Any) -> ResearchToolCall:
     for key, value in _ACTION_DEFAULTS[action].items():
         clean_params.setdefault(key, value)
 
-    return ResearchToolCall(
+    call = ResearchToolCall(
         action=action,
         reason=reason,
         params=clean_params,
     )
+    enforce_research_tool_call_guard(call, normalized_guard)
+    return call
 
 
 def _validate_decision(
     payload: dict[str, Any],
     budget: ResearchBudget,
+    *,
+    call_guard: ResearchCallGuard | None = None,
 ) -> ResearchPlannerDecision:
     unknown_keys = set(payload) - _ALLOWED_DECISION_KEYS
     if unknown_keys:
@@ -793,6 +945,24 @@ def _validate_decision(
     if not raw_calls:
         raise ValueError("follow_up vereist minimaal een call.")
 
+    normalized_guard = (
+        normalize_research_call_guard(call_guard)
+        if call_guard is not None
+        else None
+    )
+    if (
+        normalized_guard is not None
+        and len(raw_calls) > normalized_guard.max_follow_up_calls
+    ):
+        return ResearchPlannerDecision(
+            status="blocked",
+            decision="synthesize",
+            reason="Planner vroeg meer follow-up calls dan de task research guard toestaat.",
+            gaps=gaps,
+            planner_ai_calls_used=1,
+            blocked_reason="task_research_guard_follow_up_budget_exceeded",
+        )
+
     if len(raw_calls) > MAX_FOLLOW_UP_CALLS_PER_ROUND:
         return ResearchPlannerDecision(
             status="blocked",
@@ -813,7 +983,10 @@ def _validate_decision(
             blocked_reason="total_tool_budget_exceeded",
         )
 
-    calls = tuple(_validate_call(item) for item in raw_calls)
+    calls = tuple(
+        _validate_call(item, call_guard=normalized_guard)
+        for item in raw_calls
+    )
     return ResearchPlannerDecision(
         status="ok",
         decision="follow_up",
@@ -830,8 +1003,24 @@ def plan_research_next_step(
     budget: ResearchBudget,
     *,
     planner: PlannerCallable | None = None,
+    call_guard: ResearchCallGuard | None = None,
 ) -> ResearchPlannerDecision:
     """Return a bounded, validated next step. This function executes no tools."""
+    try:
+        normalized_guard = (
+            normalize_research_call_guard(call_guard)
+            if call_guard is not None
+            else None
+        )
+    except ValueError as exc:
+        return ResearchPlannerDecision(
+            status="blocked",
+            decision="synthesize",
+            reason="Task research call guard is ongeldig.",
+            planner_ai_calls_used=0,
+            blocked_reason=_safe_error(exc),
+        )
+
     if not plan.research_required:
         return ResearchPlannerDecision(
             status="not_required",
@@ -877,6 +1066,17 @@ def plan_research_next_step(
             blocked_reason="insufficient_evidence",
         )
 
+    planner_allowed_actions = (
+        [normalized_guard.allowed_action]
+        if normalized_guard is not None
+        else sorted(ALLOWED_RESEARCH_ACTIONS)
+    )
+    planner_follow_up_limit = (
+        normalized_guard.max_follow_up_calls
+        if normalized_guard is not None
+        else MAX_FOLLOW_UP_CALLS_PER_ROUND
+    )
+
     context = {
         "research_agent_contract": {
             "mode": "bounded_planner_6b1",
@@ -885,10 +1085,10 @@ def plan_research_next_step(
             "arbitrary_urls_allowed": False,
             "sql_allowed": False,
             "writes_allowed": False,
-            "allowed_actions": sorted(ALLOWED_RESEARCH_ACTIONS),
+            "allowed_actions": planner_allowed_actions,
             "max_research_rounds": MAX_RESEARCH_ROUNDS,
             "max_total_specialist_calls": MAX_TOTAL_SPECIALIST_CALLS,
-            "max_follow_up_calls_per_round": MAX_FOLLOW_UP_CALLS_PER_ROUND,
+            "max_follow_up_calls_per_round": planner_follow_up_limit,
             "max_planner_ai_calls": MAX_PLANNER_AI_CALLS,
         },
         "budget": {
@@ -903,6 +1103,8 @@ def plan_research_next_step(
         "query_plan": _plan_summary(plan),
         "specialist_evidence": evidence,
     }
+    if normalized_guard is not None:
+        context["task_research_call_guard"] = normalized_guard.to_dict()
 
     planner_callable = planner or ai_gateway.research
 
@@ -915,7 +1117,11 @@ def plan_research_next_step(
             )
         )
         payload = _extract_json_object(str(getattr(ai_result, "text", "") or ""))
-        return _validate_decision(payload, budget)
+        return _validate_decision(
+            payload,
+            budget,
+            call_guard=normalized_guard,
+        )
     except ValueError as exc:
         return ResearchPlannerDecision(
             status="invalid_response",

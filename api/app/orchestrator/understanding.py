@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from app.orchestrator.models import (
     DetectedEntity,
     Domain,
+    IntentTask,
     QueryPlan,
 )
 from app.orchestrator.models import (
@@ -66,17 +67,22 @@ PRODUCT_FAMILY_PATTERNS = (
             r"\br(?:\s+\d{3,4})?\s+schraper\b",
         ),
     ),
+    # PROMATI_P4_5B7_CANONICAL_PROM_KF_KS_ALIAS_FIX
+    # Canonical PROM-KF / PROM-KS codes use the short PROM prefix.
+    # Keep PROMATI aliases, and accept whitespace or hyphen separators.
     FamilyPattern(
         code="PROM-KF",
         patterns=(
-            r"\bpromati\s+kf\b",
+            r"\bpromati[\s-]+kf\b",
+            r"\bprom[\s-]+kf\b",
             r"\bkf[\s-]*schraper\b",
         ),
     ),
     FamilyPattern(
         code="PROM-KS",
         patterns=(
-            r"\bpromati\s+ks\b",
+            r"\bpromati[\s-]+ks\b",
+            r"\bprom[\s-]+ks\b",
             r"\bks[\s-]*schraper\b",
         ),
     ),
@@ -1850,6 +1856,322 @@ def detect_intent(
     return "unknown"
 
 
+# PROMATI_MULTI_INTENT_TASK_DERIVATION_SHADOW_V1
+def _ordered_intent_task_domains(
+    primary_domain: Domain | None,
+    domains: list[Domain],
+) -> list[Domain]:
+    """Stable primary-first domain order, without changing QueryPlan.domains."""
+    ordered: list[Domain] = []
+
+    if primary_domain is not None:
+        ordered.append(primary_domain)
+
+    for domain in domains or []:
+        if domain not in ordered:
+            ordered.append(domain)
+
+    return ordered
+
+
+def _intent_task_scope(
+    domain: Domain,
+    entities: dict[str, DetectedEntity],
+    product_families: list[DetectedEntity],
+) -> dict[str, object]:
+    """Copy only already-grounded deterministic scope into the shadow task."""
+    scope: dict[str, object] = {}
+
+    if domain == Domain.PRODUCT:
+        family_codes = [
+            str(item.value).strip()
+            for item in (product_families or [])
+            if item.value is not None
+            and str(item.value).strip()
+        ]
+        if family_codes:
+            scope["product_family_codes"] = list(
+                dict.fromkeys(family_codes)
+            )
+
+    if domain in {
+        Domain.INSPECTION,
+        Domain.DIAGNOSTICS,
+    }:
+        for entity_name in (
+            "band_code",
+            "lijn_code",
+            "scope_code",
+            "scope_type",
+            "area_code",
+            "installation_code",
+            "scraper_family",
+        ):
+            entity = entities.get(entity_name)
+            if (
+                entity is not None
+                and entity.value is not None
+            ):
+                scope[entity_name] = entity.value
+
+    return scope
+
+
+# PROMATI_MULTI_INTENT_SAME_DOMAIN_FACET_SHADOW_V2
+def _requested_subset(
+    requested: list[str],
+    allowed: tuple[str, ...],
+) -> list[str]:
+    """Preserve existing requested-information order inside one facet group."""
+    return [
+        item
+        for item in requested
+        if item in allowed
+    ]
+
+
+def _product_facet_task_specs(
+    primary_intent: str,
+    requested: list[str],
+) -> list[dict[str, object]] | None:
+    """Split live commerce from descriptive product evidence when both exist.
+
+    V2 remains shadow-only. It deliberately does not split product families: the
+    existing family scope stays attached to every semantic task.
+    """
+    commerce = _requested_subset(
+        requested,
+        ("inventory", "price"),
+    )
+    profile = _requested_subset(
+        requested,
+        ("strengths", "limitations", "selection_advice"),
+    )
+
+    if not commerce or not profile:
+        return None
+
+    commerce_intent = (
+        primary_intent
+        if primary_intent in {"inventory_lookup", "price_lookup"}
+        else (
+            "inventory_lookup"
+            if "inventory" in commerce
+            else "price_lookup"
+        )
+    )
+
+    if "selection_advice" in profile:
+        profile_intent = "product_selection"
+    elif any(
+        item in profile
+        for item in ("strengths", "limitations")
+    ):
+        profile_intent = "advantages_disadvantages"
+    else:
+        profile_intent = "product_lookup"
+
+    specs = [
+        {
+            "label": "commerce",
+            "intent": commerce_intent,
+            "requested_information": commerce,
+        },
+        {
+            "label": "profile",
+            "intent": profile_intent,
+            "requested_information": profile,
+        },
+    ]
+
+    specs.sort(
+        key=lambda spec: (
+            0
+            if spec["intent"] == primary_intent
+            else 1
+        )
+    )
+    return specs
+
+
+def _inspection_facet_task_specs(
+    primary_intent: str,
+    requested: list[str],
+) -> list[dict[str, object]] | None:
+    """Split latest-state evidence from lifecycle/history evidence.
+
+    Explicit replacement advice stays integrated because the existing richer
+    replacement_advice route intentionally covers latest state, lifecycle,
+    executed replacement history and advice together.
+    """
+    if "replacement_advice" in requested:
+        return None
+
+    latest = _requested_subset(
+        requested,
+        ("latest_measurements",),
+    )
+    history = _requested_subset(
+        requested,
+        ("lifecycle_trend", "replacement_events"),
+    )
+
+    if not latest or not history:
+        return None
+
+    specs = [
+        {
+            "label": "latest",
+            "intent": "inspection_latest",
+            "requested_information": latest,
+        },
+        {
+            "label": "history",
+            "intent": "inspection_trend",
+            "requested_information": history,
+        },
+    ]
+
+    unassigned = [
+        item
+        for item in requested
+        if item not in {
+            "latest_measurements",
+            "lifecycle_trend",
+            "replacement_events",
+        }
+    ]
+
+    specs.sort(
+        key=lambda spec: (
+            0
+            if spec["intent"] == primary_intent
+            else 1
+        )
+    )
+
+    if unassigned:
+        specs[0]["requested_information"] = (
+            list(specs[0]["requested_information"])
+            + unassigned
+        )
+
+    return specs
+
+
+def _same_domain_facet_task_specs(
+    domain: Domain,
+    primary_intent: str,
+    requested: list[str],
+) -> list[dict[str, object]] | None:
+    if domain == Domain.PRODUCT:
+        return _product_facet_task_specs(
+            primary_intent,
+            requested,
+        )
+
+    if domain == Domain.INSPECTION:
+        return _inspection_facet_task_specs(
+            primary_intent,
+            requested,
+        )
+
+    return None
+
+
+def build_intent_tasks_shadow(
+    question: str,
+    *,
+    primary_domain: Domain | None,
+    domains: list[Domain],
+    primary_intent: str,
+    entities: dict[str, DetectedEntity],
+    product_families: list[DetectedEntity],
+) -> list[IntentTask]:
+    """Derive semantic shadow tasks without activating runtime behavior.
+
+    V2 preserves the V1 cross-domain contract and adds bounded same-domain
+    decomposition only where distinct existing evidence intents already exist.
+    Planner, executor, Phase C and presentation still consume legacy fields.
+    """
+    tasks: list[IntentTask] = []
+    task_index = 0
+
+    for domain in _ordered_intent_task_domains(
+        primary_domain,
+        domains,
+    ):
+        task_intent = (
+            primary_intent
+            if domain == primary_domain
+            else detect_intent(
+                question,
+                domain,
+            )
+        )
+        requested = detect_requested_information(
+            question,
+            domain,
+        )
+        scope = _intent_task_scope(
+            domain,
+            entities,
+            product_families,
+        )
+        facet_specs = _same_domain_facet_task_specs(
+            domain,
+            task_intent,
+            requested,
+        )
+
+        if facet_specs is None:
+            task_index += 1
+            tasks.append(
+                IntentTask(
+                    task_id=(
+                        f"task_{task_index}_{domain.value}"
+                    ),
+                    domain=domain,
+                    intent=task_intent,
+                    requested_information=requested,
+                    scope=scope,
+                    primary=(
+                        domain == primary_domain
+                    ),
+                )
+            )
+            continue
+
+        for facet_position, spec in enumerate(
+            facet_specs,
+            start=1,
+        ):
+            task_index += 1
+            tasks.append(
+                IntentTask(
+                    task_id=(
+                        f"task_{task_index}_{domain.value}_"
+                        f"{spec['label']}"
+                    ),
+                    domain=domain,
+                    intent=str(spec["intent"]),
+                    requested_information=list(
+                        spec["requested_information"]
+                    ),
+                    scope=dict(scope),
+                    primary=(
+                        domain == primary_domain
+                        and facet_position == 1
+                    ),
+                    source=(
+                        "deterministic_same_domain_facet_shadow_v2"
+                    ),
+                )
+            )
+
+    return tasks
+
+
 # PROMATI_CONVERSATION_SCOPE_GROUNDING_V1
 #
 # Bounded conversationele grounding.
@@ -2849,6 +3171,15 @@ def understand_query(
             )
         )
 
+    intent_tasks = build_intent_tasks_shadow(
+        normalized,
+        primary_domain=primary_domain,
+        domains=domains,
+        primary_intent=intent,
+        entities=entities,
+        product_families=product_families,
+    )
+
     return QueryPlan(
         original_question=question,
         normalized_question=normalized,
@@ -2856,6 +3187,7 @@ def understand_query(
         primary_domain=primary_domain,
         domains=domains,
         intent=intent,
+        intent_tasks=intent_tasks,
         entities=entities,
         product_families=product_families,
         requested_information=requested_information,

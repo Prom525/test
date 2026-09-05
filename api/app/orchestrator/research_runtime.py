@@ -14,14 +14,18 @@ from app.orchestrator.research_agent import (
     MAX_RESEARCH_ROUNDS,
     MAX_TOTAL_SPECIALIST_CALLS,
     ResearchBudget,
+    ResearchCallGuard,
     ResearchPlannerDecision,
     ResearchToolCall,
+    enforce_research_tool_call_guard,
+    normalize_research_call_guard,
     plan_research_next_step,
 )
 
 
 SynthesisCallable = Callable[[QueryPlan, list[dict[str, Any]]], dict[str, Any]]
 
+# PROMATI_TASK_RESEARCH_CALL_GUARD_RUNTIME_V7
 _ACTION_DOMAINS: dict[str, Domain] = {
     "product_assistant": Domain.PRODUCT,
     "analysis_assistant": Domain.INSPECTION,
@@ -112,6 +116,7 @@ def _single_follow_up_plan(
     return follow_plan
 
 
+# PROMATI_TASK_RESEARCH_TYPED_FOLLOW_UP_OBSERVER_SHADOW_V9
 def _execute_follow_up_call(
     base_plan: QueryPlan,
     call: ResearchToolCall,
@@ -119,7 +124,13 @@ def _execute_follow_up_call(
     round_number: int,
     call_number: int,
     sender: Sender | None,
+    call_guard: ResearchCallGuard | None = None,
+    shadow_observer=None,
 ) -> list[dict[str, Any]]:
+    # Defense in depth: enforce the same task action/scope immediately before
+    # any follow-up ExecutionPlan can reach execute_plan.
+    enforce_research_tool_call_guard(call, call_guard)
+
     follow_plan = _single_follow_up_plan(
         base_plan,
         call,
@@ -130,6 +141,7 @@ def _execute_follow_up_call(
     results, _trace = execute_plan(
         follow_plan,
         sender=sender,
+        shadow_observer=shadow_observer,
     )
 
     enriched: list[dict[str, Any]] = []
@@ -165,6 +177,8 @@ def run_bounded_research_agent(
     *,
     planner=None,
     synthesizer: SynthesisCallable | None = None,
+    call_guard: ResearchCallGuard | None = None,
+    shadow_observer=None,
 ) -> dict[str, Any]:
     """Run the bounded 6B.2 research runtime.
 
@@ -181,6 +195,11 @@ def run_bounded_research_agent(
     6B.2 remains standalone: service.py is intentionally not switched yet.
     """
     synthesis_callable = synthesizer or run_bounded_research
+    normalized_call_guard = (
+        normalize_research_call_guard(call_guard)
+        if call_guard is not None
+        else None
+    )
 
     if not plan.research_required:
         result = dict(
@@ -228,6 +247,7 @@ def run_bounded_research_agent(
             combined_results,
             budget,
             planner=planner,
+            call_guard=normalized_call_guard,
         )
         planner_ai_calls_used += max(
             0,
@@ -255,6 +275,16 @@ def run_bounded_research_agent(
             - initial_specialist_calls
             - follow_up_specialist_calls,
         )
+        if normalized_call_guard is not None:
+            remaining_guard_budget = max(
+                0,
+                normalized_call_guard.max_follow_up_calls
+                - follow_up_specialist_calls,
+            )
+            remaining_hard_budget = min(
+                remaining_hard_budget,
+                remaining_guard_budget,
+            )
 
         if remaining_hard_budget <= 0:
             record["runtime_blocked_reason"] = (
@@ -307,6 +337,8 @@ def run_bounded_research_agent(
                 round_number=round_number,
                 call_number=call_number,
                 sender=sender,
+                call_guard=normalized_call_guard,
+                shadow_observer=shadow_observer,
             )
 
             follow_up_specialist_calls += 1
