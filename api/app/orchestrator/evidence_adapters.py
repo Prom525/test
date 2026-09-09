@@ -4683,11 +4683,568 @@ def _diagnostics_evidence(
 
     return tuple(evidence_items)
 
-def normalize_execution_result_evidence(
-    execution_result: ExecutionResult,
+# PROMATI_P4_14E_LIVE_SHAPED_TASK_EVIDENCE_V1
+class _P414ELiveExecutionResult:
+    def __init__(
+        self,
+        *,
+        result: dict[str, Any],
+        intent: str,
+    ) -> None:
+        self.contract_version = "p4_14e_live_shaped_execution_result.v1"
+        self.step_id = "p4_14e_live_shaped_" + intent
+        self.action = "analysis_assistant"
+        self.domain = str(result.get("domain") or "inspection")
+        self.endpoint = "p4_14e_live_shaped"
+        self.transport_state = None
+        self.semantic_outcome = None
+        self.specialist_status = None
+        self.legacy_accepted = True
+        self.result = result
+        self.error = None
+        self.attempt_count = 1
+        self.duration_ms = 0
+        self.evidence_metadata = None
+        self.provenance_metadata = None
+
+
+def _p4_14e_pick_string(*values: Any) -> str | None:
+    for value in values:
+        picked = _nonempty_string(value)
+        if picked is not None:
+            return picked
+    return None
+
+
+def _p4_14e_pick_number(*values: Any) -> float | int | None:
+    for value in values:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip().replace(",", ".")
+            if stripped:
+                try:
+                    parsed = float(stripped)
+                except ValueError:
+                    continue
+                return parsed
+    return None
+
+
+def _p4_14e_scope_from_live_result(
+    live_result: dict[str, Any],
+) -> dict[str, Any]:
+    scope = live_result.get("scope")
+    if not isinstance(scope, dict):
+        scope = {}
+
+    summary = live_result.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+
+    rows = live_result.get("rows")
+    first_row = None
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict):
+                first_row = row
+                break
+    if first_row is None:
+        first_row = {}
+
+    scope_code = _p4_14e_pick_string(
+        scope.get("band_code"),
+        scope.get("band_code_norm"),
+        scope.get("scope_code"),
+        scope.get("line_code"),
+        scope.get("lijn_code"),
+        summary.get("scope_code"),
+        first_row.get("band_code"),
+        first_row.get("canonical_scope_code"),
+        first_row.get("scope_code"),
+        first_row.get("line_code"),
+        first_row.get("lijn_code"),
+    )
+
+    area_code = _p4_14e_pick_string(
+        scope.get("area_code"),
+        summary.get("area_code"),
+        first_row.get("area_code"),
+    )
+
+    installation_code = _p4_14e_pick_string(
+        scope.get("installation_code"),
+        scope.get("installation"),
+        summary.get("installation_code"),
+        first_row.get("installation_code"),
+        scope_code,
+    )
+
+    return {
+        "customer_code": _p4_14e_pick_string(
+            scope.get("customer_code"),
+            first_row.get("customer_code"),
+            "PROMATI",
+        ),
+        "site_code": _p4_14e_pick_string(
+            scope.get("site_code"),
+            first_row.get("site_code"),
+        ),
+        "area_code": area_code,
+        "area_name": _p4_14e_pick_string(
+            scope.get("area_name"),
+            scope.get("area_code"),
+            first_row.get("area_code"),
+        ),
+        "installation_code": installation_code,
+        "installation_name": _p4_14e_pick_string(
+            scope.get("installation_name"),
+            scope.get("asset_name"),
+            first_row.get("asset_name"),
+        ),
+        "band_code": scope_code,
+        "band_code_norm": scope_code,
+        "band_code_display": _p4_14e_pick_string(
+            scope.get("band_code_display"),
+            scope.get("asset_name"),
+            first_row.get("asset_label"),
+            scope_code,
+        ),
+    }
+
+
+def _p4_14e_resolution_from_asset_context(
+    asset_context: dict[str, Any],
+) -> dict[str, Any]:
+    band_code = _p4_14e_pick_string(
+        asset_context.get("band_code"),
+        asset_context.get("band_code_norm"),
+    )
+    return {
+        "status": "resolved" if band_code is not None else "not_found",
+        "match_count": 1 if band_code is not None else 0,
+        "normalized_band_code": band_code,
+        "normalized_installation_code": _p4_14e_pick_string(
+            asset_context.get("installation_code"),
+            band_code,
+        ),
+    }
+
+
+def _p4_14e_live_rows(
+    live_result: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    rows = live_result.get("rows")
+    if not isinstance(rows, list):
+        rows = live_result.get("resultaat")
+    if not isinstance(rows, list):
+        return ()
+    return tuple(copy.deepcopy(row) for row in rows if isinstance(row, dict))
+
+
+def _p4_14e_observed_date_text(row: dict[str, Any]) -> str | None:
+    raw_value = _p4_14e_pick_string(
+        row.get("latest_inspection_date"),
+        row.get("inspection_date"),
+        row.get("inspectiedatum"),
+        row.get("document_date"),
+        row.get("cycle_end"),
+        row.get("observed_at"),
+    )
+    if raw_value is None:
+        return None
+    parsed = _parse_datetime(raw_value)
+    if parsed is not None:
+        return parsed.date().isoformat()
+    if len(raw_value) >= 10:
+        return raw_value[:10]
+    return raw_value
+
+
+def _p4_14e_inspection_latest_raw_result(
+    live_result: dict[str, Any],
     *,
-    retrieved_at: datetime,
+    intent: str,
+) -> dict[str, Any] | None:
+    rows = _p4_14e_live_rows(live_result)
+    if not rows:
+        return None
+
+    asset_context = _p4_14e_scope_from_live_result(live_result)
+    asset_resolution = _p4_14e_resolution_from_asset_context(asset_context)
+    band_code = _p4_14e_pick_string(
+        asset_context.get("band_code"),
+        asset_context.get("band_code_norm"),
+    )
+
+    resultaat: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        date_text = _p4_14e_observed_date_text(row)
+        if date_text is None:
+            continue
+
+        position_code = _p4_14e_pick_string(
+            row.get("position_code"),
+            row.get("position_label"),
+            row.get("locatie_raw"),
+            "position-" + str(index + 1),
+        )
+        scraper_type = _p4_14e_pick_string(
+            row.get("scraper_type_raw"),
+            row.get("scraper_type"),
+            row.get("scraper_types"),
+            row.get("position_label"),
+            row.get("position_code"),
+            "scraper-position",
+        )
+        measurement = _p4_14e_pick_number(
+            row.get("measurement_value"),
+            row.get("latest_inspection_measurement"),
+            row.get("value_mm"),
+            row.get("value"),
+            row.get("meshoogte_mm"),
+        )
+
+        resultaat.append(
+            {
+                "inspection_key": _p4_14e_pick_string(
+                    row.get("inspection_key"),
+                    "PROMATI|"
+                    + str(band_code or "UNKNOWN")
+                    + "|"
+                    + date_text
+                    + "|"
+                    + str(position_code or index),
+                ),
+                "document_date": date_text,
+                "line_hint": _p4_14e_pick_string(
+                    row.get("line_code"),
+                    row.get("lijn_code"),
+                    row.get("scope_code"),
+                    band_code,
+                ),
+                "band_code": _p4_14e_pick_string(
+                    row.get("band_code"),
+                    row.get("canonical_scope_code"),
+                    row.get("scope_code"),
+                    row.get("line_code"),
+                    row.get("lijn_code"),
+                    band_code,
+                ),
+                "locatie_raw": position_code,
+                "scraper_type_raw": scraper_type,
+                "band_width_mm": row.get("band_width_mm"),
+                "meshoogte_mm": measurement,
+                "mes_vervangen": row.get("mes_vervangen"),
+                "commentaar": _p4_14e_pick_string(
+                    row.get("commentaar"),
+                    row.get("comment"),
+                    row.get("status"),
+                )
+                or "",
+                "check_code": _p4_14e_pick_string(
+                    row.get("check_code"),
+                    row.get("measurement_name"),
+                    "latest_inspection_measurement",
+                ),
+                "status": _p4_14e_pick_string(
+                    row.get("inspection_status"),
+                    row.get("status"),
+                    "DONE",
+                ),
+                "source_file": _p4_14e_pick_string(
+                    row.get("source_file"),
+                    "live_specialist",
+                ),
+                "source_name": _p4_14e_pick_string(
+                    row.get("source_name"),
+                    "analysis_assistant",
+                ),
+                "source_system": _p4_14e_pick_string(
+                    row.get("source_system"),
+                    "promati_live",
+                ),
+                "provenance_basis": _p4_14e_pick_string(
+                    row.get("provenance_basis"),
+                    "p4_14e_live_shape",
+                ),
+            }
+        )
+
+    if not resultaat:
+        return None
+
+    return {
+        "intent": "inspection_summary",
+        "resultaat": resultaat,
+        "asset_context": asset_context,
+        "asset_resolution": asset_resolution,
+        "p4_14e_live_shape_source_intent": intent,
+    }
+
+
+def _p4_14e_maintenance_priority_raw_result(
+    live_result: dict[str, Any],
+    *,
+    intent: str,
+) -> dict[str, Any] | None:
+    rows = _p4_14e_live_rows(live_result)
+    if not rows:
+        return None
+
+    asset_context = _p4_14e_scope_from_live_result(live_result)
+    asset_resolution = _p4_14e_resolution_from_asset_context(asset_context)
+    band_code = _p4_14e_pick_string(
+        asset_context.get("band_code"),
+        asset_context.get("band_code_norm"),
+    )
+
+    resultaat: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        date_text = _p4_14e_observed_date_text(row)
+        if date_text is None:
+            date_text = _p4_14e_pick_string(
+                row.get("cycle_end"),
+                row.get("latest_position_measurement_date"),
+            )
+
+        position_hint = _p4_14e_pick_string(
+            row.get("position_hint"),
+            row.get("position_label"),
+            row.get("position_code"),
+            "position-" + str(index + 1),
+        )
+        scraper_types = _p4_14e_pick_string(
+            row.get("scraper_types_clean"),
+            row.get("scraper_types"),
+            row.get("scraper_type"),
+            row.get("position_label"),
+            row.get("position_code"),
+            "scraper-position",
+        )
+        measurement = _p4_14e_pick_number(
+            row.get("latest_position_measurement"),
+            row.get("measurement_value"),
+            row.get("value_mm"),
+            row.get("value"),
+            row.get("eind_meshoogte_mm"),
+        )
+        forecast = row.get("forecast_result")
+        if not isinstance(forecast, dict):
+            forecast = {}
+
+        days_to_limit = _p4_14e_pick_number(
+            forecast.get("days_to_limit"),
+            forecast.get("days_to_3mm"),
+            row.get("geschatte_dagen_tot_3mm"),
+        )
+        replacement_date = _p4_14e_pick_string(
+            forecast.get("replacement_date"),
+            forecast.get("date"),
+            row.get("geschatte_vervangdatum_bij_3mm"),
+            date_text,
+        )
+        wear_rate = _p4_14e_pick_number(
+            forecast.get("wear_rate"),
+            row.get("slijtage_mm_per_dag"),
+            0.001 if forecast else None,
+        )
+        meetpunten = row.get("meetpunten")
+        if not isinstance(meetpunten, int) or isinstance(meetpunten, bool):
+            meetpunten = 3 if forecast else 1
+
+        result_row = {
+            "lijn_code": _p4_14e_pick_string(
+                row.get("line_code"),
+                row.get("lijn_code"),
+                row.get("scope_code"),
+                band_code,
+            ),
+            "band_norm": _p4_14e_pick_string(
+                row.get("band_norm"),
+                row.get("band_code"),
+                row.get("canonical_scope_code"),
+                row.get("scope_code"),
+                row.get("line_code"),
+                row.get("lijn_code"),
+                band_code,
+            ),
+            "position_hint": position_hint,
+            "scraper_types": scraper_types,
+            "scraper_types_raw": scraper_types,
+            "scraper_types_clean": scraper_types,
+            "cycle_start": _p4_14e_pick_string(
+                row.get("cycle_start"),
+                date_text,
+            ),
+            "cycle_end": date_text,
+            "meetpunten": meetpunten,
+            "avg_meshoogte_mm": row.get("avg_meshoogte_mm"),
+            "start_meshoogte_mm": row.get("start_meshoogte_mm"),
+            "eind_meshoogte_mm": measurement,
+            "slijtage_mm_per_dag": wear_rate,
+            "geschatte_dagen_tot_3mm": days_to_limit,
+            "geschatte_vervangdatum_bij_3mm": replacement_date,
+            "status_3mm": _p4_14e_pick_string(
+                row.get("maintenance_position_status"),
+                row.get("status_3mm"),
+                row.get("status"),
+                forecast.get("status"),
+            ),
+            "prioriteit": (
+                row.get("priority_rank")
+                if row.get("priority_rank") is not None
+                else row.get("prioriteit")
+            ),
+            "first_sheet_analysis_key": _p4_14e_pick_string(
+                row.get("first_sheet_analysis_key"),
+                date_text,
+            ),
+            "last_sheet_analysis_key": _p4_14e_pick_string(
+                row.get("last_sheet_analysis_key"),
+                date_text,
+            ),
+            "first_sheet_instance_key": _p4_14e_pick_string(
+                row.get("first_sheet_instance_key"),
+                date_text,
+            ),
+            "last_sheet_instance_key": _p4_14e_pick_string(
+                row.get("last_sheet_instance_key"),
+                date_text,
+            ),
+            "first_canonical_inspection_key": _p4_14e_pick_string(
+                row.get("first_canonical_inspection_key"),
+                "PROMATI|" + str(band_code or "UNKNOWN") + "|" + str(date_text),
+            ),
+            "last_canonical_inspection_key": _p4_14e_pick_string(
+                row.get("last_canonical_inspection_key"),
+                "PROMATI|"
+                + str(band_code or "UNKNOWN")
+                + "|"
+                + str(date_text)
+                + "|"
+                + str(position_hint),
+            ),
+            "source_file": _p4_14e_pick_string(
+                row.get("source_file"),
+                "live_specialist",
+            ),
+            "sheet_raw": _p4_14e_pick_string(
+                row.get("sheet_raw"),
+                "p4_14e_live_shape",
+            ),
+            "dagen_sinds_laatste_meting": row.get(
+                "dagen_sinds_laatste_meting"
+            ),
+            "position_accessories": row.get("position_accessories") or [],
+            "prestatiegrens_mm": row.get("prestatiegrens_mm") or 6,
+            "vervanggrens_mm": row.get("vervanggrens_mm") or 3,
+            "geschatte_dagen_tot_6mm": row.get("geschatte_dagen_tot_6mm"),
+            "geschatte_datum_bij_6mm": row.get("geschatte_datum_bij_6mm"),
+            "dagen_tot_6mm_vanaf_vandaag": row.get(
+                "dagen_tot_6mm_vanaf_vandaag"
+            ),
+            "status_6mm": _p4_14e_pick_string(
+                row.get("status_6mm"),
+                row.get("status"),
+            ),
+            "vervuilingsrisico": row.get("vervuilingsrisico"),
+            "prestatie_vervangmoment": _p4_14e_pick_string(
+                row.get("prestatie_vervangmoment"),
+                row.get("priority_rationale"),
+            ),
+        }
+        resultaat.append(result_row)
+
+    if not resultaat:
+        return None
+
+    return {
+        "intent": "maintenance_positions",
+        "kort_resultaat": live_result.get("kort_resultaat")
+        or live_result.get("summary"),
+        "trend_patronen": live_result.get("trend_patronen") or [],
+        "resultaat": resultaat,
+        "asset_context": asset_context,
+        "asset_resolution": asset_resolution,
+        "p4_14e_live_shape_source_intent": intent,
+    }
+
+
+def _p4_14e_normalize_execution_result_input(
+    *,
+    execution_result: Any = None,
+    intent: str | None = None,
+    result: dict[str, Any] | None = None,
+    retrieved_at: datetime | None = None,
+) -> Any:
+    raw_input = result if result is not None else execution_result
+
+    if raw_input is None:
+        return execution_result
+
+    if not isinstance(raw_input, dict):
+        return raw_input
+
+    live_intent = _p4_14e_pick_string(
+        intent,
+        raw_input.get("intent"),
+    )
+
+    if live_intent not in {
+        "inspection_latest",
+        "maintenance_priority",
+    }:
+        return execution_result
+
+    if isinstance(raw_input.get("resultaat"), list):
+        # Already close to the canonical specialist shape; preserve it.
+        canonical = copy.deepcopy(raw_input)
+    elif live_intent == "inspection_latest":
+        canonical = _p4_14e_inspection_latest_raw_result(
+            raw_input,
+            intent=live_intent,
+        )
+    else:
+        canonical = _p4_14e_maintenance_priority_raw_result(
+            raw_input,
+            intent=live_intent,
+        )
+
+    if not isinstance(canonical, dict):
+        return execution_result
+
+    # PROMATI_P4_14G_CANONICAL_INTENT_ALIGNMENT_V1
+    if live_intent == "maintenance_priority":
+        canonical["intent"] = "maintenance_positions"
+    elif live_intent == "inspection_latest":
+        canonical.setdefault("intent", "inspection_summary")
+
+    return _P414ELiveExecutionResult(
+        result=canonical,
+        intent=live_intent,
+    )
+
+def normalize_execution_result_evidence(
+    execution_result: ExecutionResult | dict[str, Any] | None = None,
+    *,
+    retrieved_at: datetime | None = None,
+    intent: str | None = None,
+    result: dict[str, Any] | None = None,
 ) -> tuple[EvidenceItem, ...]:
+    # PROMATI_P4_14E_NORMALIZE_ENTRYPOINT_V2
+    if retrieved_at is None:
+        retrieved_at = datetime.now(timezone.utc)
+
+    execution_result = _p4_14e_normalize_execution_result_input(
+        execution_result=execution_result,
+        intent=intent,
+        result=result,
+        retrieved_at=retrieved_at,
+    )
+
+    if execution_result is None or not hasattr(execution_result, "action"):
+        return ()
     if (
         execution_result.action
         == "technical_assistant"
