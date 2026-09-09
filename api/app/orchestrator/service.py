@@ -53,6 +53,31 @@ from app.orchestrator.evidence_synthesizer import (
 )
 from app.orchestrator.models import OrchestratorAskRequest
 from app.orchestrator.planner import build_execution_plan
+from app.orchestrator.task_evidence import (
+    build_task_evidence_authority_canary_p4_6c,
+)
+from app.orchestrator.task_research import (
+    build_task_research_authority_canary_p4_6d1,
+)
+from app.orchestrator.task_research_execution import (
+    run_task_research_execution_authority_canary_p4_6d2,
+)
+from app.orchestrator.task_research_evidence import (
+    build_task_research_evidence_authority_canary_p4_6e1,
+)
+from app.orchestrator.task_grounded_synthesis import (
+    build_task_grounded_synthesis_authority_canary_p4_6e2,
+)
+from app.orchestrator.task_synthesis_coverage import (
+    build_task_grounded_synthesis_coverage_authority_canary_p4_6e3,
+)
+from app.orchestrator.task_public_composition import (
+    build_public_multi_intent_composition_authority_canary_p4_6f,
+)
+from app.orchestrator.task_planner import (
+    build_task_execution_plans_shadow,
+    compare_task_execution_plans_shadow,
+)
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -204,6 +229,12 @@ def _new_observability_counts() -> dict[str, int]:
         # map as privacy-safe JSONB, so no answer/question/evidence text is
         # introduced into operational logging.
         "multi_intent_queries": 0,
+        # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
+        "task_execution_plan_shadow_evaluations": 0,
+        "task_execution_plan_shadow_tasks": 0,
+        "task_execution_plan_shadow_steps": 0,
+        "task_execution_plan_shadow_planning_errors": 0,
+        "task_execution_plan_shadow_exact_matches": 0,
         "task_research_execution_canary_executions": 0,
         "task_research_execution_canary_follow_up_specialist_calls": 0,
         "public_composition_canary_evaluations": 0,
@@ -213,7 +244,76 @@ def _new_observability_counts() -> dict[str, int]:
         "public_composition_canary_public_answer_replacements": 0,
         "public_composition_canary_legacy_answer_fallbacks": 0,
         "public_composition_canary_internal_error_fallbacks": 0,
+        # PROMATI_P4_9C_TASK_PUBLIC_COMPOSITION_AUTHORITY_OBSERVABILITY
+        # Integer-only, privacy-safe per-request counters. Never persist
+        # question, answer, task, evidence, family or claim text.
+        "task_public_composition_requests": 0,
+        "task_public_composition_enabled": 0,
+        "task_public_composition_eligible": 0,
+        "task_public_composition_authoritative": 0,
+        "task_public_composition_answer_replaced": 0,
+        "task_public_composition_fail_open": 0,
+        "task_public_composition_included_units": 0,
+        "task_public_composition_included_claims": 0,
+        "task_public_composition_blocked": 0,
+        "task_public_composition_reason_activated": 0,
+        "task_public_composition_reason_disabled": 0,
+        "task_public_composition_reason_blocked_not_multi_intent": 0,
+        "task_public_composition_reason_blocked_coverage_not_ready": 0,
+        "task_public_composition_reason_internal_error_fail_open": 0,
+        "task_public_composition_reason_blocked_other": 0,
     }
+
+
+# PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
+def _record_task_execution_plan_shadow_observability(
+    counts: dict[str, int],
+    plan: Any,
+    evidence_pipeline: Any,
+) -> None:
+    """Record integer-only P4.6a shadow metrics.
+
+    No question text, task text, params, scope values or evidence content is
+    persisted. This mirrors the existing privacy-safe counts contract.
+    """
+    if not isinstance(counts, dict):
+        return
+
+    if not bool(getattr(plan, "multi_intent", False)):
+        return
+
+    counts["task_execution_plan_shadow_evaluations"] = 1
+
+    if not isinstance(evidence_pipeline, dict):
+        return
+
+    rows = evidence_pipeline.get("task_execution_plans_shadow")
+    if not isinstance(rows, list):
+        rows = []
+
+    counts["task_execution_plan_shadow_tasks"] = len(rows)
+    counts["task_execution_plan_shadow_steps"] = sum(
+        len(row.get("execution_steps") or [])
+        for row in rows
+        if isinstance(row, dict)
+    )
+    counts["task_execution_plan_shadow_planning_errors"] = sum(
+        1
+        for row in rows
+        if isinstance(row, dict)
+        and str(row.get("status") or "") == "planning_error"
+    )
+
+    comparison = evidence_pipeline.get(
+        "task_execution_plan_comparison_shadow"
+    )
+    if isinstance(comparison, dict):
+        exact = (
+            comparison.get("exact_steps_equivalent") is True
+            or comparison.get("exact_match") is True
+            or comparison.get("steps_equivalent") is True
+        )
+        counts["task_execution_plan_shadow_exact_matches"] = int(exact)
 
 
 def _record_public_composition_canary_release_observability(
@@ -282,6 +382,70 @@ def _record_public_composition_canary_release_observability(
     counts[
         "public_composition_canary_internal_error_fallbacks"
     ] = int(reason == "blocked_internal_error_fail_open")
+
+    # PROMATI_P4_9C_TASK_PUBLIC_COMPOSITION_AUTHORITY_OBSERVABILITY
+    task_public = evidence_pipeline.get(
+        "task_public_composition_authority_p4_6f"
+    )
+    if isinstance(task_public, dict):
+        counts["task_public_composition_requests"] = 1
+
+        enabled = task_public.get("enabled") is True
+        eligible = task_public.get("eligible") is True
+        authoritative = task_public.get("authoritative") is True
+        replaced = task_public.get("public_answer_replaced") is True
+        reason = str(task_public.get("reason") or "").strip()
+
+        counts["task_public_composition_enabled"] = int(enabled)
+        counts["task_public_composition_eligible"] = int(eligible)
+        counts["task_public_composition_authoritative"] = int(authoritative)
+        counts["task_public_composition_answer_replaced"] = int(replaced)
+        counts["task_public_composition_included_units"] = (
+            _observability_nonnegative_int(
+                task_public.get("included_unit_count")
+            )
+        )
+        counts["task_public_composition_included_claims"] = (
+            _observability_nonnegative_int(
+                task_public.get("included_claim_count")
+            )
+        )
+
+        blocked = bool(reason.startswith("blocked_")) and not replaced
+        counts["task_public_composition_blocked"] = int(blocked)
+        counts["task_public_composition_fail_open"] = int(blocked)
+
+        coverage_block_reasons = {
+            "blocked_missing_task_synthesis_coverage",
+            "blocked_task_synthesis_coverage_not_ready",
+            "blocked_no_grounded_units",
+            "blocked_incomplete_task_units",
+        }
+
+        counts["task_public_composition_reason_activated"] = int(
+            reason == "activated_public_multi_intent_composition_authority"
+        )
+        counts["task_public_composition_reason_disabled"] = int(
+            reason == "disabled"
+        )
+        counts[
+            "task_public_composition_reason_blocked_not_multi_intent"
+        ] = int(reason == "blocked_not_multi_intent")
+        counts[
+            "task_public_composition_reason_blocked_coverage_not_ready"
+        ] = int(reason in coverage_block_reasons)
+        counts[
+            "task_public_composition_reason_internal_error_fail_open"
+        ] = int(reason == "blocked_internal_error_fail_open")
+        counts["task_public_composition_reason_blocked_other"] = int(
+            blocked
+            and reason not in coverage_block_reasons
+            and reason not in {
+                "blocked_not_multi_intent",
+                "blocked_internal_error_fail_open",
+            }
+        )
+
 
 
 # PROMATI_RESEARCH_AGENT_SERVICE_GATE_6B3
@@ -7062,6 +7226,94 @@ def _derive_intent_task_research_call_guards_shadow(
     ]
 
 
+
+# PROMATI_P4_6B_TASK_EXECUTION_CANARY
+_TASK_EXECUTION_CANARY_ENV = "AI_TASK_EXECUTION_CANARY_ENABLED"
+
+
+def _task_execution_canary_enabled_p4_6b() -> bool:
+    raw = os.getenv(_TASK_EXECUTION_CANARY_ENV, "false")
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _run_task_execution_canary_p4_6b(
+    plan: Any,
+    task_execution_plans_shadow: Any,
+    *,
+    sender: Sender | None,
+) -> dict[str, Any] | None:
+    contract = {
+        "contract_version": "promati.multi_intent.task_execution_canary.v1",
+        "enabled": _task_execution_canary_enabled_p4_6b(),
+        "eligible": False,
+        "executed": False,
+        "task_id": None,
+        "step_count": 0,
+        "accepted_result_count": 0,
+        "reason": None,
+    }
+
+    if not contract["enabled"]:
+        contract["reason"] = "disabled"
+        return contract
+
+    if not bool(getattr(plan, "multi_intent", False)):
+        contract["reason"] = "not_multi_intent"
+        return contract
+
+    secondary = None
+    for task_plan in list(task_execution_plans_shadow or []):
+        if bool(getattr(task_plan, "primary", False)):
+            continue
+        steps = list(getattr(task_plan, "execution_steps", None) or [])
+        if steps:
+            secondary = task_plan
+            break
+
+    if secondary is None:
+        contract["reason"] = "no_secondary_task_plan"
+        return contract
+
+    projected = (
+        plan.model_copy(deep=True)
+        if hasattr(plan, "model_copy")
+        else plan.copy(deep=True)
+    )
+    projected.execution_steps = [
+        (
+            step.model_copy(deep=True)
+            if hasattr(step, "model_copy")
+            else step.copy(deep=True)
+        )
+        for step in list(getattr(secondary, "execution_steps", None) or [])
+    ]
+    projected.clarification_required = False
+
+    contract["eligible"] = True
+    contract["task_id"] = str(getattr(secondary, "task_id", "") or "") or None
+    contract["step_count"] = len(projected.execution_steps)
+
+    try:
+        typed = []
+        raw_results, _trace = execute_plan(
+            projected,
+            sender=sender,
+            shadow_observer=typed.append,
+        )
+    except Exception as exc:
+        contract["reason"] = "execution_error:" + type(exc).__name__
+        return contract
+
+    contract["executed"] = True
+    contract["accepted_result_count"] = sum(
+        1
+        for item in list(raw_results or [])
+        if isinstance(item, dict) and item.get("accepted") is True
+    )
+    contract["reason"] = "executed_non_authoritative"
+    return contract
+
+
 def run_orchestrator(
     payload: OrchestratorAskRequest,
     sender: Sender | None = None,
@@ -7141,6 +7393,37 @@ def run_orchestrator(
     plan = _attach_intent_task_evidence_requirements_shadow(
         plan
     )
+
+    # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW
+    # Build detached per-IntentTask execution plans for comparison only.
+    # These plans are never passed to execute_plan in P4.6a.
+    task_execution_plans_shadow = ()
+    task_execution_plan_comparison_shadow = None
+    try:
+        task_execution_plans_shadow = (
+            build_task_execution_plans_shadow(plan)
+        )
+        task_execution_plan_comparison_shadow = (
+            compare_task_execution_plans_shadow(
+                plan,
+                task_execution_plans_shadow,
+            )
+        )
+    except Exception:
+        task_execution_plans_shadow = ()
+        task_execution_plan_comparison_shadow = None
+
+    # PROMATI_P4_6B_TASK_EXECUTION_CANARY
+    # Explicit opt-in, fail-open, observational only.
+    task_execution_canary_p4_6b = None
+    try:
+        task_execution_canary_p4_6b = _run_task_execution_canary_p4_6b(
+            plan,
+            task_execution_plans_shadow,
+            sender=sender,
+        )
+    except Exception:
+        task_execution_canary_p4_6b = None
 
     typed_execution_results = []
 
@@ -7380,6 +7663,24 @@ def run_orchestrator(
             except Exception:
                 task_evidence_assessments_shadow = []
 
+            # PROMATI_P4_6C_TASK_EVIDENCE_AUTHORITY_CANARY
+            # Narrow authority only: IntentTask evidence assessment. Legacy Phase-C
+            # research/reconciliation/synthesis and public answer ownership remain unchanged.
+            task_evidence_authority_p4_6c = None
+            try:
+                task_evidence_authority_p4_6c = (
+                    build_task_evidence_authority_canary_p4_6c(
+                        plan,
+                        tuple(working_evidence_items),
+                        now=retrieved_at,
+                        shadow_assessments=(
+                            task_evidence_assessments_shadow
+                        ),
+                    )
+                )
+            except Exception:
+                task_evidence_authority_p4_6c = None
+
             # V5 shadow-only research decisions derived from the V4 task
             # assessments. Fail-open and never used for research execution.
             task_research_decisions_shadow = []
@@ -7391,6 +7692,20 @@ def run_orchestrator(
                 )
             except Exception:
                 task_research_decisions_shadow = []
+
+            # PROMATI_P4_6D1_TASK_RESEARCH_DECISION_AUTHORITY_CANARY
+            # Promote only task-scoped research decisions. No research execution,
+            # reconciliation, synthesis or public answer authority changes here.
+            task_research_authority_p4_6d1 = None
+            try:
+                task_research_authority_p4_6d1 = (
+                    build_task_research_authority_canary_p4_6d1(
+                        task_evidence_authority_p4_6c,
+                        task_research_decisions_shadow,
+                    )
+                )
+            except Exception:
+                task_research_authority_p4_6d1 = None
 
             # V6 shadow-only task research input projection. This isolates the
             # future plan/results context but performs no research call.
@@ -7417,6 +7732,81 @@ def run_orchestrator(
                 )
             except Exception:
                 task_research_call_guards_shadow = []
+
+            # PROMATI_P4_6D2_TASK_RESEARCH_EXECUTION_AUTHORITY_CANARY
+            # Bounded task-research execution authority only. Follow-up outputs
+            # remain isolated from legacy Phase-C reconciliation/public synthesis.
+            task_research_execution_authority_p4_6d2 = None
+            task_research_execution_observations_p4_6d2 = []
+            try:
+                task_research_execution_authority_p4_6d2 = (
+                    run_task_research_execution_authority_canary_p4_6d2(
+                        plan,
+                        list(results),
+                        task_research_authority_p4_6d1,
+                        task_research_contexts_shadow,
+                        task_research_call_guards_shadow,
+                        sender=sender,
+                        evidence_observer=(
+                            task_research_execution_observations_p4_6d2.append
+                        ),
+                    )
+                )
+            except Exception:
+                task_research_execution_authority_p4_6d2 = None
+                task_research_execution_observations_p4_6d2 = []
+
+            # PROMATI_P4_6E1_TASK_RESEARCH_EVIDENCE_AUTHORITY_CANARY
+            # Normalize accepted P4.6d2 typed follow-up results and reassess only
+            # their task/family evidence contract. Legacy Phase-C stays unchanged.
+            task_research_evidence_authority_p4_6e1 = None
+            task_research_evidence_units_p4_6e1 = []
+            try:
+                task_research_evidence_authority_p4_6e1 = (
+                    build_task_research_evidence_authority_canary_p4_6e1(
+                        plan,
+                        task_research_execution_authority_p4_6d2,
+                        task_research_execution_observations_p4_6d2,
+                        tuple(working_evidence_items),
+                        now=retrieved_at,
+                        grounded_synthesis_observer=(
+                            task_research_evidence_units_p4_6e1.append
+                        ),
+                    )
+                )
+            except Exception:
+                task_research_evidence_authority_p4_6e1 = None
+                task_research_evidence_units_p4_6e1 = []
+
+            # PROMATI_P4_6E2_TASK_GROUNDED_SYNTHESIS_AUTHORITY_CANARY
+            task_grounded_synthesis_authority_p4_6e2 = None
+            try:
+                task_grounded_synthesis_authority_p4_6e2 = (
+                    build_task_grounded_synthesis_authority_canary_p4_6e2(
+                        task_research_evidence_authority_p4_6e1,
+                        task_research_evidence_units_p4_6e1,
+                    )
+                )
+            except Exception:
+                task_grounded_synthesis_authority_p4_6e2 = None
+
+            # PROMATI_P4_6E3_TASK_SYNTHESIS_COVERAGE_AUTHORITY_CANARY
+            # Close the multi-intent synthesis coverage gap before any public
+            # composition authority: combine P4.6e2 research-grounded units
+            # with tasks that were already sufficient from existing evidence.
+            task_grounded_synthesis_coverage_authority_p4_6e3 = None
+            try:
+                task_grounded_synthesis_coverage_authority_p4_6e3 = (
+                    build_task_grounded_synthesis_coverage_authority_canary_p4_6e3(
+                        plan,
+                        task_evidence_authority_p4_6c,
+                        task_grounded_synthesis_authority_p4_6e2,
+                        tuple(working_evidence_items),
+                        now=retrieved_at,
+                    )
+                )
+            except Exception:
+                task_grounded_synthesis_coverage_authority_p4_6e3 = None
 
             # V8 candidate-oriented task research execution canary. Disabled
             # by default and fail-open. When explicitly enabled it may execute
@@ -7563,11 +7953,39 @@ def run_orchestrator(
                             requirement_set
                             .requirement_set_id
                         ),
+                        # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW
+                        "task_execution_plans_shadow": (
+                            task_execution_plans_shadow
+                        ),
+                        "task_execution_plan_comparison_shadow": (
+                            task_execution_plan_comparison_shadow
+                        ),
+                        "task_execution_canary_p4_6b": (
+                            task_execution_canary_p4_6b
+                        ),
                         "task_evidence_assessments_shadow": (
                             task_evidence_assessments_shadow
                         ),
+                        "task_evidence_authority_p4_6c": (
+                            task_evidence_authority_p4_6c
+                        ),
                         "task_research_decisions_shadow": (
                             task_research_decisions_shadow
+                        ),
+                        "task_research_authority_p4_6d1": (
+                            task_research_authority_p4_6d1
+                        ),
+                        "task_research_execution_authority_p4_6d2": (
+                            task_research_execution_authority_p4_6d2
+                        ),
+                        "task_research_evidence_authority_p4_6e1": (
+                            task_research_evidence_authority_p4_6e1
+                        ),
+                        "task_grounded_synthesis_authority_p4_6e2": (
+                            task_grounded_synthesis_authority_p4_6e2
+                        ),
+                        "task_grounded_synthesis_coverage_authority_p4_6e3": (
+                            task_grounded_synthesis_coverage_authority_p4_6e3
                         ),
                         "task_research_contexts_shadow": (
                             task_research_contexts_shadow
@@ -7969,6 +8387,43 @@ def run_orchestrator(
                 ),
                 "reason": "blocked_internal_error_fail_open",
             }
+
+    # PROMATI_P4_6F_PUBLIC_MULTI_INTENT_COMPOSITION_AUTHORITY_CANARY
+    # Separate default-off authority gate. This consumes only the proven
+    # P4.6e3 complete grounded task coverage contract. Fail-open preserves
+    # the answer from the pre-existing presentation/public-canary path.
+    answer_before_p4_6f_public_composition = answer
+    task_public_composition_authority_p4_6f = None
+    if isinstance(evidence_pipeline, dict):
+        try:
+            (
+                answer,
+                task_public_composition_authority_p4_6f,
+            ) = build_public_multi_intent_composition_authority_canary_p4_6f(
+                plan,
+                answer_before_p4_6f_public_composition,
+                evidence_pipeline.get(
+                    "task_grounded_synthesis_coverage_authority_p4_6e3"
+                ),
+            )
+        except Exception:
+            answer = answer_before_p4_6f_public_composition
+            task_public_composition_authority_p4_6f = None
+
+        evidence_pipeline[
+            "task_public_composition_authority_p4_6f"
+        ] = task_public_composition_authority_p4_6f
+
+    # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
+    # Best-effort integer-only metrics. Never alter user-visible behavior.
+    try:
+        _record_task_execution_plan_shadow_observability(
+            counts,
+            plan,
+            evidence_pipeline,
+        )
+    except Exception:
+        pass
 
     # PROMATI_PUBLIC_COMPOSITION_CANARY_RELEASE_OBSERVABILITY_HARDENING
     # Best-effort metrics only. Any instrumentation error must never alter the
