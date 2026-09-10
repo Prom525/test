@@ -811,6 +811,14 @@ INTENT_REQUIREMENT_ALIASES = MappingProxyType(
 def get_requirement_set(
     intent: str,
 ) -> EvidenceRequirementSet | None:
+    # PROMATI_P4_15BB_REPLACEMENT_ANALYSIS_REQUIREMENT_SET_ALIAS_V1
+    # Narrow alias: P4.15 cross-domain replay used replacement_analysis
+    # as assessment intent, while the existing catalog contract is
+    # replacement_advice.v1. Do not broaden replacement/replacement-like
+    # intents here.
+    if intent == "replacement_analysis":
+        intent = "replacement_advice"
+
     resolved_intent = INTENT_REQUIREMENT_ALIASES.get(
         intent,
         intent,
