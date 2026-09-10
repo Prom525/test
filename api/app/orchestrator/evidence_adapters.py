@@ -7128,3 +7128,296 @@ def normalize_execution_result_evidence(*args, **kwargs):
     )
     return _p4_15y4_append_canonical_product_article(items)
 
+# PROMATI_P4_15BJ_REPLACEMENT_SOURCE_SHAPE_IMPORT_V1
+#
+# Narrow source-shape import for replacement_analysis/replacement_advice:
+# derive replacement requirement evidence only from existing LIVE_CANONICAL
+# maintenance_position_status evidence. Never derive replacement_advice.v1
+# evidence from product/article/selection STRUCTURED_KNOWLEDGE rows.
+_PROMATI_P4_15BJ_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = normalize_execution_result_evidence
+
+
+def _p4_15bj_enum_value(value):
+    return getattr(value, "value", value)
+
+
+def _p4_15bj_collect_text(value, *, _depth=0):
+    if _depth > 5:
+        return ""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, dict):
+        parts = []
+        for key, child in value.items():
+            parts.append(str(key))
+            parts.append(_p4_15bj_collect_text(child, _depth=_depth + 1))
+        return " ".join(part for part in parts if part)
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(
+            _p4_15bj_collect_text(child, _depth=_depth + 1)
+            for child in value
+        )
+    return str(value)
+
+
+def _p4_15bj_text_for_item(item):
+    parts = [
+        getattr(item, "evidence_id", None),
+        getattr(item, "subject", None),
+        getattr(item, "entity_type", None),
+        getattr(item, "entity_id", None),
+        getattr(item, "source_name", None),
+        getattr(item, "source_reference", None),
+        _p4_15bj_collect_text(getattr(item, "claim_scope", None)),
+        _p4_15bj_collect_text(getattr(item, "value", None)),
+        _p4_15bj_collect_text(getattr(item, "provenance", None)),
+    ]
+    return " ".join(str(part) for part in parts if part).lower()
+
+
+def _p4_15bj_has_any(text, terms):
+    return any(term in text for term in terms)
+
+
+def _p4_15bj_has_digit(text):
+    return any(ch.isdigit() for ch in text)
+
+
+def _p4_15bj_is_live_canonical(item):
+    return _p4_15bj_enum_value(getattr(item, "source_type", None)) == "LIVE_CANONICAL"
+
+
+def _p4_15bj_is_safe_replacement_source(item):
+    subject = getattr(item, "subject", None)
+    if subject != "maintenance_position_status":
+        return False
+    if not _p4_15bj_is_live_canonical(item):
+        return False
+    if _p4_15bj_enum_value(getattr(item, "source_type", None)) == "STRUCTURED_KNOWLEDGE":
+        return False
+    return True
+
+
+def _p4_15bj_provenance(item, alias_name):
+    provenance = getattr(item, "provenance", None)
+    if isinstance(provenance, dict):
+        copied = copy.deepcopy(provenance)
+    else:
+        copied = {}
+    copied.update(
+        {
+            "p4_15bj_import_name": alias_name,
+            "p4_15bj_marker": "PROMATI_P4_15BJ_REPLACEMENT_SOURCE_SHAPE_IMPORT_V1",
+            "p4_15bj_source_evidence_id": getattr(item, "evidence_id", None),
+            "p4_15bj_source_subject": getattr(item, "subject", None),
+            "p4_15bj_guard": "only_from_live_canonical_maintenance_position_status",
+        }
+    )
+    return copied
+
+
+def _p4_15bj_alias(item, *, subject, entity_type, evidence_type, suffix):
+    evidence_id = getattr(item, "evidence_id", None)
+    if evidence_id:
+        alias_id = f"{evidence_id}::p4_15bj::{suffix}"
+    else:
+        alias_id = f"p4_15bj::{suffix}::{id(item)}"
+
+    return _p4_15r3_replace(
+        item,
+        evidence_id=alias_id,
+        subject=subject,
+        entity_type=entity_type,
+        evidence_type=evidence_type,
+        source_type=getattr(item, "source_type", None),
+        provenance=_p4_15bj_provenance(item, suffix),
+    )
+
+
+def _p4_15bj_replacement_aliases_for_item(item):
+    if not _p4_15bj_is_safe_replacement_source(item):
+        return ()
+
+    text = _p4_15bj_text_for_item(item)
+    aliases = []
+
+    measurement_terms = (
+        "latest_position_measurement",
+        "latest measurement",
+        "measurement",
+        "measured",
+        "meting",
+        "gemeten",
+        "positie",
+        "position",
+        "wear_mm",
+        "slijtage_mm",
+        "remaining_mm",
+        "rest_mm",
+        "mm",
+    )
+    forecast_terms = (
+        "forecast_result",
+        "forecast",
+        "prognose",
+        "overdue",
+        "days_overdue",
+        "due_date",
+        "deadline",
+        "priority",
+        "prioriteit",
+        "direct_actie",
+        "directe actie",
+        "actie",
+        "calculated",
+        "berekend",
+    )
+    diagnostic_terms = (
+        "diagnostic_finding",
+        "diagnostic",
+        "diagnose",
+        "finding",
+        "bevinding",
+        "advies",
+        "advice",
+        "status_reason",
+        "reason",
+        "oorzaak",
+        "root_cause",
+        "risico",
+        "risk",
+        "actie",
+        "direct_actie",
+    )
+    replacement_event_terms = (
+        "replacement_history",
+        "replacement_date",
+        "replaced_at",
+        "component_replaced",
+        "replacement_event",
+        "vervangen_op",
+        "vervanging uitgevoerd",
+        "is vervangen",
+        "was replaced",
+    )
+    lifecycle_terms = (
+        "lifecycle_history",
+        "lifecycle",
+        "life cycle",
+        "standtijd",
+        "levensduur",
+        "installed_at",
+        "install_date",
+        "age_days",
+        "run_hours",
+        "runtime",
+        "wear_rate",
+        "slijtage_snelheid",
+    )
+
+    if _p4_15bj_has_any(text, measurement_terms) and (
+        _p4_15bj_has_digit(text) or "mm" in text
+    ):
+        aliases.append(
+            _p4_15bj_alias(
+                item,
+                subject="latest_position_measurement",
+                entity_type="scraper_position",
+                evidence_type=EvidenceType.MEASUREMENT,
+                suffix="latest-position-measurement",
+            )
+        )
+
+    if _p4_15bj_has_any(text, forecast_terms):
+        aliases.append(
+            _p4_15bj_alias(
+                item,
+                subject="forecast_result",
+                entity_type="scraper_position",
+                evidence_type=EvidenceType.CALCULATION_RESULT,
+                suffix="forecast-result",
+            )
+        )
+
+    if _p4_15bj_has_any(text, diagnostic_terms):
+        aliases.append(
+            _p4_15bj_alias(
+                item,
+                subject="diagnostic_finding",
+                entity_type="scraper_position",
+                evidence_type=EvidenceType.DIAGNOSTIC_FINDING,
+                suffix="diagnostic-finding",
+            )
+        )
+
+    # Strong gates: do not infer actual replacement/lifecycle history from
+    # advice that something should be replaced.
+    if _p4_15bj_has_any(text, replacement_event_terms):
+        aliases.append(
+            _p4_15bj_alias(
+                item,
+                subject="replacement_history",
+                entity_type="scraper_lifecycle",
+                evidence_type=EvidenceType.EVENT,
+                suffix="replacement-history",
+            )
+        )
+
+    if _p4_15bj_has_any(text, lifecycle_terms):
+        aliases.append(
+            _p4_15bj_alias(
+                item,
+                subject="lifecycle_history",
+                entity_type="scraper_lifecycle",
+                evidence_type=EvidenceType.MEASUREMENT,
+                suffix="lifecycle-history",
+            )
+        )
+
+    return tuple(alias for alias in aliases if alias is not None)
+
+
+def _p4_15bj_with_replacement_source_shape_aliases(items):
+    if items is None:
+        return items
+
+    if isinstance(items, EvidenceItem):
+        item_tuple = (items,)
+    elif isinstance(items, tuple):
+        item_tuple = items
+    elif isinstance(items, list):
+        item_tuple = tuple(items)
+    else:
+        return items
+
+    result = []
+    seen_ids = set()
+    for item in item_tuple:
+        result.append(item)
+        evidence_id = getattr(item, "evidence_id", None)
+        if evidence_id:
+            seen_ids.add(evidence_id)
+
+    for item in item_tuple:
+        for alias in _p4_15bj_replacement_aliases_for_item(item):
+            evidence_id = getattr(alias, "evidence_id", None)
+            if evidence_id and evidence_id in seen_ids:
+                continue
+            result.append(alias)
+            if evidence_id:
+                seen_ids.add(evidence_id)
+
+    return tuple(result)
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15BJ_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15bj_with_replacement_source_shape_aliases(items)
+
