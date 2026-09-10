@@ -248,16 +248,49 @@ def build_task_grounded_synthesis_coverage_authority_canary_p4_6e3(
         contract["reason"] = "task_evidence_authority_not_active"
         return contract
 
-    if not isinstance(task_grounded_synthesis_authority, dict):
-        contract["reason"] = "missing_task_grounded_synthesis_authority"
-        return contract
-    if (
-        task_grounded_synthesis_authority.get("authoritative") is not True
-        or task_grounded_synthesis_authority.get("authority_scope")
-        != "intent_task_grounded_synthesis_only"
-    ):
-        contract["reason"] = "task_grounded_synthesis_authority_not_active"
-        return contract
+    # PROMATI_P4_14AB_EXISTING_TASK_EVIDENCE_COVERAGE_V1
+    #
+    # A multi-intent task can already have sufficient task-scoped evidence
+    # without needing bounded follow-up research. In that no-research path,
+    # P4.6e2 may legitimately be inactive because P4.6e1 requires accepted
+    # follow-up results. Do not block coverage before the existing-evidence
+    # synthesis path below has a chance to cover every task.
+    existing_task_evidence_fallback = False
+    grounded_authority_units = []
+
+    if isinstance(task_grounded_synthesis_authority, dict):
+        grounded_authority_active = (
+            task_grounded_synthesis_authority.get("authoritative") is True
+            and task_grounded_synthesis_authority.get("authority_scope")
+            == "intent_task_grounded_synthesis_only"
+        )
+        if grounded_authority_active:
+            grounded_authority_units = list(
+                task_grounded_synthesis_authority.get("units") or []
+            )
+        else:
+            reason = str(
+                task_grounded_synthesis_authority.get("reason") or ""
+            )
+            if reason in {
+                "task_research_evidence_authority_not_active",
+                "missing_task_research_evidence_authority",
+                "no_sufficient_authoritative_evidence_units",
+                "no_grounded_units",
+            }:
+                existing_task_evidence_fallback = True
+            else:
+                contract["reason"] = "task_grounded_synthesis_authority_not_active"
+                return contract
+    else:
+        existing_task_evidence_fallback = True
+
+    if existing_task_evidence_fallback:
+        contract["existing_task_evidence_fallback"] = True
+        contract["task_grounded_synthesis_authority_required"] = False
+        contract["fallback_reason"] = "existing_sufficient_task_evidence"
+    else:
+        contract["existing_task_evidence_fallback"] = False
 
     if not tasks:
         contract["reason"] = "no_intent_tasks"
@@ -271,7 +304,7 @@ def build_task_grounded_synthesis_coverage_authority_canary_p4_6e3(
 
     research_grounded = [
         row
-        for row in list(task_grounded_synthesis_authority.get("units") or [])
+        for row in list(grounded_authority_units or [])
         if isinstance(row, dict)
         and row.get("status") == "grounded"
         and int(row.get("claim_count") or 0) > 0

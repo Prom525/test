@@ -328,6 +328,34 @@ def detect_requested_information(
         )):
             add("uncertainties")
 
+
+    # PROMATI_P4_14W_GOLDEN_MV1_INSPECTION_MAINTENANCE_TASKS_V1
+    # Golden MV1-vraag: "laatste inspectiestatus" + "onderhoudsprioriteit"
+    # moet als twee inspection-taken beschikbaar zijn voor task public
+    # composition. Dit blijft deterministisch en verandert geen specialist
+    # endpoint of writes.
+    if primary_domain == Domain.INSPECTION:
+        if any(term in q for term in (
+            "laatste inspectiestatus",
+            "inspectiestatus",
+            "laatste inspectie",
+            "laatste inspectiedatum",
+            "meest recente inspectie",
+            "recentste inspectie",
+        )):
+            add("latest_measurements")
+
+        if any(term in q for term in (
+            "onderhoudsprioriteit",
+            "onderhoud prioriteit",
+            "onderhoudsadvies",
+            "onderhoud advies",
+            "prioriteit",
+            "wat moet eerst",
+            "welke onderhoudsprioriteit",
+        )):
+            add("maintenance_priority")
+
     return requested
 
 
@@ -2007,6 +2035,51 @@ def _inspection_facet_task_specs(
     if "replacement_advice" in requested:
         return None
 
+    # PROMATI_P4_14W_GOLDEN_MV1_INSPECTION_MAINTENANCE_TASKS_V1_FACET_SPLIT
+    maintenance = _requested_subset(
+        requested,
+        ("maintenance_priority",),
+    )
+    if maintenance:
+        latest_for_status = _requested_subset(
+            requested,
+            ("latest_measurements",),
+        )
+        specs = []
+        if latest_for_status or primary_intent in {
+            "inspection_latest",
+            "inspection_lookup",
+            "maintenance_priority",
+        }:
+            specs.append(
+                {
+                    "label": "latest",
+                    "intent": "inspection_latest",
+                    "requested_information": (
+                        latest_for_status
+                        or ["latest_measurements"]
+                    ),
+                }
+            )
+
+        specs.append(
+            {
+                "label": "maintenance",
+                "intent": "maintenance_priority",
+                "requested_information": maintenance,
+            }
+        )
+
+        if len(specs) >= 2:
+            specs.sort(
+                key=lambda spec: (
+                    0
+                    if spec["intent"] == primary_intent
+                    else 1
+                )
+            )
+            return specs
+
     latest = _requested_subset(
         requested,
         ("latest_measurements",),
@@ -3188,6 +3261,7 @@ def understand_query(
         domains=domains,
         intent=intent,
         intent_tasks=intent_tasks,
+        multi_intent=(len(intent_tasks) >= 2),
         entities=entities,
         product_families=product_families,
         requested_information=requested_information,

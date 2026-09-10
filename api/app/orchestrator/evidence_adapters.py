@@ -1612,12 +1612,24 @@ def _analysis_maintenance_priority_evidence(
             )
         )
 
+        row_line_code = _nonempty_string(
+            record.get("lijn_code")
+            or record.get("line_code")
+        )
+        asset_installation_code = _nonempty_string(
+            asset_context.get("installation_code")
+        )
         row_matches_asset = (
             asset_resolved
             and row_band_code is not None
             and asset_band_code is not None
-            and row_band_code
-            == asset_band_code
+            and (
+                row_band_code == asset_band_code
+                or (
+                    asset_installation_code is not None
+                    and row_line_code == asset_installation_code
+                )
+            )
         )
 
         grounding_status = (
@@ -2393,7 +2405,145 @@ def _analysis_resultaat_latest_evidence(
     #
     # Fact rows repeat the same physical measurement for each
     # check_code. Deduplicate the physical observation.
+    #
+    # PROMATI_P4_14Z_INSPECTION_LATEST_MEASUREMENT_AGGREGATE_V1
+    # The inspection_latest.v1 requirement asks whether the latest
+    # canonical inspection has directly observed scraper-position
+    # measurements. A belt inspection naturally contains multiple
+    # position values. Emit one task-level MEASUREMENT aggregate for
+    # requirement sufficiency and keep per-position values as detail
+    # RECORD evidence, preventing false scalar conflicts.
     # --------------------------------------------------------
+
+    aggregate_rows: list[dict[str, Any]] = []
+    aggregate_seen: set[tuple[str | None, str | None, str | None, str]] = set()
+
+    for record in latest_records:
+        meshoogte = record.get("meshoogte_mm")
+
+        if meshoogte is None:
+            continue
+
+        inspection_key = _nonempty_string(
+            record.get("inspection_key")
+        )
+        scraper_type = _nonempty_string(
+            record.get("scraper_type_raw")
+        )
+        location = _nonempty_string(
+            record.get("locatie_raw")
+        )
+        row_band_code = _nonempty_string(
+            record.get("band_code")
+        )
+
+        aggregate_key = (
+            inspection_key,
+            scraper_type,
+            location,
+            str(meshoogte),
+        )
+
+        if aggregate_key in aggregate_seen:
+            continue
+
+        aggregate_seen.add(aggregate_key)
+
+        aggregate_rows.append(
+            {
+                "inspection_key": inspection_key,
+                "document_date": latest_date_text,
+                "band_code": row_band_code,
+                "scraper_type_raw": scraper_type,
+                "locatie_raw": location,
+                "meshoogte_mm": meshoogte,
+                "mes_vervangen": record.get("mes_vervangen"),
+                "source_file": (
+                    _nonempty_string(record.get("source_file"))
+                    or _nonempty_string(record.get("source_name"))
+                ),
+            }
+        )
+
+    if aggregate_rows:
+        numeric_values = [
+            float(row["meshoogte_mm"])
+            for row in aggregate_rows
+            if isinstance(row.get("meshoogte_mm"), (int, float))
+            and not isinstance(row.get("meshoogte_mm"), bool)
+        ]
+
+        aggregate_record = {
+            "kind": "inspection_latest_measurement_set",
+            "document_date": latest_date_text,
+            "band_code": asset_band_code,
+            "inspection_keys": inspection_keys,
+            "measurement_count": len(aggregate_rows),
+            "numeric_measurement_count": len(numeric_values),
+            "min_meshoogte_mm": (
+                min(numeric_values)
+                if numeric_values
+                else None
+            ),
+            "max_meshoogte_mm": (
+                max(numeric_values)
+                if numeric_values
+                else None
+            ),
+            "position_measurements": copy.deepcopy(aggregate_rows),
+            "latest_known": True,
+        }
+
+        aggregate_entity_id = (
+            (
+                str(asset_band_code)
+                + "|latest-inspection-measurements|"
+                + latest_date_text
+            )
+            if asset_band_code is not None
+            else (
+                "latest-inspection-measurements|"
+                + latest_date_text
+            )
+        )
+
+        aggregate_grounded = (
+            asset_grounded
+            and aggregate_entity_id is not None
+            and bool(aggregate_rows)
+        )
+
+        add_item(
+            record=aggregate_record,
+            index=29_000,
+            subject="latest_blade_height",
+            entity_type="scraper_position",
+            entity_id=aggregate_entity_id,
+            evidence_type=EvidenceType.MEASUREMENT,
+            value=aggregate_record,
+            unit="mm",
+            observed_at=latest_dt,
+            source_name="analysis_assistant",
+            source_reference=primary_inspection_key,
+            grounded=aggregate_grounded,
+            quality_valid=(
+                latest_date_text is not None
+                and bool(aggregate_rows)
+                and aggregate_entity_id is not None
+            ),
+            provenance={
+                "inspection_keys": inspection_keys,
+                "band_code": asset_band_code,
+                "measurement_count": len(aggregate_rows),
+                "provenance_basis": "p4_14z_task_level_measurement_aggregate",
+                "latest_known": True,
+            },
+            claim_scope=(
+                (asset_band_code, "LATEST_INSPECTION_MEASUREMENT")
+                if asset_band_code
+                else ("LATEST_INSPECTION_MEASUREMENT",)
+            ),
+        )
 
     seen_measurements: set[
         tuple[
@@ -2463,9 +2613,22 @@ def _analysis_resultaat_latest_evidence(
             or _nonempty_string(record.get("source_name"))
         )
 
+        row_line_code = _nonempty_string(
+            record.get("line_hint")
+            or record.get("lijn_code")
+        )
+        asset_installation_code = _nonempty_string(
+            asset_context.get("installation_code")
+        )
         row_matches_asset = (
             asset_band_code is not None
-            and row_band_code == asset_band_code
+            and (
+                row_band_code == asset_band_code
+                or (
+                    asset_installation_code is not None
+                    and row_line_code == asset_installation_code
+                )
+            )
         )
 
         required_quality_fields_present = all(
@@ -2517,10 +2680,10 @@ def _analysis_resultaat_latest_evidence(
         add_item(
             record=measurement_record,
             index=measurement_index,
-            subject="latest_blade_height",
-            entity_type="scraper_position",
+            subject="latest_blade_height_detail",
+            entity_type="scraper_position_detail",
             entity_id=entity_id,
-            evidence_type=EvidenceType.MEASUREMENT,
+            evidence_type=EvidenceType.RECORD,
             value=measurement_record,
             unit="mm",
             observed_at=latest_dt,
@@ -4740,9 +4903,15 @@ def _p4_14e_scope_from_live_result(
 
     summary = live_result.get("summary")
     if not isinstance(summary, dict):
+        summary = live_result.get("samenvatting")
+    if not isinstance(summary, dict):
         summary = {}
 
     rows = live_result.get("rows")
+    if not isinstance(rows, list):
+        rows = live_result.get("resultaat")
+    if not isinstance(rows, list):
+        rows = live_result.get("maintenance_ranking")
     first_row = None
     if isinstance(rows, list):
         for row in rows:
@@ -4756,6 +4925,7 @@ def _p4_14e_scope_from_live_result(
         scope.get("band_code"),
         scope.get("band_code_norm"),
         scope.get("scope_code"),
+        scope.get("canonical_code"),
         scope.get("line_code"),
         scope.get("lijn_code"),
         summary.get("scope_code"),
@@ -4799,6 +4969,7 @@ def _p4_14e_scope_from_live_result(
         "installation_code": installation_code,
         "installation_name": _p4_14e_pick_string(
             scope.get("installation_name"),
+            scope.get("canonical_name"),
             scope.get("asset_name"),
             first_row.get("asset_name"),
         ),
@@ -4838,6 +5009,8 @@ def _p4_14e_live_rows(
     if not isinstance(rows, list):
         rows = live_result.get("resultaat")
     if not isinstance(rows, list):
+        rows = live_result.get("maintenance_ranking")
+    if not isinstance(rows, list):
         return ()
     return tuple(copy.deepcopy(row) for row in rows if isinstance(row, dict))
 
@@ -4847,6 +5020,8 @@ def _p4_14e_observed_date_text(row: dict[str, Any]) -> str | None:
         row.get("latest_inspection_date"),
         row.get("inspection_date"),
         row.get("inspectiedatum"),
+        row.get("laatste_inspectiedatum"),
+        row.get("laatste_meting_datum"),
         row.get("document_date"),
         row.get("cycle_end"),
         row.get("observed_at"),
@@ -4886,12 +5061,16 @@ def _p4_14e_inspection_latest_raw_result(
         position_code = _p4_14e_pick_string(
             row.get("position_code"),
             row.get("position_label"),
+            row.get("position_display"),
+            row.get("physical_position_label_final"),
+            row.get("scraper_role"),
             row.get("locatie_raw"),
             "position-" + str(index + 1),
         )
         scraper_type = _p4_14e_pick_string(
             row.get("scraper_type_raw"),
             row.get("scraper_type"),
+            row.get("scraper_type_norm"),
             row.get("scraper_types"),
             row.get("position_label"),
             row.get("position_code"),
@@ -4903,6 +5082,7 @@ def _p4_14e_inspection_latest_raw_result(
             row.get("value_mm"),
             row.get("value"),
             row.get("meshoogte_mm"),
+            row.get("actuele_meshoogte_mm"),
         )
 
         resultaat.append(
@@ -4921,6 +5101,7 @@ def _p4_14e_inspection_latest_raw_result(
                     row.get("line_code"),
                     row.get("lijn_code"),
                     row.get("scope_code"),
+                    row.get("canonical_scope_code"),
                     band_code,
                 ),
                 "band_code": _p4_14e_pick_string(
@@ -5011,6 +5192,9 @@ def _p4_14e_maintenance_priority_raw_result(
         position_hint = _p4_14e_pick_string(
             row.get("position_hint"),
             row.get("position_label"),
+            row.get("position_display"),
+            row.get("physical_position_label_final"),
+            row.get("scraper_role"),
             row.get("position_code"),
             "position-" + str(index + 1),
         )
@@ -5018,6 +5202,7 @@ def _p4_14e_maintenance_priority_raw_result(
             row.get("scraper_types_clean"),
             row.get("scraper_types"),
             row.get("scraper_type"),
+            row.get("scraper_type_norm"),
             row.get("position_label"),
             row.get("position_code"),
             "scraper-position",
@@ -5028,6 +5213,7 @@ def _p4_14e_maintenance_priority_raw_result(
             row.get("value_mm"),
             row.get("value"),
             row.get("eind_meshoogte_mm"),
+            row.get("actuele_meshoogte_mm"),
         )
         forecast = row.get("forecast_result")
         if not isinstance(forecast, dict):
@@ -5037,21 +5223,26 @@ def _p4_14e_maintenance_priority_raw_result(
             forecast.get("days_to_limit"),
             forecast.get("days_to_3mm"),
             row.get("geschatte_dagen_tot_3mm"),
+            row.get("dagen_tot_3mm_historisch"),
         )
         replacement_date = _p4_14e_pick_string(
             forecast.get("replacement_date"),
             forecast.get("date"),
             row.get("geschatte_vervangdatum_bij_3mm"),
+            row.get("geschatte_vervangdatum_bij_3mm_historisch"),
             date_text,
         )
         wear_rate = _p4_14e_pick_number(
             forecast.get("wear_rate"),
             row.get("slijtage_mm_per_dag"),
+            row.get("gewogen_slijtage_mm_per_dag"),
             0.001 if forecast else None,
         )
         meetpunten = row.get("meetpunten")
         if not isinstance(meetpunten, int) or isinstance(meetpunten, bool):
-            meetpunten = 3 if forecast else 1
+            meetpunten = row.get("analyse_meetpunten")
+            if not isinstance(meetpunten, int) or isinstance(meetpunten, bool):
+                meetpunten = 3 if forecast else 1
 
         result_row = {
             "lijn_code": _p4_14e_pick_string(
@@ -5087,6 +5278,8 @@ def _p4_14e_maintenance_priority_raw_result(
             "geschatte_vervangdatum_bij_3mm": replacement_date,
             "status_3mm": _p4_14e_pick_string(
                 row.get("maintenance_position_status"),
+                row.get("onderhoudsadvies"),
+                row.get("planning_status_3mm_historisch"),
                 row.get("status_3mm"),
                 row.get("status"),
                 forecast.get("status"),
@@ -5152,6 +5345,8 @@ def _p4_14e_maintenance_priority_raw_result(
             "prestatie_vervangmoment": _p4_14e_pick_string(
                 row.get("prestatie_vervangmoment"),
                 row.get("priority_rationale"),
+                row.get("inspectie_actualiteit"),
+                row.get("data_quality_flag"),
             ),
         }
         resultaat.append(result_row)
@@ -5225,6 +5420,70 @@ def _p4_14e_normalize_execution_result_input(
         intent=live_intent,
     )
 
+
+# PROMATI_P4_14W_GOLDEN_SCOPE_ANALYSIS_EVIDENCE_V1
+def _p4_14w_scope_analysis_rank_maintenance_evidence(
+    execution_result: ExecutionResult,
+    *,
+    retrieved_at: datetime,
+) -> tuple[EvidenceItem, ...]:
+    raw_result = execution_result.result
+    if not isinstance(raw_result, dict):
+        return ()
+
+    if (
+        _nonempty_string(raw_result.get("intent")) != "scope_analysis"
+        or _nonempty_string(raw_result.get("operation")) != "rank"
+        or _nonempty_string(raw_result.get("subject")) != "maintenance"
+    ):
+        return ()
+
+    evidence_items: list[EvidenceItem] = []
+
+    if isinstance(raw_result.get("resultaat"), list):
+        inspection_live = copy.deepcopy(raw_result)
+        inspection_live["rows"] = copy.deepcopy(raw_result.get("resultaat"))
+        inspection_live.pop("resultaat", None)
+        inspection_execution = _p4_14e_normalize_execution_result_input(
+            execution_result=inspection_live,
+            intent="inspection_latest",
+            retrieved_at=retrieved_at,
+        )
+        if (
+            inspection_execution is not None
+            and hasattr(inspection_execution, "action")
+        ):
+            evidence_items.extend(
+                _analysis_resultaat_latest_evidence(
+                    inspection_execution,
+                    retrieved_at=retrieved_at,
+                )
+            )
+
+    if isinstance(raw_result.get("maintenance_ranking"), list):
+        maintenance_live = copy.deepcopy(raw_result)
+        maintenance_live["rows"] = copy.deepcopy(
+            raw_result.get("maintenance_ranking")
+        )
+        maintenance_live.pop("resultaat", None)
+        maintenance_execution = _p4_14e_normalize_execution_result_input(
+            execution_result=maintenance_live,
+            intent="maintenance_priority",
+            retrieved_at=retrieved_at,
+        )
+        if (
+            maintenance_execution is not None
+            and hasattr(maintenance_execution, "action")
+        ):
+            evidence_items.extend(
+                _analysis_maintenance_priority_evidence(
+                    maintenance_execution,
+                    retrieved_at=retrieved_at,
+                )
+            )
+
+    return tuple(evidence_items)
+
 def normalize_execution_result_evidence(
     execution_result: ExecutionResult | dict[str, Any] | None = None,
     *,
@@ -5278,6 +5537,15 @@ def normalize_execution_result_evidence(
         == "analysis_assistant"
     ):
         raw_result = execution_result.result
+
+        scope_analysis_evidence = (
+            _p4_14w_scope_analysis_rank_maintenance_evidence(
+                execution_result,
+                retrieved_at=retrieved_at,
+            )
+        )
+        if scope_analysis_evidence:
+            return scope_analysis_evidence
 
         # PROMATI_REPLACEMENT_ADVICE_DISPATCH_V1
         if (
