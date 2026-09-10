@@ -7590,3 +7590,296 @@ def _p4_15bj_alias(item, *, subject, entity_type, evidence_type, suffix):
         provenance=_p4_15bp_provenance(item, suffix, subject),
     )
 
+# PROMATI_P4_15CE_LIFECYCLE_HISTORY_SOURCE_SHAPE_IMPORT_V1
+#
+# Narrow lifecycle-history source-shape import for replacement assessment.
+# This patch is deliberately conservative:
+# - emits lifecycle_history only from strong asset/scraper lifecycle source facts;
+# - rejects generic blade coverage / product selection tables;
+# - rejects generic chute/transferpoint/slijtage guidance;
+# - never emits replacement_history;
+# - never derives lifecycle_history from position/forecast/diagnostic aliases alone.
+
+_p4_15ce_previous_normalize_execution_result_evidence = normalize_execution_result_evidence
+
+
+def _p4_15ce_enum_value(value):
+    return getattr(value, "value", value)
+
+
+def _p4_15ce_text(value):
+    try:
+        if isinstance(value, (dict, list, tuple)):
+            import json as _json
+            return _json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        pass
+    return "" if value is None else str(value)
+
+
+def _p4_15ce_lower(value):
+    return _p4_15ce_text(value).lower()
+
+
+def _p4_15ce_walk(value, depth=0):
+    if depth > 8:
+        return
+    yield value
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from _p4_15ce_walk(child, depth + 1)
+    elif isinstance(value, (list, tuple)):
+        for child in list(value)[:200]:
+            yield from _p4_15ce_walk(child, depth + 1)
+
+
+def _p4_15ce_any_text(value, terms):
+    text = _p4_15ce_lower(value)
+    return any(term in text for term in terms)
+
+
+def _p4_15ce_has_any_strong_lifecycle_fact(value):
+    # Strong facts must describe lifecycle/install/runtime/wear-rate,
+    # not merely a generic product or transferpoint guideline.
+    strong_terms = (
+        "scraper_lifecycle",
+        "asset_lifecycle",
+        "lifecycle_history",
+        "life_cycle",
+        "service_life",
+        "levensduur",
+        "install_date",
+        "installed_at",
+        "installation_date",
+        "geinstalleerd",
+        "geïnstalleerd",
+        "runtime_hours",
+        "operating_hours",
+        "draaiuren",
+        "wear_rate",
+        "slijtagegraad",
+        "wear_measurement",
+        "wear_history",
+        "wear_mm",
+        "blade_wear_mm",
+        "scraper_wear",
+    )
+    return _p4_15ce_any_text(value, strong_terms)
+
+
+def _p4_15ce_is_weak_or_generic_guidance(value):
+    text = _p4_15ce_lower(value)
+
+    # Generic product selection / blade coverage tables are not lifecycle history.
+    weak_patterns = (
+        "minimum_blade_coverage",
+        "min. blade coverage",
+        "belt_width_in",
+        "belt_width_mm",
+        "selection_table",
+        "recommendation_table",
+        "transferpoint",
+        "transfer point",
+        "chute",
+        "trajectory",
+        "centered loading",
+        "loading angle",
+        "return belt plow",
+        "pulley cleaner",
+        "generic",
+        "cema-aanbeveling",
+    )
+    if any(pattern in text for pattern in weak_patterns):
+        return True
+
+    # A plain blade/blad/messer mention is not enough.
+    weak_only_terms = ("blade", "blad", "messer", "slijtage")
+    strong_anchor_terms = (
+        "scraper_lifecycle",
+        "asset_lifecycle",
+        "install",
+        "runtime",
+        "draaiuren",
+        "service_life",
+        "levensduur",
+        "wear_rate",
+        "wear_mm",
+        "blade_wear_mm",
+    )
+
+    has_weak = any(term in text for term in weak_only_terms)
+    has_anchor = any(term in text for term in strong_anchor_terms)
+    return has_weak and not has_anchor
+
+
+def _p4_15ce_is_forbidden_replacement_history(value):
+    forbidden_terms = (
+        "replacement_history",
+        "vervangingshistorie",
+        "previous_replacement",
+        "last_replacement",
+        "replaced_at",
+        "replacement_event",
+    )
+    return _p4_15ce_any_text(value, forbidden_terms)
+
+
+def _p4_15ce_is_live_or_supported_source(item):
+    source_type = _p4_15ce_enum_value(getattr(item, "source_type", None))
+    source_type_text = "" if source_type is None else str(source_type)
+    return source_type_text in {"LIVE_CANONICAL", "STRUCTURED_KNOWLEDGE", "DOCUMENT"} or "LIVE_CANONICAL" in source_type_text
+
+
+def _p4_15ce_is_position_alias_only(item):
+    subject = getattr(item, "subject", None)
+    return subject in {
+        "latest_position_measurement",
+        "forecast_result",
+        "diagnostic_finding",
+        "maintenance_position_status",
+    }
+
+
+def _p4_15ce_source_payload(item):
+    chunks = []
+    for attr in (
+        "value",
+        "payload",
+        "data",
+        "structured_data",
+        "metadata",
+        "claim",
+        "claims",
+        "provenance",
+        "source_reference",
+        "source_name",
+        "claim_scope",
+    ):
+        try:
+            chunks.append(getattr(item, attr, None))
+        except Exception:
+            pass
+    return chunks
+
+
+def _p4_15ce_candidate_from_item(item):
+    if item is None:
+        return None
+
+    # Never build lifecycle history from replacement-history terms or position aliases alone.
+    if _p4_15ce_is_forbidden_replacement_history(item):
+        return None
+    if _p4_15ce_is_position_alias_only(item):
+        return None
+    if not _p4_15ce_is_live_or_supported_source(item):
+        return None
+
+    payload = _p4_15ce_source_payload(item)
+    if _p4_15ce_is_weak_or_generic_guidance(payload):
+        return None
+    if not _p4_15ce_has_any_strong_lifecycle_fact(payload):
+        return None
+
+    return payload
+
+
+def _p4_15ce_make_lifecycle_item(source_item, suffix):
+    try:
+        EvidenceItem
+    except NameError:
+        return None
+
+    evidence_id = getattr(source_item, "evidence_id", None) or f"p4-15ce-source-{suffix}"
+    source_type = getattr(source_item, "source_type", None)
+    domain = getattr(source_item, "domain", None) or "inspection"
+
+    try:
+        evidence_type = EvidenceType.MEASUREMENT
+    except Exception:
+        evidence_type = getattr(source_item, "evidence_type", None)
+
+    provenance = getattr(source_item, "provenance", None)
+    if not isinstance(provenance, dict):
+        provenance = {}
+
+    provenance = dict(provenance)
+    provenance.update({
+        "p4_15ce_marker": "PROMATI_P4_15CE_LIFECYCLE_HISTORY_SOURCE_SHAPE_IMPORT_V1",
+        "p4_15ce_source_evidence_id": evidence_id,
+        "p4_15ce_rule": "strong_source_shape_lifecycle_import",
+    })
+
+    kwargs = {
+        "evidence_id": f"{evidence_id}::p4_15ce::lifecycle-history",
+        "domain": domain,
+        "subject": "lifecycle_history",
+        "entity_type": "scraper_lifecycle",
+        "entity_id": getattr(source_item, "entity_id", None) or "scraper_lifecycle",
+        "evidence_type": evidence_type,
+        "source_type": source_type,
+        "source_name": getattr(source_item, "source_name", None),
+        "source_reference": getattr(source_item, "source_reference", None),
+        "claim_scope": tuple(["lifecycle_history", "scraper_lifecycle", "replacement_analysis"]),
+        "provenance": provenance,
+    }
+
+    # Add grounding-shape fields when supported by the dataclass/model.
+    for name, value in (
+        ("grounding_status", getattr(source_item, "grounding_status", None)),
+        ("direct_or_derived", getattr(source_item, "direct_or_derived", None)),
+        ("quality_status", getattr(source_item, "quality_status", None)),
+        ("freshness_status", getattr(source_item, "freshness_status", None)),
+    ):
+        if value is not None:
+            kwargs[name] = value
+
+    try:
+        return EvidenceItem(**kwargs)
+    except TypeError:
+        # Fallback for stricter constructor signatures.
+        allowed = {}
+        try:
+            import inspect as _inspect
+            params = set(_inspect.signature(EvidenceItem).parameters)
+            allowed = {k: v for k, v in kwargs.items() if k in params}
+            return EvidenceItem(**allowed)
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def _p4_15ce_with_lifecycle_history_aliases(items):
+    if not items:
+        return items
+
+    result = list(items)
+    existing_ids = {getattr(item, "evidence_id", None) for item in result}
+    added = 0
+
+    for item in list(items):
+        if _p4_15ce_candidate_from_item(item) is None:
+            continue
+        alias = _p4_15ce_make_lifecycle_item(item, added + 1)
+        if alias is None:
+            continue
+        alias_id = getattr(alias, "evidence_id", None)
+        if alias_id and alias_id in existing_ids:
+            continue
+        result.append(alias)
+        if alias_id:
+            existing_ids.add(alias_id)
+        added += 1
+
+    if isinstance(items, tuple):
+        return tuple(result)
+    return result
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _p4_15ce_previous_normalize_execution_result_evidence(*args, **kwargs)
+    try:
+        return _p4_15ce_with_lifecycle_history_aliases(items)
+    except Exception:
+        return items
+
