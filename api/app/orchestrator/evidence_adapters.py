@@ -7883,3 +7883,174 @@ def normalize_execution_result_evidence(*args, **kwargs):
     except Exception:
         return items
 
+# PROMATI_P4_15CP3_INSPECTION_LATEST_SCOPE_OVERVIEW_EVIDENCE_NORMALIZATION_V1
+# Narrow repair:
+# - single-intent inspection_latest can execute the inspection specialist as
+#   scope_analysis/overview for an installation scope.
+# - That overview result already contains real latest inspection rows
+#   (laatste_inspectiedatum, meshhoogte_mm, asset entities), but the previous
+#   evidence adapter did not project that source-shape into the existing
+#   inspection_latest evidence contract.
+# - This wrapper imports only real rows already present in the specialist
+#   result. It does not synthesize evidence and does not touch replacement,
+#   lifecycle, product or article routes.
+
+_p4_15cp3_previous_normalize_execution_result_evidence = normalize_execution_result_evidence
+
+
+def _p4_15cp3_nonempty_string(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _p4_15cp3_raw_result(execution_result):
+    if isinstance(execution_result, dict):
+        nested = execution_result.get("result")
+        if isinstance(nested, dict):
+            return nested
+        return execution_result
+    raw_result = getattr(execution_result, "result", None)
+    if isinstance(raw_result, dict):
+        return raw_result
+    return None
+
+
+def _p4_15cp3_is_scope_analysis_overview(raw_result):
+    if not isinstance(raw_result, dict):
+        return False
+    return (
+        _p4_15cp3_nonempty_string(raw_result.get("intent")) == "scope_analysis"
+        and _p4_15cp3_nonempty_string(raw_result.get("operation")) == "overview"
+    )
+
+
+def _p4_15cp3_row_contains_latest_inspection_signal(row):
+    if not isinstance(row, dict):
+        return False
+
+    date_value = _p4_15cp3_nonempty_string(
+        row.get("laatste_inspectiedatum")
+        or row.get("latest_inspection_date")
+        or row.get("inspection_date")
+        or row.get("document_date")
+        or row.get("cycle_end")
+        or row.get("observed_at")
+    )
+    if date_value is None:
+        return False
+
+    # At least one inspection observation signal must be present.  This keeps
+    # generic scope rows or catalog rows out while accepting measurement and
+    # condition-only inspection positions.
+    observation_fields = (
+        "meshoogte_mm",
+        "slijtage_actie_pct",
+        "conditie_code",
+        "mes_interpretatie",
+        "commentaar",
+        "planned_replace_signal",
+        "mechanical_or_access_signal",
+        "score_bron",
+        "analyse_basis",
+    )
+    return any(row.get(field) not in (None, "", [], {}) for field in observation_fields)
+
+
+def _p4_15cp3_scope_overview_inspection_latest_evidence(
+    execution_result,
+    *,
+    retrieved_at,
+):
+    raw_result = _p4_15cp3_raw_result(execution_result)
+    if not _p4_15cp3_is_scope_analysis_overview(raw_result):
+        return ()
+
+    records = raw_result.get("resultaat")
+    if not isinstance(records, list) or not records:
+        return ()
+
+    if not any(
+        _p4_15cp3_row_contains_latest_inspection_signal(row)
+        for row in records
+        if isinstance(row, dict)
+    ):
+        return ()
+
+    inspection_live = copy.deepcopy(raw_result)
+    inspection_live["rows"] = copy.deepcopy(records)
+    inspection_live.pop("resultaat", None)
+    inspection_live["intent"] = "inspection_latest"
+    inspection_live.setdefault("domain", "inspection")
+
+    canonical_execution = _p4_14e_normalize_execution_result_input(
+        execution_result=inspection_live,
+        intent="inspection_latest",
+        retrieved_at=retrieved_at,
+    )
+
+    if canonical_execution is None or not hasattr(canonical_execution, "action"):
+        return ()
+
+    return tuple(
+        _analysis_resultaat_latest_evidence(
+            canonical_execution,
+            retrieved_at=retrieved_at,
+        )
+    )
+
+
+def _p4_15cp3_evidence_id(item):
+    value = getattr(item, "evidence_id", None)
+    return str(value) if value is not None else None
+
+
+def _p4_15cp3_dedupe_evidence(items):
+    output = []
+    seen = set()
+    for item in tuple(items or ()):
+        evidence_id = _p4_15cp3_evidence_id(item)
+        if evidence_id is None:
+            output.append(item)
+            continue
+        if evidence_id in seen:
+            continue
+        seen.add(evidence_id)
+        output.append(item)
+    return tuple(output)
+
+
+def normalize_execution_result_evidence(
+    execution_result=None,
+    *,
+    retrieved_at=None,
+    intent=None,
+    result=None,
+):
+    if retrieved_at is None:
+        retrieved_at = datetime.now(timezone.utc)
+
+    base_items = tuple(
+        _p4_15cp3_previous_normalize_execution_result_evidence(
+            execution_result,
+            retrieved_at=retrieved_at,
+            intent=intent,
+            result=result,
+        )
+        or ()
+    )
+
+    raw_input = result if result is not None else execution_result
+    additions = tuple(
+        _p4_15cp3_scope_overview_inspection_latest_evidence(
+            raw_input,
+            retrieved_at=retrieved_at,
+        )
+    )
+
+    if not additions:
+        return base_items
+
+    return _p4_15cp3_dedupe_evidence(base_items + additions)
+
