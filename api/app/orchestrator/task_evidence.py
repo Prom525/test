@@ -403,3 +403,152 @@ def build_task_evidence_authority_canary_p4_6c(
 __all__ = [
     "build_task_evidence_authority_canary_p4_6c",
 ]
+
+# PROMATI_P4_15BX_REPLACEMENT_RESOLVED_CONTEXT_COMPOSITION_V1
+#
+# Narrow cross-task composition for replacement evidence.
+# This patch only allows existing resolved_asset_context evidence to be
+# composed into replacement_analysis/replacement_advice task evidence.
+# It does not synthesize replacement_history or lifecycle_history and it
+# does not import product_record/product_article_record/selection_advice
+# as replacement requirement evidence.
+
+_p4_15bx_original_select_task_evidence = _select_task_evidence
+
+
+def _p4_15bx_value(value):
+    raw = getattr(value, "value", value)
+    if raw is None:
+        return None
+    return str(raw)
+
+
+def _p4_15bx_subject(item):
+    return getattr(item, "subject", None)
+
+
+def _p4_15bx_evidence_id(item):
+    return getattr(item, "evidence_id", None)
+
+
+def _p4_15bx_is_resolved_asset_context(item):
+    return _p4_15bx_subject(item) == "resolved_asset_context"
+
+
+def _p4_15bx_task_intent(task):
+    if isinstance(task, dict):
+        for key in ("intent", "task_intent", "requested_info", "name", "id"):
+            value = task.get(key)
+            if value:
+                text = str(value)
+                if text in {"replacement_analysis", "replacement_advice"}:
+                    return text
+                if "replacement_analysis" in text:
+                    return "replacement_analysis"
+                if "replacement_advice" in text:
+                    return "replacement_advice"
+    for attr in ("intent", "task_intent", "requested_info", "name", "id"):
+        value = getattr(task, attr, None)
+        if value:
+            text = str(value)
+            if text in {"replacement_analysis", "replacement_advice"}:
+                return text
+            if "replacement_analysis" in text:
+                return "replacement_analysis"
+            if "replacement_advice" in text:
+                return "replacement_advice"
+    return None
+
+
+def _p4_15bx_is_replacement_task(task):
+    return _p4_15bx_task_intent(task) in {"replacement_analysis", "replacement_advice"}
+
+
+def _p4_15bx_iter_evidence(value):
+    if value is None:
+        return tuple()
+    if isinstance(value, (str, bytes, dict)):
+        return tuple()
+    try:
+        iterator = iter(value)
+    except TypeError:
+        return tuple()
+    rows = []
+    for item in iterator:
+        if hasattr(item, "subject") and hasattr(item, "evidence_id"):
+            rows.append(item)
+    return tuple(rows)
+
+
+def _p4_15bx_find_task_and_pool(args, kwargs):
+    task = None
+    evidence_pool = tuple()
+
+    for key in ("task", "task_spec", "task_definition"):
+        if key in kwargs:
+            task = kwargs.get(key)
+            break
+
+    for key in ("evidence_items", "items", "all_evidence", "evidence_pool", "candidate_evidence"):
+        if key in kwargs:
+            evidence_pool = _p4_15bx_iter_evidence(kwargs.get(key))
+            if evidence_pool:
+                break
+
+    if task is None:
+        for arg in args:
+            if _p4_15bx_task_intent(arg):
+                task = arg
+                break
+
+    if not evidence_pool:
+        for arg in args:
+            rows = _p4_15bx_iter_evidence(arg)
+            if rows:
+                evidence_pool = rows
+                break
+
+    return task, evidence_pool
+
+
+def _p4_15bx_compose_resolved_context(selected, evidence_pool, task):
+    if not _p4_15bx_is_replacement_task(task):
+        return selected
+
+    selected_items = _p4_15bx_iter_evidence(selected)
+    if not selected_items:
+        return selected
+
+    existing_ids = {
+        _p4_15bx_evidence_id(item)
+        for item in selected_items
+        if _p4_15bx_evidence_id(item)
+    }
+
+    additions = []
+    for item in evidence_pool:
+        if not _p4_15bx_is_resolved_asset_context(item):
+            continue
+        evidence_id = _p4_15bx_evidence_id(item)
+        if evidence_id and evidence_id in existing_ids:
+            continue
+        additions.append(item)
+        if evidence_id:
+            existing_ids.add(evidence_id)
+
+    if not additions:
+        return selected
+
+    if isinstance(selected, tuple):
+        return tuple(list(selected) + additions)
+    if isinstance(selected, list):
+        return list(selected) + additions
+
+    return tuple(list(selected_items) + additions)
+
+
+def _select_task_evidence(*args, **kwargs):
+    selected = _p4_15bx_original_select_task_evidence(*args, **kwargs)
+    task, evidence_pool = _p4_15bx_find_task_and_pool(args, kwargs)
+    return _p4_15bx_compose_resolved_context(selected, evidence_pool, task)
+
