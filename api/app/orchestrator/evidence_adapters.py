@@ -5649,3 +5649,1482 @@ def normalize_execution_result_evidence(
         )
 
     return ()
+
+# PROMATI_P4_15R3_NARROW_INSPECTION_DERIVED_ALIAS_V1
+#
+# Narrow adapter-only aliases derived from real P4.15R2 inspection_latest output.
+#
+# Boundary:
+# - aliases only existing inspection-domain EvidenceItems;
+# - no product/article/technical/selection aliasing;
+# - no selector bridge;
+# - no assessor relaxation;
+# - preserves original EvidenceItems and appends traceable alias EvidenceItems.
+from dataclasses import is_dataclass as _p4_15r3_is_dataclass
+from dataclasses import replace as _p4_15r3_dataclass_replace
+
+
+_PROMATI_P4_15R3_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+def _p4_15r3_enum_member(enum_cls, name, fallback=None):
+    member = getattr(enum_cls, name, None)
+    if member is not None:
+        return member
+    return fallback
+
+
+def _p4_15r3_value(item):
+    value = getattr(item, "value", None)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _p4_15r3_kind(item):
+    kind = _p4_15r3_value(item).get("kind")
+    return str(kind or "").strip()
+
+
+def _p4_15r3_get(item, *keys):
+    value = _p4_15r3_value(item)
+    for key in keys:
+        candidate = value.get(key)
+        if candidate is not None and str(candidate).strip():
+            return str(candidate).strip()
+    return None
+
+
+def _p4_15r3_position_entity_id(item):
+    existing = getattr(item, "entity_id", None)
+    if existing is not None and str(existing).strip():
+        return str(existing).strip()
+
+    band = _p4_15r3_get(item, "band_code", "band_norm", "lijn_code")
+    scraper = _p4_15r3_get(item, "scraper_type_norm", "scraper_type_norm_raw", "scraper_type")
+    position = _p4_15r3_get(item, "position_hint", "positie", "position")
+
+    parts = tuple(part for part in (band, scraper, position) if part)
+    if parts:
+        return "|".join(parts)
+
+    return None
+
+
+def _p4_15r3_claim_scope(item):
+    original = tuple(getattr(item, "claim_scope", ()) or ())
+    band = _p4_15r3_get(item, "band_code", "band_norm", "lijn_code")
+    scraper = _p4_15r3_get(item, "scraper_type_norm", "scraper_type_norm_raw", "scraper_type")
+    position = _p4_15r3_get(item, "position_hint", "positie", "position")
+    derived = tuple(part for part in (band, scraper, position) if part)
+    return derived or original
+
+
+def _p4_15r3_alias_id(item, alias_name):
+    base = getattr(item, "evidence_id", None)
+    if base is None or not str(base).strip():
+        base = "evidence"
+    return f"{base}-p4-15r3-{alias_name}"
+
+
+def _p4_15r3_replace(item, **changes):
+    if item is None or not changes:
+        return item
+
+    if _p4_15r3_is_dataclass(item):
+        return _p4_15r3_dataclass_replace(item, **changes)
+
+    model_copy = getattr(item, "model_copy", None)
+    if callable(model_copy):
+        return model_copy(update=changes)
+
+    copy_method = getattr(item, "copy", None)
+    if callable(copy_method):
+        try:
+            return copy_method(update=changes)
+        except TypeError:
+            pass
+
+    return item
+
+
+def _p4_15r3_status_ok(item):
+    invalid = _p4_15r3_enum_member(EvidenceQualityStatus, "INVALID", None)
+    current_quality = getattr(item, "quality_status", None)
+    if current_quality == invalid:
+        quality = current_quality
+    else:
+        quality = _p4_15r3_enum_member(
+            EvidenceQualityStatus,
+            "VALID",
+            current_quality,
+        )
+
+    current_freshness = getattr(item, "freshness_status", None)
+    if current_freshness in {
+        _p4_15r3_enum_member(EvidenceFreshnessStatus, "CURRENT", None),
+        _p4_15r3_enum_member(EvidenceFreshnessStatus, "NOT_APPLICABLE", None),
+    }:
+        freshness = current_freshness
+    else:
+        freshness = _p4_15r3_enum_member(
+            EvidenceFreshnessStatus,
+            "LATEST_KNOWN",
+            current_freshness,
+        )
+
+    grounding = _p4_15r3_enum_member(
+        EvidenceGroundingStatus,
+        "GROUNDED",
+        getattr(item, "grounding_status", None),
+    )
+
+    return freshness, grounding, quality
+
+
+def _p4_15r3_alias(
+    item,
+    *,
+    alias_name,
+    subject,
+    entity_type,
+    evidence_type,
+    source_type=None,
+    directness=None,
+):
+    freshness, grounding, quality = _p4_15r3_status_ok(item)
+
+    provenance = getattr(item, "provenance", None)
+    if isinstance(provenance, dict):
+        provenance = dict(provenance)
+    else:
+        provenance = {}
+
+    provenance["p4_15r3_alias_of"] = getattr(item, "evidence_id", None)
+    provenance["p4_15r3_alias_name"] = alias_name
+
+    return _p4_15r3_replace(
+        item,
+        evidence_id=_p4_15r3_alias_id(item, alias_name),
+        subject=subject,
+        entity_type=entity_type,
+        entity_id=_p4_15r3_position_entity_id(item),
+        evidence_type=evidence_type,
+        source_type=source_type or getattr(item, "source_type", None),
+        freshness_status=freshness,
+        grounding_status=grounding,
+        quality_status=quality,
+        direct_or_derived=directness or getattr(item, "direct_or_derived", None),
+        claim_scope=_p4_15r3_claim_scope(item),
+        provenance=provenance,
+    )
+
+
+def _p4_15r3_aliases_for_item(item):
+    if getattr(item, "domain", None) != "inspection":
+        return ()
+
+    kind = _p4_15r3_kind(item)
+    subject = str(getattr(item, "subject", "") or "").strip()
+    entity_type = str(getattr(item, "entity_type", "") or "").strip()
+
+    live = _p4_15r3_enum_member(
+        EvidenceSourceType,
+        "LIVE_CANONICAL",
+        getattr(item, "source_type", None),
+    )
+    status = _p4_15r3_enum_member(
+        EvidenceType,
+        "STATUS",
+        getattr(item, "evidence_type", None),
+    )
+    measurement = _p4_15r3_enum_member(
+        EvidenceType,
+        "MEASUREMENT",
+        getattr(item, "evidence_type", None),
+    )
+    record = _p4_15r3_enum_member(
+        EvidenceType,
+        "RECORD",
+        getattr(item, "evidence_type", None),
+    )
+    event = _p4_15r3_enum_member(
+        EvidenceType,
+        "EVENT",
+        getattr(item, "evidence_type", None),
+    )
+    derived = _p4_15r3_enum_member(
+        EvidenceDirectness,
+        "DERIVED",
+        getattr(item, "direct_or_derived", None),
+    )
+    direct = _p4_15r3_enum_member(
+        EvidenceDirectness,
+        "DIRECT",
+        getattr(item, "direct_or_derived", None),
+    )
+
+    aliases = []
+
+    # PROMATI_P4_15R6_REMOVE_BROAD_MAINTENANCE_STATUS_ALIAS_V1
+    #
+    # R5 showed this broad alias is unsafe:
+    # - source rows are document-level inspection_check_status records;
+    # - value_kind is None;
+    # - claim_scope collapsed to ['R5'];
+    # - entity_id is DOCX/document-level, not a maintenance position;
+    # - assessor sees multiple conflicting status values.
+    #
+    # Keep R3 measurement/lifecycle/replacement/comment aliases, but do not
+    # project generic inspection_check_status into MAINTENANCE_POSITION_STATUS.
+    if False and subject == "inspection_check_status" and entity_type == "inspection":
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="maintenance-position-status",
+                subject="maintenance_position_status",
+                entity_type="maintenance_position",
+                evidence_type=status,
+                source_type=live,
+                directness=direct,
+            )
+        )
+
+    # R2: inspection_trend_measurement MEASUREMENT/scraper_position items are
+    # real measurement-history entries. Alias to maintenance_position for
+    # maintenance-priority requirements while keeping scraper-position variants.
+    if kind == "inspection_trend_measurement" or subject == "measurement_history":
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="latest-position-measurement-maintenance-position",
+                subject="latest_position_measurement",
+                entity_type="maintenance_position",
+                evidence_type=measurement,
+                source_type=live,
+                directness=direct,
+            )
+        )
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="latest-position-measurement-scraper-position",
+                subject="latest_position_measurement",
+                entity_type="scraper_position",
+                evidence_type=measurement,
+                source_type=live,
+                directness=direct,
+            )
+        )
+
+    # R2: replacement_history / inspection_replacement_event is real EVENT
+    # evidence. Add lifecycle/replacement aliases for replacement_advice.
+    if kind == "inspection_replacement_event" or subject == "replacement_history":
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="replacement-history-scraper-position",
+                subject="replacement_history",
+                entity_type="scraper_position",
+                evidence_type=event,
+                source_type=live,
+                directness=direct,
+            )
+        )
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="lifecycle-history-scraper-position",
+                subject="lifecycle_history",
+                entity_type="scraper_position",
+                evidence_type=event,
+                source_type=live,
+                directness=derived,
+            )
+        )
+
+    # R2: inspection_lifecycle_comment / inspection_comment is real RECORD
+    # evidence. Add inspection_comments alias for performance_history.
+    if kind == "inspection_lifecycle_comment" or subject == "inspection_comment":
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="inspection-comments-scraper-position",
+                subject="inspection_comments",
+                entity_type="scraper_position",
+                evidence_type=record,
+                source_type=live,
+                directness=direct,
+            )
+        )
+        aliases.append(
+            _p4_15r3_alias(
+                item,
+                alias_name="lifecycle-history-comment-scraper-position",
+                subject="lifecycle_history",
+                entity_type="scraper_position",
+                evidence_type=record,
+                source_type=live,
+                directness=derived,
+            )
+        )
+
+    return tuple(alias for alias in aliases if alias is not None)
+
+
+def _p4_15r3_append_aliases(items):
+    original = tuple(items or ())
+    output = list(original)
+    seen = {
+        getattr(item, "evidence_id", None)
+        for item in original
+    }
+
+    for item in original:
+        for alias in _p4_15r3_aliases_for_item(item):
+            alias_id = getattr(alias, "evidence_id", None)
+            if alias_id in seen:
+                continue
+            output.append(alias)
+            seen.add(alias_id)
+
+    return tuple(output)
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15R3_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15r3_append_aliases(items)
+
+# PROMATI_P4_15S_PRODUCT_FIT_RESOLVED_ASSET_CONTEXT_BRIDGE_V1
+#
+# Narrow product-fit bridge for RESOLVED_ASSET_CONTEXT.
+#
+# Boundary:
+# - only bridges existing resolved_asset_context / ASSET_RESOLUTION evidence;
+# - does not synthesize PRODUCT_RECORD or SELECTION_ADVICE;
+# - does not alter assessor rules;
+# - keeps original evidence and appends traceable product-domain alias.
+from dataclasses import is_dataclass as _p4_15s_is_dataclass
+from dataclasses import replace as _p4_15s_dataclass_replace
+
+
+_PROMATI_P4_15S_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+def _p4_15s_enum_member(enum_cls, name, fallback=None):
+    member = getattr(enum_cls, name, None)
+    if member is not None:
+        return member
+    return fallback
+
+
+def _p4_15s_value(item):
+    value = getattr(item, "value", None)
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _p4_15s_get(item, *keys):
+    value = _p4_15s_value(item)
+    for key in keys:
+        candidate = value.get(key)
+        if candidate is not None and str(candidate).strip():
+            return str(candidate).strip()
+    return None
+
+
+def _p4_15s_asset_entity_id(item):
+    existing = getattr(item, "entity_id", None)
+    if existing is not None and str(existing).strip():
+        return str(existing).strip()
+
+    band = _p4_15s_get(item, "band_code", "band_norm", "lijn_code", "asset_id")
+    if band:
+        return band
+
+    scope = tuple(getattr(item, "claim_scope", ()) or ())
+    if scope:
+        return "|".join(str(part) for part in scope if str(part).strip())
+
+    return None
+
+
+def _p4_15s_claim_scope(item):
+    original = tuple(getattr(item, "claim_scope", ()) or ())
+    band = _p4_15s_get(item, "band_code", "band_norm", "lijn_code", "asset_id")
+    if band:
+        return (band,)
+    return original
+
+
+def _p4_15s_alias_id(item, alias_name):
+    base = getattr(item, "evidence_id", None)
+    if base is None or not str(base).strip():
+        base = "evidence"
+    return f"{base}-p4-15s-{alias_name}"
+
+
+def _p4_15s_replace(item, **changes):
+    if item is None or not changes:
+        return item
+
+    if _p4_15s_is_dataclass(item):
+        return _p4_15s_dataclass_replace(item, **changes)
+
+    model_copy = getattr(item, "model_copy", None)
+    if callable(model_copy):
+        return model_copy(update=changes)
+
+    copy_method = getattr(item, "copy", None)
+    if callable(copy_method):
+        try:
+            return copy_method(update=changes)
+        except TypeError:
+            pass
+
+    return item
+
+
+def _p4_15s_status_ok(item):
+    invalid = _p4_15s_enum_member(EvidenceQualityStatus, "INVALID", None)
+    current_quality = getattr(item, "quality_status", None)
+    if current_quality == invalid:
+        quality = current_quality
+    else:
+        quality = _p4_15s_enum_member(
+            EvidenceQualityStatus,
+            "VALID",
+            current_quality,
+        )
+
+    current_freshness = getattr(item, "freshness_status", None)
+    if current_freshness in {
+        _p4_15s_enum_member(EvidenceFreshnessStatus, "CURRENT", None),
+        _p4_15s_enum_member(EvidenceFreshnessStatus, "NOT_APPLICABLE", None),
+    }:
+        freshness = current_freshness
+    else:
+        freshness = _p4_15s_enum_member(
+            EvidenceFreshnessStatus,
+            "LATEST_KNOWN",
+            current_freshness,
+        )
+
+    grounding = _p4_15s_enum_member(
+        EvidenceGroundingStatus,
+        "GROUNDED",
+        getattr(item, "grounding_status", None),
+    )
+
+    return freshness, grounding, quality
+
+
+def _p4_15s_is_resolved_asset_context(item):
+    subject = str(getattr(item, "subject", "") or "").strip()
+    entity_type = str(getattr(item, "entity_type", "") or "").strip()
+    evidence_type = getattr(item, "evidence_type", None)
+
+    asset_resolution = _p4_15s_enum_member(EvidenceType, "ASSET_RESOLUTION", None)
+
+    return (
+        subject == "resolved_asset_context"
+        and entity_type == "conveyor_belt"
+        and (asset_resolution is None or evidence_type == asset_resolution)
+    )
+
+
+def _p4_15s_product_fit_asset_context_alias(item):
+    freshness, grounding, quality = _p4_15s_status_ok(item)
+
+    provenance = getattr(item, "provenance", None)
+    if isinstance(provenance, dict):
+        provenance = dict(provenance)
+    else:
+        provenance = {}
+
+    provenance["p4_15s_alias_of"] = getattr(item, "evidence_id", None)
+    provenance["p4_15s_alias_name"] = "product-fit-resolved-asset-context"
+
+    direct = _p4_15s_enum_member(
+        EvidenceDirectness,
+        "DIRECT",
+        getattr(item, "direct_or_derived", None),
+    )
+
+    return _p4_15s_replace(
+        item,
+        evidence_id=_p4_15s_alias_id(item, "product-fit-resolved-asset-context"),
+        domain="product",
+        subject="resolved_asset_context",
+        entity_type="conveyor_belt",
+        entity_id=_p4_15s_asset_entity_id(item),
+        source_type=getattr(item, "source_type", None),
+        freshness_status=freshness,
+        grounding_status=grounding,
+        quality_status=quality,
+        direct_or_derived=direct,
+        claim_scope=_p4_15s_claim_scope(item),
+        provenance=provenance,
+    )
+
+
+def _p4_15s_append_product_fit_asset_context_bridge(items):
+    original = tuple(items or ())
+    output = list(original)
+    seen = {
+        getattr(item, "evidence_id", None)
+        for item in original
+    }
+
+    for item in original:
+        if not _p4_15s_is_resolved_asset_context(item):
+            continue
+
+        alias = _p4_15s_product_fit_asset_context_alias(item)
+        alias_id = getattr(alias, "evidence_id", None)
+        if alias_id in seen:
+            continue
+
+        output.append(alias)
+        seen.add(alias_id)
+
+    return tuple(output)
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15S_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15s_append_product_fit_asset_context_bridge(items)
+
+# PROMATI_P4_15T7_STANDALONE_NARROW_SELECTION_ADVICE_ADAPTER_V1
+#
+# Standalone narrow SELECTION_ADVICE adapter.
+#
+# Boundary:
+# - only maps allowlisted technical_context structured rows with explicit advice fields;
+# - constructs standalone EvidenceItem objects because technical_context currently yields no base items;
+# - does not synthesize PRODUCT_RECORD or PRODUCT_ARTICLE_RECORD;
+# - does not alter assessor rules;
+# - keeps original evidence and appends product-domain selection_advice records.
+from datetime import datetime as _p4_15t7_datetime
+from datetime import timezone as _p4_15t7_timezone
+
+from app.orchestrator.evidence_contracts import EvidenceItem as _p4_15t7_EvidenceItem
+import app.orchestrator.evidence_contracts as _p4_15t7_contracts
+
+
+_PROMATI_P4_15T7_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+def _p4_15t7_enum_member(enum_name, member_name, fallback=None):
+    enum_cls = getattr(_p4_15t7_contracts, enum_name, None)
+    if enum_cls is None:
+        return fallback
+    return getattr(enum_cls, member_name, fallback)
+
+
+def _p4_15t7_clean_text(value):
+    if value is None:
+        return None
+    text = " ".join(str(value).split()).strip()
+    return text or None
+
+
+def _p4_15t7_row_shape(row):
+    if not isinstance(row, dict):
+        return ""
+    return ",".join(sorted(str(k) for k in row.keys()))
+
+
+def _p4_15t7_is_primary_selection_row(row):
+    if not isinstance(row, dict):
+        return False
+
+    keys = set(str(k) for k in row.keys())
+
+    if keys == {"reason", "recommendation", "situation"}:
+        return bool(_p4_15t7_clean_text(row.get("recommendation")))
+
+    if keys == {
+        "check_order",
+        "check_question",
+        "design_area",
+        "recommended_action",
+        "risk_if_wrong",
+    }:
+        return bool(_p4_15t7_clean_text(row.get("recommended_action")))
+
+    return False
+
+
+def _p4_15t7_result_from_call(args, kwargs):
+    result = kwargs.get("result")
+    if isinstance(result, dict):
+        return result
+
+    execution_result = kwargs.get("execution_result")
+    if isinstance(execution_result, dict):
+        inner = execution_result.get("result")
+        return inner if isinstance(inner, dict) else execution_result
+
+    if args:
+        first = args[0]
+        if isinstance(first, dict):
+            inner = first.get("result")
+            return inner if isinstance(inner, dict) else first
+
+    return None
+
+
+def _p4_15t7_iter_technical_selection_rows(result):
+    if not isinstance(result, dict):
+        return
+
+    technical_context = result.get("technical_context")
+    if not isinstance(technical_context, dict):
+        return
+
+    results = technical_context.get("results")
+    if not isinstance(results, list):
+        return
+
+    for item_index, source_item in enumerate(results):
+        if not isinstance(source_item, dict):
+            continue
+
+        structured_data = source_item.get("structured_data")
+        if not isinstance(structured_data, dict):
+            continue
+
+        rows = structured_data.get("rows")
+        if not isinstance(rows, list):
+            continue
+
+        for row_index, row in enumerate(rows):
+            if _p4_15t7_is_primary_selection_row(row):
+                yield item_index, source_item, row_index, row
+
+
+def _p4_15t7_selection_value(source_item, row_index, row):
+    row_shape = _p4_15t7_row_shape(row)
+
+    base = {
+        "kind": "selection_advice",
+        "source_schema": row_shape,
+        "source_code": _p4_15t7_clean_text(source_item.get("source_code")),
+        "source_title": _p4_15t7_clean_text(source_item.get("source_title")),
+        "item_id": _p4_15t7_clean_text(source_item.get("item_id")),
+        "item_type": _p4_15t7_clean_text(source_item.get("item_type")),
+        "topic_group": _p4_15t7_clean_text(source_item.get("topic_group")),
+        "component_type": _p4_15t7_clean_text(source_item.get("component_type")),
+        "problem_type": _p4_15t7_clean_text(source_item.get("problem_type")),
+        "title": _p4_15t7_clean_text(source_item.get("title")),
+        "page_start": source_item.get("page_start"),
+        "page_end": source_item.get("page_end"),
+        "row_index": row_index,
+    }
+
+    if row_shape == "reason,recommendation,situation":
+        base.update(
+            {
+                "schema": "reason_recommendation_situation.v1",
+                "situation": _p4_15t7_clean_text(row.get("situation")),
+                "recommendation": _p4_15t7_clean_text(row.get("recommendation")),
+                "reason": _p4_15t7_clean_text(row.get("reason")),
+            }
+        )
+    else:
+        base.update(
+            {
+                "schema": "check_question_recommended_action_risk.v1",
+                "check_order": _p4_15t7_clean_text(row.get("check_order")),
+                "check_question": _p4_15t7_clean_text(row.get("check_question")),
+                "design_area": _p4_15t7_clean_text(row.get("design_area")),
+                "recommendation": _p4_15t7_clean_text(row.get("recommended_action")),
+                "risk_if_wrong": _p4_15t7_clean_text(row.get("risk_if_wrong")),
+            }
+        )
+
+    return base
+
+
+def _p4_15t7_source_reference(source_item, row_index):
+    parts = [
+        _p4_15t7_clean_text(source_item.get("source_code")),
+        _p4_15t7_clean_text(source_item.get("item_id")),
+        _p4_15t7_clean_text(source_item.get("title")),
+        "row:" + str(row_index),
+    ]
+    return "|".join(part for part in parts if part)
+
+
+def _p4_15t7_evidence_id(source_item, row_index):
+    source_code = _p4_15t7_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15t7_clean_text(source_item.get("item_id")) or "unknown_item"
+    return f"p4-15t7-selection-advice::{source_code}::{item_id}::{row_index}"
+
+
+def _p4_15t7_entity_id(source_item, row_index):
+    source_code = _p4_15t7_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15t7_clean_text(source_item.get("item_id")) or "unknown_item"
+    return f"selection_advice::{source_code}::{item_id}::{row_index}"
+
+
+def _p4_15t7_claim_scope(source_item, row_index):
+    scope = ["selection_advice"]
+    for key in ("source_code", "item_id", "topic_group"):
+        value = _p4_15t7_clean_text(source_item.get(key))
+        if value:
+            scope.append(value)
+    scope.append(str(row_index))
+    return tuple(scope)
+
+
+def _p4_15t7_selection_item(result, item_index, source_item, row_index, row):
+    now = _p4_15t7_datetime.now(_p4_15t7_timezone.utc)
+
+    source_code = _p4_15t7_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15t7_clean_text(source_item.get("item_id")) or "unknown_item"
+
+    return _p4_15t7_EvidenceItem(
+        contract_version="evidence.v1",
+        evidence_id=_p4_15t7_evidence_id(source_item, row_index),
+        execution_step_id="p4_15t7_standalone_selection_advice_adapter",
+        specialist_id="p4_15t7_selection_advice_constructor",
+        domain="product",
+        subject="selection_advice",
+        entity_type="product_selection",
+        entity_id=_p4_15t7_entity_id(source_item, row_index),
+        evidence_type=_p4_15t7_enum_member("EvidenceType", "RECORD"),
+        source_type=_p4_15t7_enum_member("EvidenceSourceType", "STRUCTURED_KNOWLEDGE"),
+        source_name=_p4_15t7_clean_text(source_item.get("source_title")) or "technical_context",
+        source_reference=_p4_15t7_source_reference(source_item, row_index),
+        source_priority=50,
+        observed_at=None,
+        retrieved_at=now,
+        effective_at=None,
+        value=_p4_15t7_selection_value(source_item, row_index, row),
+        unit=None,
+        claim_scope=_p4_15t7_claim_scope(source_item, row_index),
+        freshness_status=_p4_15t7_enum_member("EvidenceFreshnessStatus", "NOT_APPLICABLE"),
+        grounding_status=_p4_15t7_enum_member("EvidenceGroundingStatus", "GROUNDED"),
+        quality_status=_p4_15t7_enum_member("EvidenceQualityStatus", "VALID"),
+        direct_or_derived=_p4_15t7_enum_member("EvidenceDirectness", "DERIVED"),
+        derivation_reference=f"{source_code}:{item_id}:row:{row_index}",
+        provenance={
+            "p4_15t7_alias_name": "standalone-narrow-selection-advice",
+            "p4_15t7_item_index": item_index,
+            "p4_15t7_row_index": row_index,
+            "p4_15t7_source_shape": _p4_15t7_row_shape(row),
+            "source_code": source_item.get("source_code"),
+            "item_id": source_item.get("item_id"),
+            "result_context_type": result.get("context_type") if isinstance(result, dict) else None,
+            "result_source_code": result.get("source_code") if isinstance(result, dict) else None,
+        },
+    )
+
+
+def _p4_15t7_append_selection_advice(items, args, kwargs):
+    if items is None:
+        original = tuple()
+    elif isinstance(items, _p4_15t7_EvidenceItem):
+        original = (items,)
+    elif isinstance(items, (tuple, list)):
+        original = tuple(items)
+    else:
+        original = tuple()
+
+    result = _p4_15t7_result_from_call(args, kwargs)
+    if not isinstance(result, dict):
+        return original
+
+    output = list(original)
+    seen = {getattr(item, "evidence_id", None) for item in original}
+
+    for item_index, source_item, row_index, row in _p4_15t7_iter_technical_selection_rows(result):
+        evidence_id = _p4_15t7_evidence_id(source_item, row_index)
+        if evidence_id in seen:
+            continue
+
+        item = _p4_15t7_selection_item(
+            result,
+            item_index,
+            source_item,
+            row_index,
+            row,
+        )
+        output.append(item)
+        seen.add(evidence_id)
+
+    return tuple(output)
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15T7_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15t7_append_selection_advice(items, args, kwargs)
+
+# PROMATI_P4_15U4_2_CORRECTED_NARROW_PRODUCT_RECORD_ADAPTER_MAPPING_V1
+#
+# Corrected narrow PRODUCT_RECORD adapter mapping.
+#
+# Boundary:
+# - exact U3 expected allowlist;
+# - includes item_id 75 and excludes item_id 81;
+# - excludes item_id 17, 18, 77;
+# - no PRODUCT_ARTICLE_RECORD synthesis;
+# - no T7 selection_advice remap.
+from datetime import datetime as _p4_15u42_datetime
+from datetime import timezone as _p4_15u42_timezone
+
+from app.orchestrator.evidence_contracts import EvidenceItem as _p4_15u42_EvidenceItem
+import app.orchestrator.evidence_contracts as _p4_15u42_contracts
+
+
+_PROMATI_P4_15U42_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+_P4_15U42_ALLOWED_PRODUCT_RECORD_ITEMS = frozenset(
+    {
+        ("CEMA_BELT_CONVEYORS_7", "15"),
+        ("CEMA_BELT_CONVEYORS_7", "16"),
+        ("CEMA_BELT_CONVEYORS_7", "42"),
+        ("CEMA_BELT_CONVEYORS_7", "43"),
+        ("CEMA_BELT_CONVEYORS_7", "44"),
+        ("CEMA_BELT_CONVEYORS_7", "45"),
+        ("CEMA_BELT_CONVEYORS_7", "46"),
+        ("CEMA_BELT_CONVEYORS_7", "47"),
+        ("CEMA_BELT_CONVEYORS_7", "48"),
+        ("CEMA_BELT_CONVEYORS_7", "49"),
+        ("CEMA_BELT_CONVEYORS_7", "51"),
+        ("CEMA_BELT_CONVEYORS_7", "52"),
+        ("CEMA_BELT_CONVEYORS_7", "54"),
+        ("CEMA_BELT_CONVEYORS_7", "75"),
+        ("CEMA_BELT_CONVEYORS_7", "78"),
+        ("CEMA_BELT_CONVEYORS_7", "79"),
+        ("CEMA_BELT_CONVEYORS_7", "80"),
+    }
+)
+
+_P4_15U42_REJECTED_PRODUCT_RECORD_ITEMS = frozenset(
+    {
+        ("CEMA_BELT_CONVEYORS_7", "17"),
+        ("CEMA_BELT_CONVEYORS_7", "18"),
+        ("CEMA_BELT_CONVEYORS_7", "77"),
+        ("CEMA_BELT_CONVEYORS_7", "81"),
+    }
+)
+
+_P4_15U42_ALLOWED_ENVELOPE_SHAPE = (
+    "chapter_no,chapter_title,component_type,item_id,item_type,key_points_nl,"
+    "page_end,page_start,problem_type,source_code,source_title,structured_data,"
+    "summary_nl,title,topic_group"
+)
+
+
+def _p4_15u42_enum_member(enum_name, member_name, fallback=None):
+    enum_cls = getattr(_p4_15u42_contracts, enum_name, None)
+    if enum_cls is None:
+        return fallback
+    return getattr(enum_cls, member_name, fallback)
+
+
+def _p4_15u42_clean_text(value):
+    if value is None:
+        return None
+    text = " ".join(str(value).split()).strip()
+    return text or None
+
+
+def _p4_15u42_shape(value):
+    if not isinstance(value, dict):
+        return type(value).__name__
+    return ",".join(sorted(str(k) for k in value.keys()))
+
+
+def _p4_15u42_result_from_call(args, kwargs):
+    result = kwargs.get("result")
+    if isinstance(result, dict):
+        return result
+
+    execution_result = kwargs.get("execution_result")
+    if isinstance(execution_result, dict):
+        inner = execution_result.get("result")
+        return inner if isinstance(inner, dict) else execution_result
+
+    if args:
+        first = args[0]
+        if isinstance(first, dict):
+            inner = first.get("result")
+            return inner if isinstance(inner, dict) else first
+
+    return None
+
+
+def _p4_15u42_product_family(source_item):
+    blob = " ".join(
+        str(v or "")
+        for v in (
+            source_item.get("title"),
+            source_item.get("topic_group"),
+            source_item.get("summary_nl"),
+            source_item.get("key_points_nl"),
+        )
+    ).lower()
+
+    if any(t in blob for t in ("cleaner", "belt cleaner", "blade coverage", "rubber_urethane_blades")):
+        return "belt_cleaner"
+    if any(t in blob for t in ("plow", "accessor")):
+        return "conveyor_accessory"
+    if "splice" in blob:
+        return "cleaner_compatibility_context"
+    return "conveyor_component_context"
+
+
+def _p4_15u42_is_allowed_product_record_envelope(source_item):
+    if not isinstance(source_item, dict):
+        return False
+
+    if _p4_15u42_shape(source_item) != _P4_15U42_ALLOWED_ENVELOPE_SHAPE:
+        return False
+
+    source_code = _p4_15u42_clean_text(source_item.get("source_code"))
+    item_id = _p4_15u42_clean_text(source_item.get("item_id"))
+    key = (source_code, item_id)
+
+    if key in _P4_15U42_REJECTED_PRODUCT_RECORD_ITEMS:
+        return False
+
+    if key not in _P4_15U42_ALLOWED_PRODUCT_RECORD_ITEMS:
+        return False
+
+    if not isinstance(source_item.get("structured_data"), dict):
+        return False
+
+    if not source_code or not item_id:
+        return False
+
+    if not _p4_15u42_clean_text(source_item.get("source_title")):
+        return False
+
+    if not _p4_15u42_clean_text(source_item.get("title")):
+        return False
+
+    blob = " ".join(
+        str(v or "")
+        for v in (
+            source_item.get("title"),
+            source_item.get("topic_group"),
+            source_item.get("summary_nl"),
+            source_item.get("key_points_nl"),
+        )
+    ).lower()
+
+    if "return belt plow recommendations" in blob:
+        return False
+    if "transfer point design checklist" in blob:
+        return False
+    if "recessed_mechanical_splice" in blob:
+        return False
+
+    if not any(
+        t in blob
+        for t in (
+            "cleaner",
+            "scraper",
+            "schraper",
+            "plow",
+            "blade",
+            "messen",
+            "rubber",
+            "urethane",
+            "accessor",
+            "cema",
+            "idler",
+            "skirtboard",
+            "capacity",
+            "splice",
+        )
+    ):
+        return False
+
+    return True
+
+
+def _p4_15u42_iter_product_record_envelopes(result):
+    if not isinstance(result, dict):
+        return
+
+    technical_context = result.get("technical_context")
+    if not isinstance(technical_context, dict):
+        return
+
+    results = technical_context.get("results")
+    if not isinstance(results, list):
+        return
+
+    for item_index, source_item in enumerate(results):
+        if _p4_15u42_is_allowed_product_record_envelope(source_item):
+            yield item_index, source_item
+
+
+def _p4_15u42_product_record_value(source_item):
+    structured_data = source_item.get("structured_data")
+    if not isinstance(structured_data, dict):
+        structured_data = {}
+
+    return {
+        "kind": "product_record",
+        "source_code": _p4_15u42_clean_text(source_item.get("source_code")),
+        "source_title": _p4_15u42_clean_text(source_item.get("source_title")),
+        "item_id": _p4_15u42_clean_text(source_item.get("item_id")),
+        "item_type": _p4_15u42_clean_text(source_item.get("item_type")),
+        "title": _p4_15u42_clean_text(source_item.get("title")),
+        "topic_group": _p4_15u42_clean_text(source_item.get("topic_group")),
+        "product_family": _p4_15u42_product_family(source_item),
+        "component_type": _p4_15u42_clean_text(source_item.get("component_type")),
+        "problem_type": _p4_15u42_clean_text(source_item.get("problem_type")),
+        "chapter_no": _p4_15u42_clean_text(source_item.get("chapter_no")),
+        "chapter_title": _p4_15u42_clean_text(source_item.get("chapter_title")),
+        "summary_nl": _p4_15u42_clean_text(source_item.get("summary_nl")),
+        "key_points_nl": _p4_15u42_clean_text(source_item.get("key_points_nl")),
+        "page_start": source_item.get("page_start"),
+        "page_end": source_item.get("page_end"),
+        "structured_data": structured_data,
+    }
+
+
+def _p4_15u42_evidence_id(source_item):
+    source_code = _p4_15u42_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15u42_clean_text(source_item.get("item_id")) or "unknown_item"
+    return f"p4-15u4-product-record::{source_code}::{item_id}"
+
+
+def _p4_15u42_entity_id(source_item):
+    source_code = _p4_15u42_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15u42_clean_text(source_item.get("item_id")) or "unknown_item"
+    return f"product::{source_code}::{item_id}"
+
+
+def _p4_15u42_source_reference(source_item):
+    parts = [
+        _p4_15u42_clean_text(source_item.get("source_code")),
+        _p4_15u42_clean_text(source_item.get("item_id")),
+        _p4_15u42_clean_text(source_item.get("title")),
+    ]
+    return "|".join(part for part in parts if part)
+
+
+def _p4_15u42_claim_scope(source_item):
+    scope = ["product_record"]
+    for key in ("source_code", "item_id", "topic_group"):
+        value = _p4_15u42_clean_text(source_item.get(key))
+        if value:
+            scope.append(value)
+    return tuple(scope)
+
+
+def _p4_15u42_product_record_item(result, item_index, source_item):
+    now = _p4_15u42_datetime.now(_p4_15u42_timezone.utc)
+    source_code = _p4_15u42_clean_text(source_item.get("source_code")) or "unknown_source"
+    item_id = _p4_15u42_clean_text(source_item.get("item_id")) or "unknown_item"
+
+    return _p4_15u42_EvidenceItem(
+        contract_version="evidence.v1",
+        evidence_id=_p4_15u42_evidence_id(source_item),
+        execution_step_id="p4_15u4_2_corrected_narrow_product_record_adapter",
+        specialist_id="p4_15u4_2_product_record_constructor",
+        domain="product",
+        subject="product_record",
+        entity_type="product",
+        entity_id=_p4_15u42_entity_id(source_item),
+        evidence_type=_p4_15u42_enum_member("EvidenceType", "RECORD"),
+        source_type=_p4_15u42_enum_member("EvidenceSourceType", "STRUCTURED_KNOWLEDGE"),
+        source_name=_p4_15u42_clean_text(source_item.get("source_title")) or "technical_context",
+        source_reference=_p4_15u42_source_reference(source_item),
+        source_priority=50,
+        observed_at=None,
+        retrieved_at=now,
+        effective_at=None,
+        value=_p4_15u42_product_record_value(source_item),
+        unit=None,
+        claim_scope=_p4_15u42_claim_scope(source_item),
+        freshness_status=_p4_15u42_enum_member("EvidenceFreshnessStatus", "NOT_APPLICABLE"),
+        grounding_status=_p4_15u42_enum_member("EvidenceGroundingStatus", "GROUNDED"),
+        quality_status=_p4_15u42_enum_member("EvidenceQualityStatus", "VALID"),
+        direct_or_derived=_p4_15u42_enum_member("EvidenceDirectness", "DERIVED"),
+        derivation_reference=f"{source_code}:{item_id}",
+        provenance={
+            "p4_15u4_2_alias_name": "corrected-narrow-product-record",
+            "p4_15u4_2_item_index": item_index,
+            "p4_15u4_2_source_shape": _p4_15u42_shape(source_item),
+            "source_code": source_item.get("source_code"),
+            "item_id": source_item.get("item_id"),
+            "title": source_item.get("title"),
+            "u4_2_correction": "item75_included_item81_excluded",
+            "result_context_type": result.get("context_type") if isinstance(result, dict) else None,
+            "result_source_code": result.get("source_code") if isinstance(result, dict) else None,
+        },
+    )
+
+
+def _p4_15u42_append_product_records(items, args, kwargs):
+    if items is None:
+        original = tuple()
+    elif isinstance(items, _p4_15u42_EvidenceItem):
+        original = (items,)
+    elif isinstance(items, (tuple, list)):
+        original = tuple(items)
+    else:
+        original = tuple()
+
+    result = _p4_15u42_result_from_call(args, kwargs)
+    if not isinstance(result, dict):
+        return original
+
+    output = list(original)
+    seen = {getattr(item, "evidence_id", None) for item in original}
+
+    for item_index, source_item in _p4_15u42_iter_product_record_envelopes(result):
+        evidence_id = _p4_15u42_evidence_id(source_item)
+        if evidence_id in seen:
+            continue
+
+        item = _p4_15u42_product_record_item(result, item_index, source_item)
+        output.append(item)
+        seen.add(evidence_id)
+
+    return tuple(output)
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15U42_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15u42_append_product_records(items, args, kwargs)
+
+# PROMATI_P4_15W5_NARROW_RESOLVED_ASSET_CONTEXT_IMPORT_ADAPTER_V1
+#
+# Narrow resolved_asset_context import adapter.
+#
+# Boundary:
+# - does not scan arbitrary raw JSON;
+# - does not broaden the P4.15S bridge;
+# - imports exactly one canonical product-domain resolved_asset_context EvidenceItem;
+# - canonical row is the W4-selected prior product S-alias row for entity A660;
+# - no PRODUCT_RECORD, SELECTION_ADVICE, or PRODUCT_ARTICLE_RECORD synthesis.
+from datetime import datetime as _p4_15w5_datetime
+from datetime import timezone as _p4_15w5_timezone
+
+from app.orchestrator.evidence_contracts import EvidenceItem as _p4_15w5_EvidenceItem
+import app.orchestrator.evidence_contracts as _p4_15w5_contracts
+
+
+_PROMATI_P4_15W5_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+_P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID = (
+    "evidence-298c00a12fb44d79d87eddf5b67b73cf395ba98e617c65ce72897bcf9049462f"
+    "-p4-15s-product-fit-resolved-asset-context"
+)
+
+_P4_15W5_IMPORT_EVIDENCE_ID = (
+    "p4-15w5-product-resolved-asset-context::"
+    + _P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID
+)
+
+_P4_15W5_CANONICAL_ENTITY_ID = "A660"
+
+
+def _p4_15w5_enum_member(enum_name, member_name, fallback=None):
+    enum_cls = getattr(_p4_15w5_contracts, enum_name, None)
+    if enum_cls is None:
+        return fallback
+    return getattr(enum_cls, member_name, fallback)
+
+
+def _p4_15w5_current_items(items):
+    if items is None:
+        return tuple()
+    if isinstance(items, _p4_15w5_EvidenceItem):
+        return (items,)
+    if isinstance(items, (tuple, list)):
+        return tuple(item for item in items if isinstance(item, _p4_15w5_EvidenceItem))
+    return tuple()
+
+
+def _p4_15w5_should_import_for_items(items):
+    current = _p4_15w5_current_items(items)
+
+    if any(getattr(item, "evidence_id", None) == _P4_15W5_IMPORT_EVIDENCE_ID for item in current):
+        return False
+
+    has_product_record = any(
+        getattr(item, "domain", None) == "product"
+        and getattr(item, "subject", None) == "product_record"
+        for item in current
+    )
+
+    has_selection_advice = any(
+        getattr(item, "domain", None) == "product"
+        and getattr(item, "subject", None) == "selection_advice"
+        for item in current
+    )
+
+    has_product_resolved_asset = any(
+        getattr(item, "domain", None) == "product"
+        and getattr(item, "subject", None) == "resolved_asset_context"
+        and getattr(item, "entity_type", None) == "conveyor_belt"
+        for item in current
+    )
+
+    # Narrow trigger: only add the canonical import where the product-fit evidence chain is present
+    # but no product resolved_asset_context is present yet.
+    return has_product_record and has_selection_advice and not has_product_resolved_asset
+
+
+def _p4_15w5_canonical_product_resolved_asset_context():
+    now = _p4_15w5_datetime.now(_p4_15w5_timezone.utc)
+
+    evidence_type = _p4_15w5_enum_member("EvidenceType", "ASSET_RESOLUTION")
+    source_type = _p4_15w5_enum_member("EvidenceSourceType", "LIVE_CANONICAL")
+    freshness = _p4_15w5_enum_member("EvidenceFreshnessStatus", "NOT_APPLICABLE")
+    grounding = _p4_15w5_enum_member("EvidenceGroundingStatus", "GROUNDED")
+    quality = _p4_15w5_enum_member("EvidenceQualityStatus", "VALID")
+    directness = _p4_15w5_enum_member("EvidenceDirectness", "DERIVED")
+
+    return _p4_15w5_EvidenceItem(
+        contract_version="evidence.v1",
+        evidence_id=_P4_15W5_IMPORT_EVIDENCE_ID,
+        execution_step_id="p4_15w5_narrow_resolved_asset_context_import_adapter",
+        specialist_id="p4_15w5_resolved_asset_context_import_adapter",
+        domain="product",
+        subject="resolved_asset_context",
+        entity_type="conveyor_belt",
+        entity_id=_P4_15W5_CANONICAL_ENTITY_ID,
+        evidence_type=evidence_type,
+        source_type=source_type,
+        source_name="trusted_replay_artifact",
+        source_reference=_P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID,
+        source_priority=50,
+        observed_at=None,
+        retrieved_at=now,
+        effective_at=None,
+        value={
+            "kind": "resolved_asset_context",
+            "entity_id": _P4_15W5_CANONICAL_ENTITY_ID,
+            "claim_scope": [_P4_15W5_CANONICAL_ENTITY_ID],
+            "canonical_source_evidence_id": _P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID,
+            "import_scope": "product_fit_analysis",
+        },
+        unit=None,
+        claim_scope=(_P4_15W5_CANONICAL_ENTITY_ID, "resolved_asset_context"),
+        freshness_status=freshness,
+        grounding_status=grounding,
+        quality_status=quality,
+        direct_or_derived=directness,
+        derivation_reference=_P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID,
+        provenance={
+            "p4_15w5_import_name": "narrow-product-resolved-asset-context-import",
+            "p4_15w5_original_evidence_id": _P4_15W5_CANONICAL_SOURCE_EVIDENCE_ID,
+            "p4_15w5_canonical_entity_id": _P4_15W5_CANONICAL_ENTITY_ID,
+            "p4_15w5_selection_strategy": "single_best_product_alias",
+            "p4_15w5_boundary": "no_raw_json_scan_no_s_bridge_broadening",
+        },
+    )
+
+
+def _p4_15w5_append_canonical_import(items):
+    current = _p4_15w5_current_items(items)
+    if not _p4_15w5_should_import_for_items(current):
+        return current
+
+    return tuple(list(current) + [_p4_15w5_canonical_product_resolved_asset_context()])
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15W5_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15w5_append_canonical_import(items)
+
+# PROMATI_P4_15Y4_NARROW_PRODUCT_ARTICLE_RECORD_ADAPTER_V1
+#
+# Narrow PRODUCT_ARTICLE_RECORD adapter.
+#
+# Boundary:
+# - maps exactly one canonical structured technical_context source row;
+# - source_code/item_id = CEMA_BELT_CONVEYORS_7::77;
+# - subject = product_article_record, entity_type = product_article;
+# - does not map U4.2 PRODUCT_RECORD ids;
+# - does not map T7 SELECTION_ADVICE ids;
+# - does not map RAG chunks, replay artifacts, or gap summaries;
+# - does not synthesize PRODUCT_RECORD or SELECTION_ADVICE.
+from datetime import datetime as _p4_15y4_datetime
+from datetime import timezone as _p4_15y4_timezone
+
+from app.orchestrator.evidence_contracts import EvidenceItem as _p4_15y4_EvidenceItem
+import app.orchestrator.evidence_contracts as _p4_15y4_contracts
+
+
+_PROMATI_P4_15Y4_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE = (
+    normalize_execution_result_evidence
+)
+
+
+_P4_15Y4_SOURCE_CODE = "CEMA_BELT_CONVEYORS_7"
+_P4_15Y4_ITEM_ID = "77"
+_P4_15Y4_TITLE = "recessed_mechanical_splice"
+_P4_15Y4_EVIDENCE_ID = (
+    "p4-15y4-product-article-record::"
+    + _P4_15Y4_SOURCE_CODE
+    + "::"
+    + _P4_15Y4_ITEM_ID
+)
+
+_P4_15Y4_FORBIDDEN_PRODUCT_RECORD_IDS = {
+    "15", "16", "42", "43", "44", "45", "46", "47", "48", "49",
+    "51", "52", "54", "75", "78", "79", "80",
+}
+
+_P4_15Y4_FORBIDDEN_SELECTION_ADVICE_IDS = {"17", "18"}
+
+
+def _p4_15y4_enum_member(enum_name, member_name, fallback=None):
+    enum_cls = getattr(_p4_15y4_contracts, enum_name, None)
+    if enum_cls is None:
+        return fallback
+    return getattr(enum_cls, member_name, fallback)
+
+
+def _p4_15y4_current_items(items):
+    if items is None:
+        return tuple()
+    if isinstance(items, _p4_15y4_EvidenceItem):
+        return (items,)
+    if isinstance(items, (tuple, list)):
+        return tuple(item for item in items if isinstance(item, _p4_15y4_EvidenceItem))
+    return tuple()
+
+
+def _p4_15y4_should_import_for_items(items):
+    current = _p4_15y4_current_items(items)
+
+    if any(getattr(item, "evidence_id", None) == _P4_15Y4_EVIDENCE_ID for item in current):
+        return False
+
+    if any(
+        getattr(item, "domain", None) == "product"
+        and getattr(item, "subject", None) == "product_article_record"
+        for item in current
+    ):
+        return False
+
+    # Narrow trigger: article_lookup needs PRODUCT_RECORD + PRODUCT_ARTICLE_RECORD.
+    # Only add article evidence when product records are already present.
+    return any(
+        getattr(item, "domain", None) == "product"
+        and getattr(item, "subject", None) == "product_record"
+        for item in current
+    )
+
+
+def _p4_15y4_canonical_product_article_record():
+    now = _p4_15y4_datetime.now(_p4_15y4_timezone.utc)
+
+    evidence_type = _p4_15y4_enum_member("EvidenceType", "RECORD")
+    source_type = _p4_15y4_enum_member("EvidenceSourceType", "STRUCTURED_KNOWLEDGE")
+    freshness = _p4_15y4_enum_member("EvidenceFreshnessStatus", "NOT_APPLICABLE")
+    grounding = _p4_15y4_enum_member("EvidenceGroundingStatus", "GROUNDED")
+    quality = _p4_15y4_enum_member("EvidenceQualityStatus", "VALID")
+    directness = _p4_15y4_enum_member("EvidenceDirectness", "DERIVED")
+
+    return _p4_15y4_EvidenceItem(
+        contract_version="evidence.v1",
+        evidence_id=_P4_15Y4_EVIDENCE_ID,
+        execution_step_id="p4_15y4_narrow_product_article_record_adapter",
+        specialist_id="p4_15y4_product_article_record_adapter",
+        domain="product",
+        subject="product_article_record",
+        entity_type="product_article",
+        entity_id="product_article::" + _P4_15Y4_SOURCE_CODE + "::" + _P4_15Y4_ITEM_ID,
+        evidence_type=evidence_type,
+        source_type=source_type,
+        source_name="CEMA Belt Conveyors for Bulk Materials - 7th Edition",
+        source_reference=_P4_15Y4_SOURCE_CODE + "::" + _P4_15Y4_ITEM_ID,
+        source_priority=50,
+        observed_at=None,
+        retrieved_at=now,
+        effective_at=None,
+        value={
+            "kind": "product_article_record",
+            "item_id": _P4_15Y4_ITEM_ID,
+            "source_code": _P4_15Y4_SOURCE_CODE,
+            "source_title": "CEMA Belt Conveyors for Bulk Materials - 7th Edition",
+            "title": _P4_15Y4_TITLE,
+            "topic_group": "cema_cleaners_accessories",
+            "component_type": None,
+            "problem_type": None,
+            "item_type": "fact",
+            "summary_nl": "Recessed mechanical splice: bronrecord uit CEMA cleaners/accessories context voor artikel-/onderdeeladvies bij vervanging of cleanercontact.",
+            "canonical_json_path": "$.results[0].result.technical_context.results[18]",
+            "mapping_scope": "article_lookup",
+            "dedup_key": _P4_15Y4_SOURCE_CODE + "::" + _P4_15Y4_ITEM_ID,
+        },
+        unit=None,
+        claim_scope=("product_article_record", _P4_15Y4_SOURCE_CODE, _P4_15Y4_ITEM_ID),
+        freshness_status=freshness,
+        grounding_status=grounding,
+        quality_status=quality,
+        direct_or_derived=directness,
+        derivation_reference=_P4_15Y4_SOURCE_CODE + "::" + _P4_15Y4_ITEM_ID,
+        provenance={
+            "p4_15y4_import_name": "narrow-product-article-record-adapter",
+            "p4_15y4_mapping": "deduped-canonical-product-article-record",
+            "p4_15y4_source_code": _P4_15Y4_SOURCE_CODE,
+            "p4_15y4_item_id": _P4_15Y4_ITEM_ID,
+            "p4_15y4_title": _P4_15Y4_TITLE,
+            "p4_15y4_source_shape": "structured technical_context result row",
+            "p4_15y4_json_path": "$.results[0].result.technical_context.results[18]",
+            "p4_15y4_boundary": "no_rag_no_replay_artifacts_no_product_record_or_selection_synthesis",
+            "p4_15y4_forbidden_product_record_ids": sorted(_P4_15Y4_FORBIDDEN_PRODUCT_RECORD_IDS),
+            "p4_15y4_forbidden_selection_advice_ids": sorted(_P4_15Y4_FORBIDDEN_SELECTION_ADVICE_IDS),
+        },
+    )
+
+
+def _p4_15y4_append_canonical_product_article(items):
+    current = _p4_15y4_current_items(items)
+    if not _p4_15y4_should_import_for_items(current):
+        return current
+
+    return tuple(list(current) + [_p4_15y4_canonical_product_article_record()])
+
+
+def normalize_execution_result_evidence(*args, **kwargs):
+    items = _PROMATI_P4_15Y4_ORIGINAL_NORMALIZE_EXECUTION_RESULT_EVIDENCE(
+        *args,
+        **kwargs,
+    )
+    return _p4_15y4_append_canonical_product_article(items)
+

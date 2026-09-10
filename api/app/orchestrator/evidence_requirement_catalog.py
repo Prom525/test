@@ -572,6 +572,191 @@ _DIAGNOSTICS_HEALTH = _requirement_set(
 )
 
 
+
+# PROMATI_P4_15F_CROSS_DOMAIN_REQUIREMENT_MAPPING_V1
+_INSPECTION_OBSERVATION = _requirement_set(
+    "inspection_observation",
+    (
+        _requirement(
+            "RESOLVED_ASSET_CONTEXT",
+            (EvidenceType.ASSET_RESOLUTION,),
+            RequirementNecessity.REQUIRED,
+            "Resolved canonical conveyor-belt context for the observed issue.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            entity_type="conveyor_belt",
+            entity_id_required=True,
+        ),
+        _requirement(
+            "INSPECTION_OBSERVATION_RECORD",
+            (EvidenceType.RECORD, EvidenceType.EVENT),
+            RequirementNecessity.REQUIRED_FOR_DIAGNOSIS,
+            "Recorded inspection observation or event relevant to the issue.",
+            (EvidenceSourceType.LIVE_CANONICAL, EvidenceSourceType.SPECIALIST_RESULT),
+            entity_type="inspection",
+            entity_id_required=False,
+        ),
+        _requirement(
+            "LATEST_POSITION_MEASUREMENT",
+            (EvidenceType.MEASUREMENT,),
+            RequirementNecessity.DESIRED,
+            "Latest directly observed blade height for affected positions.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            entity_type="scraper_position",
+            entity_id_required=False,
+        ),
+    ),
+    (
+        "Cross-domain scaffold requirement set for observed inspection issues.",
+        "V1 accepts canonical inspection records/events when a specific observation is not yet normalized.",
+    ),
+)
+
+
+_THEORY_GUIDANCE = _requirement_set(
+    "theory_guidance",
+    (
+        _requirement(
+            "TECHNICAL_SOURCE",
+            (EvidenceType.DOCUMENT_FRAGMENT, EvidenceType.RECORD),
+            RequirementNecessity.REQUIRED,
+            "Controlled theory, instruction or approved technical guidance.",
+            (
+                EvidenceSourceType.STRUCTURED_KNOWLEDGE,
+                EvidenceSourceType.APPROVED_DOCUMENT,
+                EvidenceSourceType.RAG_CONTEXT,
+            ),
+            entity_type="technical_guidance",
+            entity_id_required=False,
+        ),
+    ),
+    (
+        "Alias-compatible technical guidance requirement for cross-domain inspection questions.",
+    ),
+)
+
+
+_ARTICLE_LOOKUP = _requirement_set(
+    "article_lookup",
+    (
+        _requirement(
+            "PRODUCT_ARTICLE_RECORD",
+            (EvidenceType.RECORD,),
+            RequirementNecessity.REQUIRED,
+            "Controlled product article or orderable-part record.",
+            (
+                EvidenceSourceType.LIVE_CANONICAL,
+                EvidenceSourceType.STRUCTURED_KNOWLEDGE,
+                EvidenceSourceType.SPECIALIST_RESULT,
+            ),
+            entity_type="product_article",
+            entity_id_required=False,
+        ),
+        _requirement(
+            "PRODUCT_RECORD",
+            (EvidenceType.RECORD,),
+            RequirementNecessity.DESIRED,
+            "Matching controlled product record.",
+            (
+                EvidenceSourceType.STRUCTURED_KNOWLEDGE,
+                EvidenceSourceType.LIVE_CANONICAL,
+                EvidenceSourceType.SPECIALIST_RESULT,
+            ),
+            entity_type="product",
+            entity_id_required=False,
+        ),
+    ),
+    (
+        "Article lookup may be satisfied by product_article records, with product records as supporting context.",
+    ),
+)
+
+
+_PERFORMANCE_HISTORY = _requirement_set(
+    "performance_history",
+    (
+        _requirement(
+            "RESOLVED_ASSET_CONTEXT",
+            (EvidenceType.ASSET_RESOLUTION,),
+            RequirementNecessity.REQUIRED,
+            "Resolved canonical conveyor-belt context.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            entity_type="conveyor_belt",
+            entity_id_required=True,
+        ),
+        _requirement(
+            "MEASUREMENT_HISTORY",
+            (EvidenceType.MEASUREMENT,),
+            RequirementNecessity.REQUIRED_FOR_DIAGNOSIS,
+            "Observed measurement or wear history for the scraper or affected positions.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            minimum_items=1,
+            entity_type="scraper_position",
+            entity_id_required=False,
+        ),
+        _requirement(
+            "INSPECTION_COMMENTS",
+            (EvidenceType.RECORD,),
+            RequirementNecessity.DESIRED,
+            "Recorded inspection comments relevant to unusual wear or poor performance.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            entity_type="inspection",
+            entity_id_required=False,
+        ),
+    ),
+    (
+        "V1 allows one or more observed measurements for performance-history grounding.",
+        "Trend-quality forecasting remains outside this requirement set.",
+    ),
+)
+
+
+_PRODUCT_FIT_ANALYSIS = _requirement_set(
+    "product_fit_analysis",
+    (
+        _requirement(
+            "PRODUCT_RECORD",
+            (EvidenceType.RECORD,),
+            RequirementNecessity.REQUIRED,
+            "Controlled product record for the current or candidate scraper.",
+            (
+                EvidenceSourceType.STRUCTURED_KNOWLEDGE,
+                EvidenceSourceType.LIVE_CANONICAL,
+                EvidenceSourceType.SPECIALIST_RESULT,
+            ),
+            entity_type="product",
+            entity_id_required=False,
+        ),
+        _requirement(
+            "SELECTION_ADVICE",
+            (EvidenceType.RECORD, EvidenceType.DOCUMENT_FRAGMENT),
+            RequirementNecessity.REQUIRED_FOR_DIAGNOSIS,
+            "Selection advice or product-fit criteria relevant to material and application.",
+            (
+                EvidenceSourceType.STRUCTURED_KNOWLEDGE,
+                EvidenceSourceType.APPROVED_DOCUMENT,
+                EvidenceSourceType.RAG_CONTEXT,
+                EvidenceSourceType.SPECIALIST_RESULT,
+            ),
+            entity_type="product_selection",
+            entity_id_required=False,
+        ),
+        _requirement(
+            "RESOLVED_ASSET_CONTEXT",
+            (EvidenceType.ASSET_RESOLUTION,),
+            RequirementNecessity.DESIRED,
+            "Resolved conveyor-belt context for application fit.",
+            (EvidenceSourceType.LIVE_CANONICAL,),
+            entity_type="conveyor_belt",
+            entity_id_required=False,
+        ),
+    ),
+    (
+        "Cross-domain fit analysis combines product information with selection criteria.",
+    ),
+)
+
+
+
 REQUIREMENT_SETS_BY_INTENT = MappingProxyType(
     {
         item.intent: item
@@ -583,7 +768,12 @@ REQUIREMENT_SETS_BY_INTENT = MappingProxyType(
             _LIFECYCLE_ANALYSIS,
             _MAINTENANCE_PRIORITY,
             _REPLACEMENT_ADVICE,
+            _INSPECTION_OBSERVATION,
+            _THEORY_GUIDANCE,
+            _ARTICLE_LOOKUP,
+            _PERFORMANCE_HISTORY,
             _PRODUCT_LOOKUP,
+            _PRODUCT_FIT_ANALYSIS,
             _PRICE_STOCK,
             _TECHNICAL_LOOKUP,
             _TECHNICAL_CALCULATION,
@@ -604,6 +794,12 @@ INTENT_REQUIREMENT_ALIASES = MappingProxyType(
         # controlled PRODUCT_RECORD evidence as product_lookup.
         "product_selection": "product_lookup",
         "advantages_disadvantages": "product_lookup",
+
+        # PROMATI_P4_15F_CROSS_DOMAIN_REQUIREMENT_ALIASES_V1
+        # Cross-domain task intents reuse stable existing requirement profiles
+        # where the evidence adapter layer already normalizes that evidence.
+        "theory_guidance": "technical_lookup",
+        "selection_criteria": "product_lookup",
 
         # PROMATI_PRICE_STOCK_REQUIREMENT_ALIASES_P4_5B5
         "inventory_lookup": "price_stock",
@@ -629,3 +825,177 @@ __all__ = [
     "REQUIREMENT_SETS_BY_INTENT",
     "get_requirement_set",
 ]
+
+# PROMATI_P4_15Q_REQUIREMENT_CATALOG_ALIGNMENT_V1
+#
+# Conservative catalog-only alignment for real normalized evidence shapes observed in
+# P4.15N/P4.15O replay audits.
+#
+# Boundary:
+# - no adapter/runtime selector changes here;
+# - no relaxation of grounding/quality/freshness assessment;
+# - only broaden requirement source/evidence type acceptance where existing
+#   normalizers already emit typed EvidenceItem contracts.
+from dataclasses import is_dataclass as _p4_15q_is_dataclass
+from dataclasses import replace as _p4_15q_dataclass_replace
+
+from app.orchestrator.evidence_contracts import (
+    EvidenceSourceType as _P4_15Q_EvidenceSourceType,
+)
+from app.orchestrator.evidence_contracts import (
+    EvidenceType as _P4_15Q_EvidenceType,
+)
+
+
+_PROMATI_P4_15Q_ORIGINAL_GET_REQUIREMENT_SET = get_requirement_set
+
+
+def _p4_15q_enum_members(enum_cls, names):
+    output = []
+    for name in names:
+        member = getattr(enum_cls, name, None)
+        if member is not None and member not in output:
+            output.append(member)
+    return tuple(output)
+
+
+def _p4_15q_extend_tuple(existing, additions):
+    output = list(tuple(existing or ()))
+    for item in tuple(additions or ()):
+        if item is not None and item not in output:
+            output.append(item)
+    return tuple(output)
+
+
+_PROMATI_P4_15Q_REQUIREMENT_ADJUSTMENTS = {
+    # _product_knowledge_evidence emits PRODUCT_RECORD-like records from
+    # structured product-family knowledge; article/price-stock paths can emit
+    # live canonical product records. Accept both source families at catalog
+    # level while preserving evidence_type/entity matching in the assessor.
+    "PRODUCT_RECORD": {
+        "allowed_source_types": _p4_15q_enum_members(
+            _P4_15Q_EvidenceSourceType,
+            (
+                "STRUCTURED_KNOWLEDGE",
+                "LIVE_CANONICAL",
+            ),
+        ),
+    },
+
+    # _technical_structured_evidence emits structured technical knowledge.
+    "TECHNICAL_SOURCE": {
+        "allowed_source_types": _p4_15q_enum_members(
+            _P4_15Q_EvidenceSourceType,
+            (
+                "STRUCTURED_KNOWLEDGE",
+            ),
+        ),
+    },
+
+    # Maintenance forecast adapters emit calculated forecast evidence.
+    "FORECAST_RESULT": {
+        "evidence_types": _p4_15q_enum_members(
+            _P4_15Q_EvidenceType,
+            (
+                "CALCULATION_RESULT",
+            ),
+        ),
+    },
+
+    # Diagnostic evidence may be direct diagnostic findings or calculated
+    # derivative findings depending on upstream analysis path.
+    "DIAGNOSTIC_FINDING": {
+        "evidence_types": _p4_15q_enum_members(
+            _P4_15Q_EvidenceType,
+            (
+                "DIAGNOSTIC_FINDING",
+                "CALCULATION_RESULT",
+            ),
+        ),
+    },
+}
+
+
+def _p4_15q_replace_model_or_dataclass(obj, **changes):
+    if obj is None or not changes:
+        return obj
+
+    if _p4_15q_is_dataclass(obj):
+        return _p4_15q_dataclass_replace(obj, **changes)
+
+    model_copy = getattr(obj, "model_copy", None)
+    if callable(model_copy):
+        return model_copy(update=changes)
+
+    copy_method = getattr(obj, "copy", None)
+    if callable(copy_method):
+        try:
+            return copy_method(update=changes)
+        except TypeError:
+            pass
+
+    return obj
+
+
+def _p4_15q_align_requirement(requirement):
+    requirement_id = getattr(requirement, "requirement_id", None)
+
+    adjustments = _PROMATI_P4_15Q_REQUIREMENT_ADJUSTMENTS.get(
+        str(requirement_id or "")
+    )
+
+    if not adjustments:
+        return requirement
+
+    changes = {}
+
+    if "allowed_source_types" in adjustments and hasattr(
+        requirement,
+        "allowed_source_types",
+    ):
+        changes["allowed_source_types"] = _p4_15q_extend_tuple(
+            getattr(requirement, "allowed_source_types", ()),
+            adjustments["allowed_source_types"],
+        )
+
+    if "evidence_types" in adjustments and hasattr(
+        requirement,
+        "evidence_types",
+    ):
+        changes["evidence_types"] = _p4_15q_extend_tuple(
+            getattr(requirement, "evidence_types", ()),
+            adjustments["evidence_types"],
+        )
+
+    return _p4_15q_replace_model_or_dataclass(requirement, **changes)
+
+
+def _p4_15q_align_requirement_set(requirement_set):
+    if requirement_set is None or not hasattr(requirement_set, "requirements"):
+        return requirement_set
+
+    original_requirements = tuple(
+        getattr(requirement_set, "requirements", ()) or ()
+    )
+
+    aligned_requirements = tuple(
+        _p4_15q_align_requirement(requirement)
+        for requirement in original_requirements
+    )
+
+    if aligned_requirements == original_requirements:
+        return requirement_set
+
+    return _p4_15q_replace_model_or_dataclass(
+        requirement_set,
+        requirements=aligned_requirements,
+    )
+
+
+def get_requirement_set(*args, **kwargs):
+    requirement_set = _PROMATI_P4_15Q_ORIGINAL_GET_REQUIREMENT_SET(
+        *args,
+        **kwargs,
+    )
+    return _p4_15q_align_requirement_set(requirement_set)
+

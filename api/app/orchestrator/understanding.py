@@ -149,6 +149,40 @@ INSPECTION_DOMAIN_TERMS = (
     "vervangen",
     "vervanging",
     "laatste meting",
+
+    # PROMATI_P4_15D_CROSS_DOMAIN_ROUTING_TERMS_V1
+    "scheefloop",
+    "scheef loop",
+    "scheeflopen",
+    "band loopt scheef",
+    "bandscheefloop",
+    "ongelijke slijtage",
+    "ongelijkmatige slijtage",
+    "schuin afgesleten",
+    "scheef afgesleten",
+    "waar moet de monteur op letten",
+    "waar moet ik op letten",
+    "controlepunten",
+    "werkinstructie",
+    "artikel",
+    "artikelen",
+    "artikelnummer",
+    "klaarleggen",
+    "meenemen",
+    "welk mes",
+    "welke messen",
+    "kritieke schraperposities",
+    "schraperposities",
+    "selectiecriteria",
+    "selectie criteria",
+    "materiaal dat over de band gaat",
+    "materiaal over de band",
+    "slijt snel",
+    "snel slijt",
+    "snelle slijtage",
+    "ongewone slijtage",
+    "slechte prestatie",
+    "presteert slecht",
 )
 
 BAND_CONTEXT_INSPECTION_TERMS = (
@@ -201,6 +235,18 @@ SCOPE_INSPECTION_TERMS = (
     "patroon",
     "laatste",
     "actuele",
+
+    # PROMATI_P4_15D_CROSS_DOMAIN_ROUTING_TERMS_V1
+    "scheefloop",
+    "bandscheefloop",
+    "artikel",
+    "klaarleggen",
+    "welk mes",
+    "kritieke schraperposities",
+    "selectiecriteria",
+    "materiaal over de band",
+    "slijt snel",
+    "snelle slijtage",
 )
 
 
@@ -327,6 +373,97 @@ def detect_requested_information(
             "hoe betrouwbaar",
         )):
             add("uncertainties")
+
+
+
+    # PROMATI_P4_15B_CROSS_DOMAIN_REQUESTED_INFO_V1
+    if primary_domain == Domain.INSPECTION:
+        cross_domain_observation_terms = (
+            "scheefloop", "scheef loop", "scheeflopen",
+            "band loopt scheef", "bandscheefloop",
+            "ongelijke slijtage", "ongelijkmatige slijtage",
+            "schuin afgesleten", "scheef afgesleten",
+            "materiaalophoping", "materiaal ophoping",
+            "niet goed aanliggen", "slecht aanliggen",
+        )
+        cross_domain_theory_terms = (
+            "theorie", "waar moet de monteur op letten",
+            "waar moet ik op letten", "controlepunten",
+            "controleren", "werkinstructie", "instructie",
+            "oorzaak", "oorzaken", "verklaring",
+        )
+        cross_domain_article_terms = (
+            "artikel", "artikelen", "artikelnummer",
+            "onderdeel", "onderdelen", "bestellen",
+            "klaarleggen", "meenemen", "welk mes",
+            "welke mes", "welke messen",
+        )
+        cross_domain_product_terms = (
+            "productinformatie", "product informatie",
+            "productinfo", "product info", "product",
+            "schrapertype", "scraper type", "type schraper",
+        )
+        cross_domain_selection_terms = (
+            "selectiecriteria", "selectie criteria",
+            "selectieadvies", "selectie advies",
+            "past de huidige schraper", "past deze schraper",
+            "materiaal dat over de band gaat",
+            "materiaal over de band", "abrasief", "abrasive",
+        )
+        cross_domain_performance_terms = (
+            "slijt snel", "snel slijt", "snelle slijtage",
+            "slechte prestatie", "slecht presteert",
+            "presteert slecht", "vaak vervangen",
+            "vaker vervangen", "gaat niet lang mee",
+            "ongewone slijtage",
+        )
+
+        has_observation = any(term in q for term in cross_domain_observation_terms)
+        has_theory = any(term in q for term in cross_domain_theory_terms)
+        has_article = any(term in q for term in cross_domain_article_terms)
+        # PROMATI_P4_15D_CROSS_DOMAIN_TRIGGER_REPAIR_V1
+        has_product = (
+            any(term in q for term in cross_domain_product_terms)
+            or "schraper" in q
+            or "bandschraper" in q
+            or "scraper" in q
+        )
+        has_selection = any(term in q for term in cross_domain_selection_terms)
+        has_performance = (
+            any(term in q for term in cross_domain_performance_terms)
+            or ("slijt" in q and "snel" in q)
+            or ("slijtage" in q and "snel" in q)
+            or ("presteert" in q and "slecht" in q)
+            or ("prestatie" in q and "slecht" in q)
+        )
+
+        if has_observation:
+            add("inspection_observation")
+        if has_observation and has_theory:
+            add("theory_guidance")
+        if has_article:
+            add("article_lookup")
+            if (
+                "schraper" in q
+                or "schraperpositie" in q
+                or "schraperposities" in q
+                or "kritieke" in q
+                or "mes" in q
+                or "positie" in q
+            ):
+                add("inspection_observation")
+        if has_product:
+            add("product_information")
+        if has_selection:
+            add("selection_criteria")
+            add("product_information")
+            add("product_fit_analysis")
+        if has_performance:
+            add("performance_history")
+            add("product_information")
+            add("product_fit_analysis")
+        if has_product and (has_selection or has_performance):
+            add("product_fit_analysis")
 
 
     # PROMATI_P4_14W_GOLDEN_MV1_INSPECTION_MAINTENANCE_TASKS_V1
@@ -2026,6 +2163,79 @@ def _inspection_facet_task_specs(
     primary_intent: str,
     requested: list[str],
 ) -> list[dict[str, object]] | None:
+    # PROMATI_P4_15B_CROSS_DOMAIN_TASK_SPECS_V1
+    p4_15b_cross_domain_specs = []
+
+    def _p4_15b_add_cross_domain_spec(label, domain, intent, requirement_set_id, requested_information):
+        p4_15b_cross_domain_specs.append(
+            {
+                "label": label,
+                "domain": domain,
+                "intent": intent,
+                "requirement_set_id": requirement_set_id,
+                "requested_information": tuple(requested_information),
+            }
+        )
+
+    if "inspection_observation" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "inspection_observation", Domain.INSPECTION,
+            "inspection_observation", "inspection_observation.v1",
+            ("inspection_observation",),
+        )
+
+    if "theory_guidance" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "theory_guidance", Domain.TECHNICAL,
+            "theory_guidance", "theory_guidance.v1",
+            ("theory_guidance",),
+        )
+
+    if "replacement_advice" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "replacement_advice", Domain.INSPECTION,
+            "replacement_advice", "replacement_advice.v1",
+            ("replacement_advice",),
+        )
+
+    if "article_lookup" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "article_lookup", Domain.PRODUCT,
+            "article_lookup", "article_lookup.v1",
+            ("article_lookup",),
+        )
+
+    if "performance_history" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "performance_history", Domain.INSPECTION,
+            "performance_history", "performance_history.v1",
+            ("performance_history",),
+        )
+
+    if "product_information" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "product_information", Domain.PRODUCT,
+            "product_lookup", "product_lookup.v1",
+            ("product_information",),
+        )
+
+    if "selection_criteria" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "selection_criteria", Domain.PRODUCT,
+            "product_selection", "product_selection.v1",
+            ("selection_criteria",),
+        )
+
+    if "product_fit_analysis" in requested:
+        _p4_15b_add_cross_domain_spec(
+            "product_fit_analysis", Domain.PRODUCT,
+            "product_fit_analysis", "product_fit_analysis.v1",
+            ("product_fit_analysis",),
+        )
+
+    if p4_15b_cross_domain_specs:
+        return p4_15b_cross_domain_specs
+
     """Split latest-state evidence from lifecycle/history evidence.
 
     Explicit replacement advice stays integrated because the existing richer
@@ -2223,10 +2433,10 @@ def build_intent_tasks_shadow(
             tasks.append(
                 IntentTask(
                     task_id=(
-                        f"task_{task_index}_{domain.value}_"
+                        f"task_{task_index}_{spec.get('domain', domain).value}_"
                         f"{spec['label']}"
                     ),
-                    domain=domain,
+                    domain=spec.get("domain", domain),
                     intent=str(spec["intent"]),
                     requested_information=list(
                         spec["requested_information"]
