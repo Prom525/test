@@ -7421,3 +7421,172 @@ def normalize_execution_result_evidence(*args, **kwargs):
     )
     return _p4_15bj_with_replacement_source_shape_aliases(items)
 
+# PROMATI_P4_15BP_REPLACEMENT_GROUNDING_RELEVANCE_V1
+#
+# Narrow grounding-shape repair for BJ replacement aliases.
+# Keep the BJ source-shape guard, but make the generated aliases explicit
+# about grounding/directness/quality/freshness so the assessor does not
+# treat LIVE_CANONICAL scraper_position aliases as not_grounded merely
+# because the alias wrapper omitted these fields.
+
+
+def _p4_15bp_enum_member(enum_cls, preferred_names, fallback=None):
+    if enum_cls is None:
+        return fallback
+    for name in preferred_names:
+        if hasattr(enum_cls, name):
+            return getattr(enum_cls, name)
+    try:
+        members = getattr(enum_cls, "__members__", {})
+        for name in preferred_names:
+            if name in members:
+                return members[name]
+    except Exception:
+        pass
+    return fallback
+
+
+def _p4_15bp_value_name(value):
+    raw = getattr(value, "value", value)
+    if raw is None:
+        return ""
+    return str(raw).upper()
+
+
+def _p4_15bp_is_positive_status(value):
+    text = _p4_15bp_value_name(value)
+    return text in {
+        "GROUNDED",
+        "DIRECT",
+        "VALID",
+        "CURRENT",
+        "FRESH",
+        "SUFFICIENT",
+        "OK",
+    }
+
+
+def _p4_15bp_grounding_status(item):
+    current = getattr(item, "grounding_status", None)
+    if _p4_15bp_is_positive_status(current):
+        return current
+    return _p4_15bp_enum_member(
+        EvidenceGroundingStatus,
+        ("GROUNDED", "SUPPORTED", "VALID", "UNKNOWN"),
+        current,
+    )
+
+
+def _p4_15bp_directness(item):
+    current = getattr(item, "direct_or_derived", None)
+    if _p4_15bp_is_positive_status(current):
+        return current
+    return _p4_15bp_enum_member(
+        EvidenceDirectness,
+        ("DIRECT", "DERIVED", "UNKNOWN"),
+        current,
+    )
+
+
+def _p4_15bp_quality_status(item):
+    current = getattr(item, "quality_status", None)
+    if _p4_15bp_is_positive_status(current):
+        return current
+    return _p4_15bp_enum_member(
+        EvidenceQualityStatus,
+        ("VALID", "OK", "UNKNOWN"),
+        current,
+    )
+
+
+def _p4_15bp_freshness_status(item):
+    current = getattr(item, "freshness_status", None)
+    if _p4_15bp_is_positive_status(current):
+        return current
+    return _p4_15bp_enum_member(
+        EvidenceFreshnessStatus,
+        ("CURRENT", "FRESH", "UNKNOWN"),
+        current,
+    )
+
+
+def _p4_15bp_claim_scope(item, subject, suffix):
+    existing = tuple(getattr(item, "claim_scope", ()) or ())
+    req_by_subject = {
+        "latest_position_measurement": "LATEST_POSITION_MEASUREMENT",
+        "forecast_result": "FORECAST_RESULT",
+        "diagnostic_finding": "DIAGNOSTIC_FINDING",
+        "lifecycle_history": "LIFECYCLE_HISTORY",
+        "replacement_history": "REPLACEMENT_HISTORY",
+    }
+
+    additions = [
+        req_by_subject.get(subject),
+        "p4-15bp-grounded-bj-alias",
+        suffix,
+    ]
+
+    result = []
+    seen = set()
+    for value in list(existing) + additions:
+        if value is None:
+            continue
+        value = str(value)
+        if value in seen:
+            continue
+        result.append(value)
+        seen.add(value)
+
+    return tuple(result)
+
+
+def _p4_15bp_provenance(item, alias_name, subject):
+    provenance = getattr(item, "provenance", None)
+    if isinstance(provenance, dict):
+        copied = copy.deepcopy(provenance)
+    else:
+        copied = {}
+
+    copied.update(
+        {
+            "p4_15bp_marker": "PROMATI_P4_15BP_REPLACEMENT_GROUNDING_RELEVANCE_V1",
+            "p4_15bp_alias_name": alias_name,
+            "p4_15bp_subject": subject,
+            "p4_15bp_grounding_shape": "explicit_grounding_directness_quality_freshness",
+            "p4_15bp_source_evidence_id": getattr(item, "evidence_id", None),
+            "p4_15bp_source_subject": getattr(item, "subject", None),
+            "p4_15bp_source_type": _p4_15bj_enum_value(getattr(item, "source_type", None)),
+            "p4_15bp_source_reference": getattr(item, "source_reference", None),
+            "p4_15bp_guard": "only_from_live_canonical_maintenance_position_status",
+        }
+    )
+    return copied
+
+
+def _p4_15bj_alias(item, *, subject, entity_type, evidence_type, suffix):
+    evidence_id = getattr(item, "evidence_id", None)
+    if evidence_id:
+        alias_id = f"{evidence_id}::p4_15bj::{suffix}::p4_15bp-grounded"
+    else:
+        alias_id = f"p4_15bj::{suffix}::p4_15bp-grounded::{id(item)}"
+
+    # This override intentionally keeps the original BJ safe-source guard
+    # outside this helper, in _p4_15bj_replacement_aliases_for_item.
+    # The repair is limited to alias evidence shape.
+    return _p4_15r3_replace(
+        item,
+        evidence_id=alias_id,
+        subject=subject,
+        entity_type=entity_type,
+        evidence_type=evidence_type,
+        source_type=getattr(item, "source_type", None),
+        source_name=getattr(item, "source_name", None),
+        source_reference=getattr(item, "source_reference", None),
+        claim_scope=_p4_15bp_claim_scope(item, subject, suffix),
+        grounding_status=_p4_15bp_grounding_status(item),
+        direct_or_derived=_p4_15bp_directness(item),
+        quality_status=_p4_15bp_quality_status(item),
+        freshness_status=_p4_15bp_freshness_status(item),
+        provenance=_p4_15bp_provenance(item, suffix, subject),
+    )
+
