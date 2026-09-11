@@ -1,0 +1,8 @@
+Tunnel name: promati-api
+Tunnel ID: e4ca5f26-45d7-454d-b89e-a7d7708ab42b
+Tunnel hostname: e4ca5f26-45d7-454d-b89e-a7d7708ab42b.cfargotunnel.com
+Public hostname: api.promati.com
+Service: http://api:8000
+DNS CNAME:
+  api.promati.com -> e4ca5f26-45d7-454d-b89e-a7d7708ab42b.cfargotunnel.com
+Cloudflare account: John.koenders@...

@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Promati Analysis Assistant",
+  "name_for_model": "promati_analysis",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev/openapi.json",
+    "is_user_authenticated": true
+  },
+  "custom_headers": {
+    "ngrok-skip-browser-warning": "true",
+    "Authorization": "Bearer REPLACE_WITH_VALID_TOKEN"
+  }
+}

@@ -1,0 +1,438 @@
+{
+  "created_at": "2026-08-19T14:47:31.368094",
+  "purpose": "Rollback snapshot before test-environment approval of all technical_table records.",
+  "rows": [
+    {
+      "table_id": 1,
+      "source_code": "MARTIN_SELECTING_BELT_CLEANER",
+      "table_title": "Blade width rule by trough angle",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-12T20:21:54.829694+00:00"
+    },
+    {
+      "table_id": 2,
+      "source_code": "MARTIN_BELT_ALIGNMENT",
+      "table_title": "Belt mistracking diagnosis checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:26:26.566285+00:00"
+    },
+    {
+      "table_id": 3,
+      "source_code": "MARTIN_TRANSFER_ZONES",
+      "table_title": "Transfer point zone function matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:30:36.339982+00:00"
+    },
+    {
+      "table_id": 4,
+      "source_code": "MARTIN_TRANSFER_ZONES",
+      "table_title": "Transfer point kit inventory",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:30:48.149624+00:00"
+    },
+    {
+      "table_id": 5,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Belt cleaner system selection matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:35:21.741467+00:00"
+    },
+    {
+      "table_id": 6,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Carryback cleaning performance levels",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:35:32.264891+00:00"
+    },
+    {
+      "table_id": 7,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Dust control method selection matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:40:40.991034+00:00"
+    },
+    {
+      "table_id": 8,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Dust curtain installation guidelines",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:40:50.458839+00:00"
+    },
+    {
+      "table_id": 9,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Transfer point sealing system components",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:46:05.402499+00:00"
+    },
+    {
+      "table_id": 10,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Leaking skirtboard diagnosis checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:46:14.970936+00:00"
+    },
+    {
+      "table_id": 11,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Belt support selection matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:53:09.927474+00:00"
+    },
+    {
+      "table_id": 12,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Belt support diagnosis checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T05:53:37.819673+00:00"
+    },
+    {
+      "table_id": 13,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Pulley protection plow selection matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:00:15.013736+00:00"
+    },
+    {
+      "table_id": 14,
+      "source_code": "MARTIN_FOUNDATIONS_4",
+      "table_title": "Pulley protection diagnosis checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:00:24.020769+00:00"
+    },
+    {
+      "table_id": 15,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "CEMA minimum blade coverage for conveyor belt cleaners",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:06:48.957509+00:00"
+    },
+    {
+      "table_id": 16,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "CEMA cleaner and accessory selection matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:06:58.033092+00:00"
+    },
+    {
+      "table_id": 17,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "CEMA return belt plow recommendations",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:07:07.337393+00:00"
+    },
+    {
+      "table_id": 18,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "CEMA transfer point design checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:13:08.250448+00:00"
+    },
+    {
+      "table_id": 19,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Transfer point troubleshooting matrix",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:13:17.152390+00:00"
+    },
+    {
+      "table_id": 20,
+      "source_code": "DUNLOP_DESIGN",
+      "table_title": "Dunlop speed selection guide",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:21:50.790060+00:00"
+    },
+    {
+      "table_id": 21,
+      "source_code": "DUNLOP_DESIGN",
+      "table_title": "Dunlop design calculation checklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:21:50.792260+00:00"
+    },
+    {
+      "table_id": 22,
+      "source_code": "DUNLOP_DESIGN",
+      "table_title": "Dunlop pulley groups",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:21:50.793520+00:00"
+    },
+    {
+      "table_id": 23,
+      "source_code": "TRANSPORTBANDENBOEK",
+      "table_title": "Nederlandse transportband rekenchecklist",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:38:12.977276+00:00"
+    },
+    {
+      "table_id": 24,
+      "source_code": "TRANSPORTBANDENBOEK",
+      "table_title": "Praktische diagnose bij rekenafwijkingen",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:38:12.979461+00:00"
+    },
+    {
+      "table_id": 25,
+      "source_code": "TRANSPORTBANDENBOEK",
+      "table_title": "Ontwerpkeuzes snelheid versus bandbreedte",
+      "review_status": "unreviewed",
+      "review_note": null,
+      "updated_at": "2026-06-13T06:38:12.981848+00:00"
+    },
+    {
+      "table_id": 26,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Normenmatrix trommels",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T07:48:40.710850+00:00"
+    },
+    {
+      "table_id": 27,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Normenmatrix rollen en idlers",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T07:48:40.714024+00:00"
+    },
+    {
+      "table_id": 28,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Trommeltype naar technische aandachtspunten",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T07:57:19.931369+00:00"
+    },
+    {
+      "table_id": 29,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Lagging selectie trommels",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T07:57:19.933761+00:00"
+    },
+    {
+      "table_id": 30,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Premium trommel FAT checklist",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T07:57:19.934708+00:00"
+    },
+    {
+      "table_id": 31,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Roltype naar toepassing en RFQ aandachtspunten",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:36:39.143855+00:00"
+    },
+    {
+      "table_id": 32,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Praktische voorkeuze roldiameter per bandbreedte",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:36:39.145452+00:00"
+    },
+    {
+      "table_id": 33,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Typische lagercombinaties voor bulk idlers",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:36:39.146574+00:00"
+    },
+    {
+      "table_id": 34,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Idler FAT checklist",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:36:39.147660+00:00"
+    },
+    {
+      "table_id": 35,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Premium versus OEM beslismatrix",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:46:48.182532+00:00"
+    },
+    {
+      "table_id": 36,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Route naar technische eisen",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:46:48.193295+00:00"
+    },
+    {
+      "table_id": 37,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Classificatie naar RFQ actie",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T08:46:48.194441+00:00"
+    },
+    {
+      "table_id": 38,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "FAT matrix trommels",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T09:02:49.148233+00:00"
+    },
+    {
+      "table_id": 39,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "FAT matrix rollen en idlers",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T09:02:49.159395+00:00"
+    },
+    {
+      "table_id": 40,
+      "source_code": "PROMATI_RFQ_TECHNICAL_STANDARDS",
+      "table_title": "Documentregister Premium RFQ",
+      "review_status": "approved",
+      "review_note": "Vrijgegeven als PROMATI RFQ / inkoop-aanvraagmodule beslis- en selectiereferentie.",
+      "updated_at": "2026-06-13T09:05:03.696066+00:00"
+    },
+    {
+      "table_id": 41,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 3.3 Table of flowability",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=25. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 42,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.22 CEMA standard skirtboard widths",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=30. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 43,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.41 CEMA standard area and capacity table - imperial flat belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=31. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 44,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.42 CEMA standard area and capacity table - imperial troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=32. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 45,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.43 CEMA standard area and capacity table - imperial troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=33. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 46,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.45 CEMA standard area and capacity table - metric flat belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=35. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 47,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.46 CEMA standard area and capacity table - metric troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=36. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 48,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.47 CEMA standard area and capacity table - metric troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=37. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 49,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.48 CEMA standard area and capacity table - metric troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=38. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 50,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 5.18 Suggested normal spacing of belt idlers",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=26. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 51,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 5.41 CEMA Class F idler ratings",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=27. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 52,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 5.42 CEMA picking idler load ratings",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=28. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 53,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 5.61 Average weight of single roll return idler rotating parts - steel rolls",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=29. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:33:43.818255+00:00"
+    },
+    {
+      "table_id": 54,
+      "source_code": "CEMA_BELT_CONVEYORS_7",
+      "table_title": "Table 4.44 CEMA standard area and capacity table - imperial troughed belt",
+      "review_status": "approved",
+      "review_note": "Gecontroleerd vanuit technical_table_candidate candidate_id=34. Nog niet vrijgegeven voor automatische berekening.",
+      "updated_at": "2026-06-20T05:41:05.958682+00:00"
+    }
+  ]
+}

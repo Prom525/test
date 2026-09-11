@@ -1,0 +1,1608 @@
+from __future__ import annotations
+
+import os
+import requests
+from sqlalchemy import text as sql_text
+from app.db import engine
+from typing import Any, Literal
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+# Bestaande interne functies/imports
+from app.routers.analysis_api_v10 import (
+    analysis_assistant_ask as analysis_assistant_internal,
+    AssistantAskRequest as InternalAnalysisAskRequest,
+)
+from app.routers.technical import get_technical_context
+# Diagnostics verloopt via interne HTTP-call naar /diagnostics/analyze.
+
+router = APIRouter(tags=["hybrid-gpt"])
+
+
+# ---------------------------------------------------------
+# MODELS
+# ---------------------------------------------------------
+
+class AnalysisAskRequest(BaseModel):
+    vraag: str
+    lijn_code: str | None = None
+    band_code: str | None = None
+    scraper_type: str | None = None
+    zijde: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    mode: str = "auto"
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class TechnicalAskRequest(BaseModel):
+    vraag: str
+    q: str | None = None
+    topic_group: str | None = None
+    source_code: str | None = None
+    item_type: str | None = None
+    use_rag: bool = True
+    limit: int = Field(default=20, ge=1, le=100)
+
+class ProductAskRequest(BaseModel):
+    vraag: str
+    q: str | None = None
+
+    family_name: str | None = None
+    family_code: str | None = None
+
+    belt_width_mm: int | None = None
+    choice_type: str | None = None  # standard, rvs, special
+    component_group: str | None = None
+
+    mode: str = "auto"
+    limit: int = Field(default=10, ge=1, le=50)
+
+class DiagnosticsAskRequest(BaseModel):
+    vraag: str
+    domain: Literal["database", "inspections", "rfq", "crm", "system"] = "inspections"
+    mode: str = "overview"
+    objects: list[str] = Field(default_factory=list)
+
+    # Expliciete GPT-facing diagnosefilters
+    inspection_key: str | None = None
+    lijn_code: str | None = None
+    band_code: str | None = None
+    source_file_contains: str | None = None
+    sheet: str | None = None
+    diagnosis_code: str | None = None
+
+    # Behouden voor interne/uitgebreide filters
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+    depth: Literal["normal", "deep"] = "normal"
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class OrgAskRequest(BaseModel):
+    vraag: str
+    firma: str | None = "Promati"
+    locatie: str | None = None
+    afdeling: str | None = None
+    mode: str = "auto"
+
+
+class RfqAskRequest(BaseModel):
+    vraag: str
+    q: str | None = None
+
+    rfq_id: str | None = None
+    position_id: str | None = None
+
+    product_type: str | None = None
+    bearing_type: str | None = None
+    rubber_material: str | None = None
+
+    language: Literal["nl", "en", "de", "fr"] | None = None
+    mode: str = "auto"
+    limit: int = Field(default=10, ge=1, le=100)
+
+def _api_base_url() -> str:
+    return os.getenv("PROMATI_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+
+def _get_internal(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    url = f"{_api_base_url()}{path}"
+
+    try:
+        response = requests.get(url, params=params or {}, timeout=20)
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        return {
+            "status": "error",
+            "context_type": "internal_http_call",
+            "path": path,
+            "params": params or {},
+            "error": str(exc),
+            "write_actions_available": False,
+        }
+
+def _get_product_family_document_scope(
+    family_code: str | None,
+) -> dict[str, Any]:
+    """
+    Geeft de gevalideerde, doorzoekbare productdocumenten terug
+    die via product_family_knowledge_link aan een concrete family_code hangen.
+
+    Read-only.
+    """
+
+    if not family_code:
+        return {
+            "status": "ok",
+            "family_code": None,
+            "count": 0,
+            "doc_ids": [],
+            "documents": [],
+        }
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                sql_text("""
+                    SELECT DISTINCT
+                        doc_id,
+                        title,
+                        filename,
+                        document_source_role,
+                        chunk_count
+                    FROM vw_gpt_product_family_documents
+                    WHERE family_code = :family_code
+                      AND searchable = TRUE
+                    ORDER BY
+                        document_source_role,
+                        title,
+                        doc_id
+                """),
+                {"family_code": family_code},
+            ).mappings().all()
+
+        documents = [
+            {
+                "doc_id": str(row["doc_id"]),
+                "title": row["title"],
+                "filename": row["filename"],
+                "document_source_role": row["document_source_role"],
+                "chunk_count": int(row["chunk_count"] or 0),
+            }
+            for row in rows
+        ]
+
+        return {
+            "status": "ok",
+            "family_code": family_code,
+            "count": len(documents),
+            "doc_ids": [
+                document["doc_id"]
+                for document in documents
+            ],
+            "documents": documents,
+        }
+
+    except Exception as exc:
+        return {
+            "status": "error",
+            "family_code": family_code,
+            "count": 0,
+            "doc_ids": [],
+            "documents": [],
+            "error": str(exc),
+        }
+
+def _detect_product_family_code(vraag: str, explicit_family_code: str | None = None) -> str | None:
+    if explicit_family_code:
+        return explicit_family_code
+
+    q = (vraag or "").lower()
+
+    aliases = {
+        "belle banne u": "BB-U",
+        "bb-u": "BB-U",
+        "u schraper": "BB-U",
+        "u-schraper": "BB-U",
+
+        "belle banne h": "BB-H",
+        "bb-h": "BB-H",
+        "h schraper": "BB-H",
+        "h-schraper": "BB-H",
+
+        "belle banne p": "BB-P",
+        "bb-p": "BB-P",
+        "p schraper": "BB-P",
+        "p-schraper": "BB-P",
+
+        "belle banne r": "BB-R",
+        "bb-r": "BB-R",
+        "r schraper": "BB-R",
+        "r-schraper": "BB-R",
+
+        "promati kf": "PROM-KF",
+        "kf schraper": "PROM-KF",
+
+        "promati ks": "PROM-KS",
+        "ks schraper": "PROM-KS",
+
+        "tph hd": "PROM-TPH-HD",
+        "tph nd": "PROM-TPH-ND",
+
+        "proload": "PROLOAD",
+        "blu-tec proload": "PROLOAD",
+        "blutec proload": "PROLOAD",
+        "blu tec proload": "PROLOAD",
+    }
+
+    for alias, code in aliases.items():
+        if alias in q:
+            return code
+
+    return None
+
+
+def _detect_belt_width_mm(vraag: str, explicit_width: int | None = None) -> int | None:
+    if explicit_width:
+        return explicit_width
+
+    import re
+
+    q = vraag or ""
+
+    patterns = [
+        r"\bbandbreedte\s*(?:van)?\s*(\d{3,4})\b",
+        r"\bBB\s*(\d{3,4})\b",
+        r"\bB\s*=\s*(\d{3,4})\b",
+        r"\b(\d{3,4})\s*mm\s*(?:band|bandbreedte)\b",
+        r"\bvoor\s*(\d{3,4})\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, q, re.IGNORECASE)
+        if match:
+            width = int(match.group(1))
+            if 300 <= width <= 3000:
+                return width
+
+    return None
+
+def _detect_product_mode(
+    vraag: str,
+    explicit_mode: str | None = None,
+    belt_width_mm: int | None = None,
+) -> str:
+    if explicit_mode and explicit_mode != "auto":
+        return explicit_mode
+
+    q = (vraag or "").lower()
+
+    if belt_width_mm:
+        return "article_specific"
+
+    if any(term in q for term in ["artikel", "artikelen", "prijs", "voorraad", "bandbreedte", "welke uitvoering"]):
+        return "article_specific"
+
+    if any(term in q for term in ["kies", "kiezen", "verschil", "vergelijk", "welke schraper", "selectie"]):
+        return "selection"
+
+    return "family_general"
+
+def _detect_org_mode(vraag: str, explicit_mode: str | None = None) -> str:
+    q = (vraag or "").lower()
+
+    if explicit_mode and explicit_mode != "auto":
+        return explicit_mode
+
+    location_terms = [
+        "adres",
+        "telefoonnummer",
+        "btw",
+        "ondernemingsnummer",
+        "kvk",
+        "openingstijden",
+        "noodnummer",
+        "alarmnummer",
+        "alarmmelding",
+        "locatiegegevens",
+    ]
+
+    function_terms = [
+        "functieomschrijving",
+        "functie",
+        "rol",
+        "kerntaken",
+        "bevoegdheden",
+        "kpi",
+        "vca",
+        "documentverantwoordelijkheden",
+        "wie is verantwoordelijk",
+        "wat doet",
+    ]
+
+    procedure_terms = [
+        "procedure",
+        "werkwijze",
+        "stappenplan",
+        "uitleg",
+        "achtergrond",
+        "policy",
+        "beleid",
+    ]
+
+    if any(term in q for term in location_terms):
+        return "location_info"
+
+    if any(term in q for term in function_terms):
+        return "function_info"
+
+    if any(term in q for term in procedure_terms):
+        return "procedure"
+
+    return "internal_help"
+
+def _should_use_product_rag(
+    mode: str,
+    family_context: dict[str, Any] | None,
+    vraag: str,
+    linked_doc_ids: list[str] | None = None,
+) -> bool:
+    """
+    Bronprioriteit:
+
+    1. Structured SQL family_context blijft leidend.
+    2. Als gevalideerde family-linked documenten bestaan,
+       mag RAG aanvullend worden gebruikt.
+    3. Zonder linked documenten blijft breed RAG alleen fallback
+       wanneer structured family_context niets oplevert.
+
+    RAG vervangt of overschrijft structured SQL dus niet.
+    """
+
+    linked_doc_ids = linked_doc_ids or []
+
+    # Betrouwbare family-linked documenten mogen altijd
+    # als aanvullende productbron worden gebruikt.
+    if linked_doc_ids:
+        return True
+
+    count = 0
+
+    if isinstance(family_context, dict):
+        count = int(family_context.get("count") or 0)
+
+    # Structured context gevonden en geen specifieke documenten:
+    # breed RAG niet toevoegen.
+    if count > 0:
+        return False
+
+    # Geen structured context en geen linked documenten:
+    # bestaand breed product-RAG als fallback.
+    return True
+
+
+def _fetch_product_rag_context(
+    vraag: str,
+    family_code: str | None = None,
+    family_name: str | None = None,
+    limit: int = 5,
+    doc_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Haalt aanvullende productkennis uit RAG.
+
+    Prioriteit:
+    - family-linked doc_ids indien beschikbaar;
+    - anders bestaande brede product-RAG fallback.
+
+    SQL/artikelstam blijft leidend voor gestructureerde
+    producteigenschappen, artikelen, prijzen en voorraad.
+    """
+
+    rag_query = " ".join(
+        [
+            vraag or "",
+            family_name or "",
+            family_code or "",
+            "Promati productkennis voordelen toepassingen brochure",
+        ]
+    ).strip()
+
+    linked_doc_ids = [
+        str(doc_id).strip()
+        for doc_id in (doc_ids or [])
+        if str(doc_id).strip()
+    ]
+
+    rag_body = {
+        "vraag": rag_query,
+        "top_k": min(max(limit, 3), 8),
+        "answer_mode": "extractive",
+        "rerank_candidates": 50,
+    }
+
+    # Eerste keuze: uitsluitend gevalideerde documenten
+    # van de gedetecteerde productfamilie.
+    if linked_doc_ids:
+        rag_body["doc_ids"] = linked_doc_ids
+    else:
+        # Bestaande brede fallback behouden.
+        rag_body["doc_id_contains"] = "product_"
+
+    try:
+        result = _post_internal(
+            "/rag/query",
+            json_body=rag_body,
+        )
+
+        if not isinstance(result, dict):
+            return result
+
+        result = dict(result)
+
+        if linked_doc_ids:
+            result["scope_mode"] = "family_linked_documents"
+            result["scope_doc_ids"] = linked_doc_ids
+        else:
+            result["scope_mode"] = "broad_product_fallback"
+            result["scope_doc_ids"] = []
+
+        return result
+        
+
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": "RAG-context kon niet worden opgehaald.",
+            "error": str(exc),
+            "context_hits": [],
+            "used_context": [],
+            "scope_doc_ids": linked_doc_ids,
+        }
+
+def _sanitize_product_family_context(
+    family_context: dict[str, Any] | None,
+    vraag: str,
+    family_code: str | None = None,
+    family_name: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Voorkomt dat algemene productvragen zoals Proload/Flexal
+    terugvallen op irrelevante bandschraperfamilies.
+    """
+    if not isinstance(family_context, dict):
+        return family_context
+
+    results = family_context.get("results") or []
+    if not isinstance(results, list) or not results:
+        return family_context
+
+    q = (vraag or "").lower()
+    requested_terms = set()
+
+    product_terms = [
+        # Stof / laadzone / impact
+        "proload",
+        "flexal",
+        "impact bar",
+        "impact bars",
+        "impactzone",
+        "impact zone",
+        "blu-tec",
+        "blutec",
+
+        # Afdichtingen
+        "afdichting",
+        "afdichtingen",
+        "duo-seal",
+        "duo seal",
+        "tri-seal",
+        "tri seal",
+        "multi-seal",
+        "multi seal",
+        "snel klemsysteem",
+        "klemsysteem",
+
+        # Bandbeveiliging
+        "sitec",
+        "trekkoord",
+        "trekkoordschakelaar",
+        "scheefloop",
+        "scheefloopschakelaar",
+        "eindloop",
+        "eindloopschakelaar",
+        "werkschakelaar",
+        "bandbeveiliging",
+
+        # Rollen / stuurrollen / trommels
+        "gurtec",
+        "rol",
+        "rollen",
+        "trogstel",
+        "trogstellen",
+        "hdpe rol",
+        "hdpe rollen",
+        "cerapro",
+        "rollax",
+        "stuurrol",
+        "stuurrollen",
+        "trommel",
+        "trommels",
+        "aandrijftrommel",
+        "keertrommel",
+        "spantrommel",
+        "insnoertrommel",
+        "kooitrommel",
+
+        # Slijtvast / detectie / overkapping
+        "slijtvast",
+        "slijtagebescherming",
+        "keramiek",
+        "aluminiumoxide",
+        "belle liner",
+        "sancic",
+        "barrier",
+        "metaaldetector",
+        "metaaldetectoren",
+        "overkapping",
+        "overkappingen",
+
+        # Schrapers
+        "belle banne",
+        "belle",
+        "banne",
+        "schraper",
+        "schrapers",
+        "bandschraper",
+        "bandschrapers",
+        "cleanscrape",
+        "tpl",
+        "tph",
+        "kf",
+        "ks",
+        "bb-u",
+        "bb-r",
+        "bb-p",
+        "bb-h",
+        "prom-kf",
+        "prom-ks",
+        "prom-tph-hd",
+        "prom-tph-nd",
+    ]
+
+    for term in product_terms:
+        if term in q:
+            requested_terms.add(term)
+    if family_code:
+        requested_terms.add(family_code.lower())
+
+    if family_name and not family_code:
+        requested_terms.add(family_name.lower())
+
+    # Als er geen duidelijke productterm is, laat context ongemoeid.
+    if not requested_terms:
+        return family_context
+
+    scraper_terms = {
+        "belle banne",
+        "belle",
+        "banne",
+        "schraper",
+        "schrapers",
+        "bandschraper",
+        "bandschrapers",
+        "cleanscrape",
+        "tpl",
+        "tph",
+        "kf",
+        "ks",
+        "bb-u",
+        "bb-r",
+        "bb-p",
+        "bb-h",
+        "prom-kf",
+        "prom-ks",
+        "prom-tph-hd",
+        "prom-tph-nd",
+    }
+
+    non_scraper_terms = requested_terms - scraper_terms
+
+    # Als de vraag duidelijk over niet-schraperproducten gaat,
+    # mogen SQL-bandschraperfamilies niet als fallback terugkomen.
+    block_scraper_fallback = bool(non_scraper_terms)
+
+    filtered = []
+    for row in results:
+        haystack = " ".join(
+            str(row.get(k) or "")
+            for k in [
+                "family_name",
+                "family_code",
+                "brand",
+                "main_category",
+                "product_type",
+                "short_description",
+                "application_profile",
+            ]
+        ).lower()
+
+        is_scraper_row = (
+            "bandschraper" in haystack
+            or "schraper" in haystack
+            or "belle banne" in haystack
+            or "promati tph" in haystack
+            or "promati kf" in haystack
+            or "promati ks" in haystack
+        )
+
+        if block_scraper_fallback and is_scraper_row:
+            continue
+
+        if any(term in haystack for term in requested_terms):
+            filtered.append(row)
+
+    cleaned = dict(family_context)
+    cleaned["results"] = filtered
+    cleaned["count"] = len(filtered)
+    cleaned["sanitized"] = True
+
+    if block_scraper_fallback:
+        cleaned["selection_matrix_included"] = False
+        cleaned["selection_matrix"] = []
+
+    if not filtered:
+        cleaned["note"] = "SQL productfamiliecontext leeg na relevantiefilter; gebruik RAG of artikelstam als aanvullende bron."
+
+    return cleaned
+
+def _post_internal(path: str, json_body: dict[str, Any] | None = None) -> dict[str, Any]:
+    url = f"{_api_base_url()}{path}"
+
+    try:
+        response = requests.post(url, json=json_body or {}, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        return {
+            "status": "error",
+            "context_type": "internal_http_call",
+            "path": path,
+            "json_body": json_body or {},
+            "error": str(exc),
+            "write_actions_available": False,
+        }
+
+
+def _wants_procedure_context(vraag: str, mode: str | None = None) -> bool:
+    q = (vraag or "").lower()
+
+    if mode in {"procedure", "rag", "policy"}:
+        return True
+
+    terms = [
+        "procedure",
+        "werkwijze",
+        "stappenplan",
+        "uitleg",
+        "achtergrond",
+        "beleid",
+        "policy",
+        "regels",
+        "hoe moet",
+        "wat moet ik doen",
+        "wat zijn de stappen",
+    ]
+
+    return any(term in q for term in terms)
+
+def _detect_rfq_mode(vraag: str, explicit_mode: str | None = None) -> str:
+    q = (vraag or "").lower()
+
+    if explicit_mode and explicit_mode != "auto":
+        return explicit_mode
+
+    if any(term in q for term in ["vergelijkbaar", "similar", "eerder", "historie"]):
+        return "similar"
+
+    if any(term in q for term in ["supplier package", "leverancierspakket", "pakket"]):
+        return "supplier_package"
+
+    if any(term in q for term in ["leverancier", "supplier", "advies", "aanbeveling"]):
+        return "supplier_recommendation"
+
+    if any(term in q for term in ["risico", "risk"]):
+        return "risk_review"
+
+    if any(term in q for term in ["ready", "readiness", "vrijgeven", "klaar"]):
+        return "readiness"
+
+    if any(term in q for term in ["actieplan", "volgende stap", "wat moet er gebeuren"]):
+        return "action_plan"
+
+    if any(term in q for term in ["status"]):
+        return "status"
+
+    if any(term in q for term in [
+        "lijst",
+        "list",
+        "alle rfq",
+        "alle rfq's",
+        "rfq overzicht",
+        "rfq-overzicht",
+        "overzicht van alle rfq",
+    ]):
+        return "list"
+
+    if any(term in q for term in ["dashboard", "overzicht"]):
+        return "dashboard"
+
+    if any(term in q for term in ["engineering", "technische review", "review"]):
+        return "engineering_review"
+
+    if any(term in q for term in ["timeline", "tijdlijn", "historiek"]):
+        return "timeline"
+
+    return "search"
+
+
+# ---------------------------------------------------------
+# SYSTEM
+# ---------------------------------------------------------
+
+@router.get("/system/capabilities")
+def system_capabilities() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "context_type": "system_capabilities",
+        "gpt_facing_routes": [
+            {
+                "path": "/analysis/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "maintenance_inspections",
+            },
+            {
+                "path": "/technical/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "technical_formulas_rag",
+            },
+            {
+                "path": "/product/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "product_article_stam_rag",
+            },
+            {
+                "path": "/diagnostics/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "diagnostics",
+            },
+            {
+                "path": "/org/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "org_help_location_functions",
+            },
+            {
+                "path": "/rfq/assistant/ask",
+                "method": "POST",
+                "status": "expected_available",
+                "domain": "rfq",
+            },
+            {
+                "path": "/analysis/rfq/{rfq_id}/pdf-url/{language}",
+                "method": "GET",
+                "status": "expected_available",
+                "domain": "rfq_pdf",
+            },
+        ],
+        "internal_modules": [
+            "analysis_api_v10",
+            "technical",
+            "diagnostics_api",
+            "rfq_api",
+            "rfq_search_context",
+            "gpt_context",
+            "products",
+            "rag",
+            "promati_context",
+            "database_context",
+        ],
+        "write_actions_available": False,
+    }
+
+
+# ---------------------------------------------------------
+# ANALYSIS
+# ---------------------------------------------------------
+
+@router.post("/analysis/assistant/ask")
+def analysis_assistant_ask(payload: AnalysisAskRequest) -> dict[str, Any]:
+    internal_payload = InternalAnalysisAskRequest(
+        vraag=payload.vraag,
+        lijn_code=payload.lijn_code,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+        band_code=payload.band_code,
+        scraper_type=payload.scraper_type,
+        zijde=payload.zijde,
+        limit=payload.limit,
+    )
+
+    return analysis_assistant_internal(internal_payload)
+
+
+# ---------------------------------------------------------
+# TECHNICAL
+# ---------------------------------------------------------
+
+@router.post("/technical/assistant/ask")
+def technical_assistant_ask(payload: TechnicalAskRequest) -> dict[str, Any]:
+    """
+    Hybride technische ingang.
+    Voor formulevragen item_type='formula' gebruiken.
+
+    Verbetering:
+    - Detecteert formulevragen automatisch.
+    - Verbreedt brede formulevragen naar betere zoektermen.
+    - Verbreedt CEMA/idler/trogrolvragen naar NL + EN termen.
+    - Probeert CEMA eerst met source_code, daarna fallback zonder source_code.
+    """
+    q = payload.q or payload.vraag
+    q_lower = q.lower()
+
+    product_terms = [
+        "belle banne",
+        "bb-u",
+        "bb-r",
+        "bb-p",
+        "bb-h",
+        "proload",
+        "flexal",
+        "duo-seal",
+        "duo seal",
+        "tri-seal",
+        "tri seal",
+        "multi-seal",
+        "multi seal",
+        "impact bar",
+        "impact bars",
+        "sitec",
+        "barrier",
+        "rollax",
+        "promati kf",
+        "promati ks",
+    ]
+
+    if any(term in q_lower for term in product_terms):
+        return {
+            "status": "redirect",
+            "context_type": "routing_guard",
+            "vraag": payload.vraag,
+            "query": q,
+            "message": "Dit is een Promati-productvraag. Gebruik product_assistant_ask in plaats van technical_assistant_ask.",
+            "recommended_action": "product_assistant_ask",
+            "write_actions_available": False,
+        }
+
+    technical_q = q
+    item_type = payload.item_type
+    source_code = payload.source_code
+
+    # Formulevragen automatisch als formula behandelen.
+    if item_type is None and any(
+        term in q_lower
+        for term in ["formule", "formules", "berekening", "berekeningen", "bereken"]
+    ):
+        item_type = "formula"
+
+    # Brede formulevragen beter vindbaar maken.
+    if item_type == "formula" and any(
+        term in q_lower
+        for term in [
+            "welke formules",
+            "formules heb je",
+            "transportbandberekeningen",
+            "transportband berekeningen",
+            "berekeningen voor transportband",
+        ]
+    ):
+        technical_q = (
+            "transportband formule bandsterkte bandsnelheid capaciteit "
+            "aandrijfvermogen koppel trommel toerental"
+        )
+
+    if item_type == "formula" and any(
+        term in q_lower
+        for term in ["bandsnelheid", "band snelheid", "snelheid van de band"]
+    ):
+        technical_q = "bandsnelheid formule v pi d n trommeldiameter toerental"
+
+    if item_type == "formula" and any(
+        term in q_lower
+        for term in ["bandsterkte", "benodigde bandsterkte", "kn", "tmax"]
+    ):
+        technical_q = "bandsterkte formule kn tmax veiligheidsfactor lasfactor bandbreedte"
+
+    if item_type == "formula" and any(
+        term in q_lower
+        for term in ["capaciteit", "capaciteitsberekening", "transportcapaciteit"]
+    ):
+        technical_q = "capaciteit transportband formule q doorsnede snelheid stortgewicht"
+
+    # CEMA / idler / trogrollen beter vindbaar maken.
+    cema_query = "cema" in q_lower
+    idler_query = any(
+        term in q_lower
+        for term in [
+            "trogrol",
+            "trogrollen",
+            "trogrollenstel",
+            "trogstel",
+            "trogstellen",
+            "idler",
+            "idlers",
+            "troughing idler",
+            "troughing idlers",
+            "carrying idler",
+            "carrying idlers",
+            "return idler",
+            "return idlers",
+        ]
+    )
+
+    if cema_query and source_code is None:
+        source_code = "CEMA"
+
+    if cema_query and idler_query:
+        technical_q = (
+            "CEMA trogrollen troughing idlers carrying idlers return idlers "
+            "idler class idler classes troghoek 20 35 45 belt width spacing load rating"
+        )
+
+    result = get_technical_context(
+        q=technical_q,
+        topic_group=payload.topic_group,
+        source_code=source_code,
+        item_type=item_type,
+        limit=payload.limit,
+    )
+
+    # Fallback: als source_code exact filtert op CEMA maar niets vindt,
+    # probeer dezelfde query nog eens zonder source_code.
+    result_count = 0
+    if isinstance(result, dict):
+        result_count = int(result.get("count") or 0)
+
+    fallback_used = False
+
+    if result_count == 0 and source_code:
+        fallback_result = get_technical_context(
+            q=technical_q,
+            topic_group=payload.topic_group,
+            source_code=None,
+            item_type=item_type,
+            limit=payload.limit,
+        )
+
+        fallback_count = 0
+        if isinstance(fallback_result, dict):
+            fallback_count = int(fallback_result.get("count") or 0)
+
+        if fallback_count > 0:
+            result = fallback_result
+            fallback_used = True
+
+    return {
+        "status": "ok",
+        "context_type": "technical_assistant",
+        "vraag": payload.vraag,
+        "query": q,
+        "effective_query": technical_q,
+        "item_type": item_type,
+        "source_code": source_code,
+        "topic_group": payload.topic_group,
+        "fallback_without_source_code_used": fallback_used,
+        "technical_context": result,
+        "write_actions_available": False,
+    }
+
+# ---------------------------------------------------------
+# PRODUCT
+# ---------------------------------------------------------
+
+@router.post("/product/assistant/ask")
+def product_assistant_ask(payload: ProductAskRequest) -> dict[str, Any]:
+    """
+    GPT-facing productrouter.
+
+    Regel:
+    - Geen bandbreedte bekend: alleen productfamilie/context/RAG, geen artikellijst.
+    - Wel bandbreedte bekend: productfamilie + concrete artikel/configuratie uit artikelstam.
+    """
+    q = payload.q or payload.vraag
+
+    family_code = _detect_product_family_code(
+        vraag=q,
+        explicit_family_code=payload.family_code,
+    )
+
+    belt_width_mm = _detect_belt_width_mm(
+        vraag=q,
+        explicit_width=payload.belt_width_mm,
+    )
+
+    mode = _detect_product_mode(
+        vraag=q,
+        explicit_mode=payload.mode,
+        belt_width_mm=belt_width_mm,
+    )
+
+    family_params = {
+        key: value
+        for key, value in {
+            "family_name": payload.family_name,
+            "family_code": family_code,
+            "q": q,
+            "limit": payload.limit,
+        }.items()
+        if value not in (None, "")
+    }
+
+    family_context = _get_internal(
+        "/products/family-context",
+        params=family_params,
+    )
+
+    family_context = _sanitize_product_family_context(
+        family_context=family_context,
+        vraag=q,
+        family_code=family_code,
+        family_name=payload.family_name,
+    )
+
+    rag_context = None
+
+    family_document_scope = _get_product_family_document_scope(
+        family_code=family_code,
+    )
+
+    linked_doc_ids = []
+
+    if isinstance(family_document_scope, dict):
+        linked_doc_ids = family_document_scope.get("doc_ids") or []
+
+    rag_context = None
+
+    if _should_use_product_rag(
+        mode=mode,
+        family_context=family_context,
+        vraag=q,
+        linked_doc_ids=linked_doc_ids,
+    ):
+        rag_context = _fetch_product_rag_context(
+            vraag=q,
+            family_code=family_code,
+            family_name=payload.family_name,
+            limit=payload.limit,
+            doc_ids=linked_doc_ids,
+        )
+
+    article_policy = {
+        "articles_included": False,
+        "reason": "Geen bandbreedte opgegeven; artikelstam niet getoond om te brede resultaten te vermijden.",
+        "prefer_complete_system": True,
+    }
+
+    config_summary = None
+    config_options = None
+    choice_options = None
+    article_search_v2 = None
+
+    if mode == "article_specific" and belt_width_mm:
+        article_policy = {
+            "articles_included": True,
+            "reason": "Bandbreedte bekend; concrete artikelen/configuratie opgehaald uit artikelstam.",
+            "prefer_complete_system": True,
+        }
+
+        article_search_v2 = _get_internal(
+            "/products/search-v2",
+            params={
+                "q": q,
+                "limit": payload.limit,
+            },
+        )
+
+        config_params = {
+            key: value
+            for key, value in {
+                "family_name": payload.family_name,
+                "family_code": family_code,
+                "belt_width_mm": belt_width_mm,
+                "component_group": payload.component_group,
+                "limit": payload.limit,
+            }.items()
+            if value not in (None, "")
+        }
+
+        choice_params = {
+            key: value
+            for key, value in {
+                "family_name": payload.family_name,
+                "family_code": family_code,
+                "belt_width_mm": belt_width_mm,
+                "choice_type": payload.choice_type,
+                "component_group": payload.component_group,
+                "limit": payload.limit,
+            }.items()
+            if value not in (None, "")
+        }
+
+        config_summary = _get_internal(
+            "/products/belt-cleaners/config/summary",
+            params={
+                key: value
+                for key, value in {
+                    "family_name": payload.family_name,
+                    "family_code": family_code,
+                    "belt_width_mm": belt_width_mm,
+                }.items()
+                if value not in (None, "")
+            },
+        )
+
+        config_options = _get_internal(
+            "/products/belt-cleaners/config/options",
+            params=config_params,
+        )
+
+        choice_options = _get_internal(
+            "/products/belt-cleaners/config/choice",
+            params=choice_params,
+        )
+
+    elif family_code:
+        # Conservatieve option-specific artikelzoeking zonder
+        # expliciete bandbreedte.
+        #
+        # Dit opent de configurator NIET.
+        # Alleen vooraf gevalideerde structured intents mogen
+        # een kleine artikellijst exposen.
+
+        option_probe = _get_internal(
+            "/products/search-v2",
+            params={
+                "q": q,
+                # Minstens 11 nodig om betrouwbaar te kunnen
+                # weigeren wanneer er >10 matches zijn.
+                "limit": max(payload.limit, 11),
+            },
+        )
+
+        allowed_option_requirements = {
+            ("material", "RVS 304"),
+            ("material", "RVS 316"),
+            ("temperature_grade", "HT"),
+            ("compliance_grade", "food_grade"),
+            ("service_life_grade", "long_life"),
+            ("execution", "compact"),
+        }
+
+        requirements = (
+            option_probe.get("requirements") or []
+            if isinstance(option_probe, dict)
+            else []
+        )
+
+        residual_terms = (
+            option_probe.get("residual_terms") or []
+            if isinstance(option_probe, dict)
+            else []
+        )
+
+        try:
+            probe_count = int(option_probe.get("count") or 0)
+        except (TypeError, ValueError):
+            probe_count = 0
+
+        requirements_are_safe = (
+            bool(requirements)
+            and all(
+                (
+                    requirement.get("type"),
+                    requirement.get("value"),
+                )
+                in allowed_option_requirements
+                for requirement in requirements
+                if isinstance(requirement, dict)
+            )
+            and all(
+                isinstance(requirement, dict)
+                for requirement in requirements
+            )
+        )
+
+        option_specific_allowed = (
+            isinstance(option_probe, dict)
+            and option_probe.get("status") == "ok"
+            and option_probe.get("hard_width") is None
+            and not residual_terms
+            and requirements_are_safe
+            and probe_count <= 10
+        )
+
+        if option_specific_allowed:
+            article_search_v2 = dict(option_probe)
+
+            results = list(
+                article_search_v2.get("results") or []
+            )[: payload.limit]
+
+            article_search_v2["results"] = results
+            article_search_v2["count"] = len(results)
+            article_search_v2["policy_match_count"] = probe_count
+            article_search_v2["policy_mode"] = "option_specific"
+
+            article_policy = {
+                "articles_included": True,
+                "reason": (
+                    "Veilige option-specific V2-zoeking: "
+                    "gestructureerde optie herkend, geen vrije "
+                    "resttermen en maximaal 10 matches."
+                ),
+                "prefer_complete_system": True,
+                "policy_mode": "option_specific",
+            }
+
+    return {
+        "status": "ok",
+        "context_type": "product_assistant",
+        "vraag": payload.vraag,
+        "query": q,
+        "mode": mode,
+        "detected_family_code": family_code,
+        "detected_belt_width_mm": belt_width_mm,
+        "family_context": family_context,
+        "family_document_scope": family_document_scope,
+        "rag_context": rag_context,
+        "article_policy": article_policy,
+        "article_search_v2": article_search_v2,
+        "config_summary": config_summary,
+        "config_options": config_options,
+        "choice_options": choice_options,
+        "write_actions_available": False,
+    }
+
+
+# ---------------------------------------------------------
+# DIAGNOSTICS
+# ---------------------------------------------------------
+
+@router.post("/diagnostics/assistant/ask")
+def diagnostics_assistant_ask(payload: DiagnosticsAskRequest) -> dict[str, Any]:
+    """
+    GPT-facing diagnostics router.
+
+    Stuurt door naar de centrale /diagnostics/analyze route, zodat alle
+    diagnostics_api modes beschikbaar zijn:
+    - overview
+    - database_object
+    - view_definition
+    - view_dependencies
+    - view_health
+    - inspection_pipeline
+    - inspection_lineage
+    - asset_model_health
+    """
+    filters = dict(payload.filters or {})
+    limit = payload.limit
+
+    explicit_filters = {
+        "inspection_key": payload.inspection_key,
+        "lijn_code": payload.lijn_code,
+        "band_code": payload.band_code,
+        "source_file_contains": payload.source_file_contains,
+        "sheet": payload.sheet,
+        "diagnosis_code": payload.diagnosis_code,
+    }
+
+    for key, value in explicit_filters.items():
+        if value not in (None, ""):
+            filters[key] = value
+
+    if payload.mode == "view_health" and payload.depth == "deep":
+        filters.setdefault("response_profile", "gpt_compact")
+        filters.setdefault("schema", "public")
+
+        if payload.objects:
+            filters.setdefault("view_name", payload.objects[0])
+
+        limit = min(limit or 25, 25)
+
+    json_body = {
+        "domain": payload.domain,
+        "topic": payload.vraag,
+        "mode": payload.mode,
+        "question": payload.vraag,
+        "depth": payload.depth,
+        "objects": payload.objects,
+        "filters": filters,
+        "limit": limit,
+    }
+
+    return _post_internal(
+        "/diagnostics/analyze",
+        json_body=json_body,
+    )
+
+# ---------------------------------------------------------
+# ORG
+# ---------------------------------------------------------
+
+@router.post("/org/assistant/ask")
+def org_assistant_ask(payload: OrgAskRequest) -> dict[str, Any]:
+    mode = _detect_org_mode(payload.vraag, payload.mode)
+
+    common_params = {
+        "q": payload.vraag,
+        "firma": payload.firma,
+        "locatie": payload.locatie,
+        "afdeling": payload.afdeling,
+    }
+
+    # Lege waarden niet meesturen
+    common_params = {
+        key: value
+        for key, value in common_params.items()
+        if value not in (None, "")
+    }
+
+    if mode == "location_info":
+        result = _get_internal(
+            "/analysis/context/org/location-info",
+            params={
+                key: value
+                for key, value in {
+                    "firma": payload.firma,
+                    "locatie": payload.locatie,
+                    "q": payload.vraag,
+                }.items()
+                if value not in (None, "")
+            },
+        )
+
+    elif mode == "function_info":
+        # Werkt zodra je backend deze route heeft.
+        # Als die route nog ontbreekt, krijg je nette error i.p.v. 404-crash.
+        result = _get_internal(
+            "/analysis/context/org/function-info",
+            params=common_params,
+        )
+
+    else:
+        # internal_help en procedure starten altijd met internal-help
+        result = _get_internal(
+            "/analysis/context/org/internal-help",
+            params=common_params,
+        )
+
+        rag_result = None
+        rag_document_code = result.get("rag_document_code")
+
+        if (
+            result.get("status") == "ok"
+            and rag_document_code
+            and _wants_procedure_context(payload.vraag, mode)
+        ):
+            rag_result = _post_internal(
+                "/rag/query",
+                json_body={
+                    "vraag": payload.vraag,
+                    "top_k": 5,
+                    "doc_id": rag_document_code,
+                },
+            )
+
+    response = {
+        "status": result.get("status", "ok"),
+        "context_type": "org_assistant",
+        "mode": mode,
+        "vraag": payload.vraag,
+        "source_route": (
+            "/analysis/context/org/location-info"
+            if mode == "location_info"
+            else "/analysis/context/org/function-info"
+            if mode == "function_info"
+            else "/analysis/context/org/internal-help"
+        ),
+        "result": result,
+        "write_actions_available": False,
+    }
+
+    if "rag_result" in locals() and rag_result is not None:
+        response["rag_source_route"] = "/rag/query"
+        response["rag_document_code"] = rag_document_code
+        response["rag_result"] = rag_result
+
+    return response
+
+
+# ---------------------------------------------------------
+# RFQ
+# ---------------------------------------------------------
+
+@router.post("/rfq/assistant/ask")
+def rfq_assistant_ask(payload: RfqAskRequest) -> dict[str, Any]:
+    mode = _detect_rfq_mode(payload.vraag, payload.mode)
+    q = payload.q or payload.vraag
+
+    params = {
+        "q": q,
+        "rfq_id": payload.rfq_id,
+        "position_id": payload.position_id,
+        "product_type": payload.product_type,
+        "bearing_type": payload.bearing_type,
+        "rubber_material": payload.rubber_material,
+        "limit": payload.limit,
+    }
+
+    params = {
+        key: value
+        for key, value in params.items()
+        if value not in (None, "")
+    }
+
+    source_route = None
+
+    if mode == "search":
+        source_route = "/analysis/context/rfq/search"
+        result = _get_internal(source_route, params=params)
+
+    elif mode == "similar":
+        source_route = "/analysis/context/rfq/similar"
+        result = _get_internal(source_route, params=params)
+
+    elif mode == "supplier_recommendation":
+        source_route = "/analysis/context/rfq/supplier-recommendation"
+        result = _get_internal(source_route, params=params)
+
+    elif mode == "supplier_package":
+        source_route = "/analysis/context/rfq/supplier-package"
+        result = _get_internal(source_route, params=params)
+
+    elif mode == "risk_review":
+        source_route = "/analysis/context/rfq/risk-review"
+        result = _get_internal(source_route, params=params)
+
+    elif mode == "readiness":
+        source_route = "/analysis/context/rfq/readiness"
+        result = _get_internal(
+            source_route,
+            params={
+                key: value
+                for key, value in {
+                    "rfq_id": payload.rfq_id,
+                    "position_id": payload.position_id,
+                }.items()
+                if value not in (None, "")
+            },
+        )
+
+    elif mode == "action_plan":
+        source_route = "/analysis/context/rfq/action-plan"
+        result = _get_internal(
+            source_route,
+            params={
+                key: value
+                for key, value in {
+                    "rfq_id": payload.rfq_id,
+                    "position_id": payload.position_id,
+                }.items()
+                if value not in (None, "")
+            },
+        )
+
+    elif mode == "status":
+        source_route = "/analysis/context/rfq/status"
+
+        id_params = {
+            key: value
+            for key, value in {
+                "rfq_id": payload.rfq_id,
+                "position_id": payload.position_id,
+            }.items()
+            if value not in (None, "")
+        }
+
+        if not id_params:
+            return {
+                "status": "error",
+                "context_type": "rfq_assistant",
+                "mode": mode,
+                "vraag": payload.vraag,
+                "message": "rfq_id of position_id is verplicht voor status.",
+                "write_actions_available": False,
+            }
+
+        result = _get_internal(source_route, params=id_params)
+
+    elif mode == "dashboard":
+        source_route = "/analysis/context/rfq/dashboard"
+
+        id_params = {
+            key: value
+            for key, value in {
+                "rfq_id": payload.rfq_id,
+                "position_id": payload.position_id,
+            }.items()
+            if value not in (None, "")
+        }
+
+        if not id_params:
+            return {
+                "status": "error",
+                "context_type": "rfq_assistant",
+                "mode": mode,
+                "vraag": payload.vraag,
+                "message": "rfq_id of position_id is verplicht voor dashboard.",
+                "write_actions_available": False,
+            }
+
+        result = _get_internal(source_route, params=id_params)
+
+    elif mode == "engineering_review":
+        if not payload.rfq_id or not payload.position_id:
+            return {
+                "status": "error",
+                "context_type": "rfq_assistant",
+                "mode": mode,
+                "message": "rfq_id en position_id zijn verplicht voor engineering_review.",
+                "write_actions_available": False,
+            }
+
+        source_route = (
+            f"/analysis/context/rfq/"
+            f"{payload.rfq_id}/positions/{payload.position_id}/engineering-review-v2"
+        )
+        result = _get_internal(source_route)
+
+    elif mode == "timeline":
+        if not payload.rfq_id:
+            return {
+                "status": "error",
+                "context_type": "rfq_assistant",
+                "mode": mode,
+                "message": "rfq_id is verplicht voor timeline.",
+                "write_actions_available": False,
+            }
+
+        source_route = f"/analysis/rfq/{payload.rfq_id}/timeline"
+        result = _get_internal(source_route)
+
+    elif mode == "list":
+        source_route = "/analysis/rfq/list"
+        result = _get_internal(
+            source_route,
+            params={"limit": payload.limit},
+        )
+
+    else:
+        source_route = "/analysis/context/rfq/search"
+        result = _get_internal(source_route, params={"q": q, "limit": payload.limit})
+
+    return {
+        "status": result.get("status", "ok"),
+        "context_type": "rfq_assistant",
+        "mode": mode,
+        "vraag": payload.vraag,
+        "source_route": source_route,
+        "result": result,
+        "write_actions_available": False,
+    }

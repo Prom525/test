@@ -1,0 +1,771 @@
+from __future__ import annotations
+
+import re
+import unicodedata
+from typing import Any, Optional
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from app.db import engine
+
+router = APIRouter(
+    prefix="/analysis/context/org",
+    tags=["org-context"],
+)
+
+class InternalHelpRequest(BaseModel):
+    q: str
+    firma: str | None = None
+    locatie: str | None = None
+    afdeling: str | None = None
+
+
+class LocationInfoRequest(BaseModel):
+    firma: str | None = None
+    locatie: str | None = None
+    q: str | None = None
+
+
+class FunctionInfoRequest(BaseModel):
+    q: str
+    person_name: str | None = None
+    functie_code: str | None = None
+
+def normalize_match_text(value: str | None) -> str:
+    if not value:
+        return ""
+
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(
+        ch for ch in value
+        if not unicodedata.combining(ch)
+    )
+
+    value = value.lower()
+    value = re.sub(r"[_/|&+\-]+", " ", value)
+    value = re.sub(r"[^a-z0-9 ]+", " ", value)
+
+    return re.sub(r"\s+", " ", value).strip()
+
+def fetch_all(sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql), params or {}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def normalize(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return re.sub(r"\s+", " ", value.strip())
+
+def detect_person_or_function_from_question(q: str) -> dict[str, str | None]:
+    q_norm = normalize_match_text(q)
+
+    detected_person = None
+    detected_functie_code = None
+
+    # -----------------------------------------------------
+    # PERSONEN
+    # -----------------------------------------------------
+
+    personen = fetch_all("""
+        SELECT
+            weergavenaam,
+            voornaam,
+            achternaam
+        FROM org_personen
+        WHERE actief = TRUE
+        ORDER BY LENGTH(COALESCE(weergavenaam, '')) DESC
+    """)
+
+    for p in personen:
+        namen = [
+            p.get("weergavenaam"),
+            " ".join([
+                str(p.get("voornaam") or "").strip(),
+                str(p.get("achternaam") or "").strip(),
+            ]).strip(),
+        ]
+
+        for naam in namen:
+            naam_norm = normalize_match_text(naam)
+
+            if naam_norm and naam_norm in q_norm:
+                detected_person = naam
+                break
+
+        if detected_person:
+            break
+
+    # -----------------------------------------------------
+    # FUNCTIES
+    # -----------------------------------------------------
+
+    functies = fetch_all("""
+        SELECT
+            functie_code,
+            functie_naam
+        FROM org_functies
+        WHERE actief = TRUE
+        ORDER BY LENGTH(functie_naam) DESC
+    """)
+
+    best_match = None
+
+    for f in functies:
+        functie_code = f.get("functie_code")
+        functie_naam = f.get("functie_naam") or ""
+
+        aliases = [
+            functie_naam,
+            (functie_code or "").replace("_", " "),
+        ]
+
+        # Bijvoorbeeld:
+        # "Technicus / VCA Coördinator"
+        # wordt ook:
+        # "Technicus"
+        # "VCA Coördinator"
+        aliases.extend(
+            re.split(r"\s*(?:/|\||&)\s*", functie_naam)
+        )
+
+        for alias in aliases:
+            alias_norm = normalize_match_text(alias)
+
+            # Voorkom extreem korte/generieke matches.
+            if len(alias_norm) < 4:
+                continue
+
+            if alias_norm in q_norm:
+                score = len(alias_norm)
+
+                if best_match is None or score > best_match["score"]:
+                    best_match = {
+                        "functie_code": functie_code,
+                        "score": score,
+                    }
+
+    if best_match:
+        detected_functie_code = best_match["functie_code"]
+
+    return {
+        "person_name": detected_person,
+        "functie_code": detected_functie_code,
+    }
+
+
+
+def detect_taak_code(q: str) -> str | None:
+    """
+    Detecteert taak_code op basis van org_taken.zoekwoorden.
+    Gebruikt de bestaande fetch_all() helper met SQLAlchemy.
+    """
+    if not q:
+        return None
+
+    q_lower = q.lower()
+
+    try:
+        rows = fetch_all("""
+            SELECT taak_code, taak_naam, categorie, zoekwoorden
+            FROM org_taken
+            WHERE actief = TRUE
+        """)
+
+        candidates = []
+
+        for row in rows:
+            taak_code = row.get("taak_code")
+            taak_naam = row.get("taak_naam") or ""
+            categorie = row.get("categorie") or ""
+            zoekwoorden = row.get("zoekwoorden") or ""
+
+            terms = []
+
+            for term in zoekwoorden.split(","):
+                term = term.strip().lower()
+                if term:
+                    terms.append(term)
+
+            if taak_naam:
+                terms.append(taak_naam.lower())
+
+            if categorie:
+                terms.append(categorie.lower())
+
+            score = 0
+            matched_terms = []
+
+            for term in terms:
+                if term and term in q_lower:
+                    score += len(term)
+                    matched_terms.append(term)
+
+            if score > 0:
+                candidates.append({
+                    "taak_code": taak_code,
+                    "score": score,
+                    "matched_terms": matched_terms,
+                })
+
+        if candidates:
+            candidates.sort(key=lambda x: x["score"], reverse=True)
+            return candidates[0]["taak_code"]
+
+    except Exception as e:
+        print(f"[internal-help] detect_taak_code database detectie faalde: {e}")
+
+    # Fallback voor oude/belangrijke taken
+    if "printer" in q_lower or "print" in q_lower or "afdruk" in q_lower:
+        return "PRINTER_SUPPORT"
+
+    if "wifi" in q_lower or "wi-fi" in q_lower or "internet" in q_lower or "netwerk" in q_lower:
+        return "WIFI_SUPPORT"
+
+    if "bhv" in q_lower or "ehbo" in q_lower or "ongeval" in q_lower:
+        return "BHV"
+
+    if "odoo" in q_lower:
+        return "ODOO_SUPPORT"
+
+    return None
+
+def detect_scope_from_question(q: str) -> dict[str, str | None]:
+    q_low = (q or "").lower()
+
+    detected_locatie = None
+    detected_firma = None
+
+    # Eenvoudige aliases voor landen / veelgebruikte benamingen
+    locatie_aliases = {
+        "nederland": ("Promati", "Breda"),
+        "nl": ("Promati", "Breda"),
+        "holland": ("Promati", "Breda"),
+        "belgie": ("Promati", "Maldegem"),
+        "belgië": ("Promati", "Maldegem"),
+        "be": ("Promati", "Maldegem"),
+        "maldegem": ("Promati", "Maldegem"),
+        "breda": ("Promati", "Breda"),
+    }
+
+    for alias, scope in locatie_aliases.items():
+        pattern = r"\b" + re.escape(alias) + r"\b"
+        if re.search(pattern, q_low):
+            detected_firma, detected_locatie = scope
+            break
+
+    firmas = fetch_all("""
+        SELECT firma_naam
+        FROM org_firmas
+        WHERE actief = TRUE
+        ORDER BY LENGTH(firma_naam) DESC
+    """)
+
+    locaties = fetch_all("""
+        SELECT firma_naam, locatie
+        FROM org_locaties
+        WHERE actief = TRUE
+        ORDER BY LENGTH(locatie) DESC
+    """)
+
+    if not detected_firma:
+        for f in firmas:
+            firma_naam = f.get("firma_naam")
+            if firma_naam and firma_naam.lower() in q_low:
+                detected_firma = firma_naam
+                break
+
+    if not detected_locatie:
+        for l in locaties:
+            locatie = l.get("locatie")
+            if locatie and locatie.lower() in q_low:
+                detected_locatie = locatie
+
+                if not detected_firma and l.get("firma_naam"):
+                    detected_firma = l.get("firma_naam")
+
+                break
+
+    return {
+        "firma": detected_firma,
+        "locatie": detected_locatie,
+        "afdeling": None,
+    }
+
+
+@router.get("/internal-help")
+def internal_help(
+    q: str = Query(..., description="Vrije gebruikersvraag, bijvoorbeeld: mijn wifi werkt niet"),
+    firma: str | None = Query(default=None),
+    locatie: str | None = Query(default=None),
+    afdeling: str | None = Query(default=None),
+):
+    detected_scope = detect_scope_from_question(q)
+
+    firma = normalize(firma) or detected_scope.get("firma") or "Promati"
+    locatie = normalize(locatie) or detected_scope.get("locatie")
+    afdeling = normalize(afdeling) or detected_scope.get("afdeling")
+
+    taak_code = detect_taak_code(q)
+
+    if not taak_code:
+        return {
+            "status": "not_found",
+            "message": "Geen passende interne taak gevonden.",
+            "query": q,
+            "write_actions_available": False,
+        }
+
+    sql = """
+        SELECT
+            t.taak_code,
+            t.taak_naam,
+            t.categorie,
+            t.rag_document_code,
+            t.standaard_antwoord_kort,
+            t.informatie_eerst,
+            t.selfservice_mogelijk,
+            t.escalatie_verplicht,
+
+            r.route_id,
+            r.scope_type,
+            r.firma_naam,
+            r.locatie,
+            r.afdeling,
+            r.contactinstructie,
+            r.escalatie_instructie,
+            COALESCE(ec.naam, r.extern_contact_naam) AS extern_contact_naam,
+            COALESCE(ec.telefoon, r.extern_contact_telefoon) AS extern_contact_telefoon,
+            COALESCE(ec.email, r.extern_contact_email) AS extern_contact_email,
+            ec.website AS extern_contact_website,
+            ec.beschikbaarheid AS extern_contact_beschikbaarheid,
+            ec.opmerkingen AS extern_contact_opmerkingen,
+            ec.type AS extern_contact_type,
+
+            p.weergavenaam AS primair_naam,
+            p.email AS primair_email,
+            p.telefoon AS primair_telefoon,
+            p.mobiel AS primair_mobiel,
+
+            b.weergavenaam AS backup_naam,
+            b.email AS backup_email,
+            b.telefoon AS backup_telefoon,
+            b.mobiel AS backup_mobiel
+
+        FROM org_taak_routering r
+
+        JOIN org_taken t
+            ON t.taak_code = r.taak_code
+
+        LEFT JOIN org_personen p
+            ON p.person_id = r.primair_person_id
+
+        LEFT JOIN org_personen b
+            ON b.person_id = r.backup_person_id
+
+        LEFT JOIN org_externe_contacten ec
+            ON ec.extern_contact_id = r.extern_contact_id
+           AND ec.actief = TRUE
+
+        WHERE r.taak_code = :taak_code
+          AND r.actief = TRUE
+          AND t.actief = TRUE
+          AND (p.actief = TRUE OR p.person_id IS NULL)
+          AND (
+                r.scope_type = 'GLOBAL'
+
+                OR (
+                    r.scope_type = 'FIRMA'
+                    AND UPPER(COALESCE(r.firma_naam, '')) = UPPER(COALESCE(:firma, ''))
+                )
+
+                OR (
+                    r.scope_type = 'LOCATIE'
+                    AND UPPER(COALESCE(r.firma_naam, '')) = UPPER(COALESCE(:firma, ''))
+                    AND UPPER(COALESCE(r.locatie, '')) = UPPER(COALESCE(:locatie, ''))
+                )
+
+                OR (
+                    r.scope_type = 'AFDELING'
+                    AND UPPER(COALESCE(r.firma_naam, '')) = UPPER(COALESCE(:firma, ''))
+                    AND UPPER(COALESCE(r.locatie, '')) = UPPER(COALESCE(:locatie, ''))
+                    AND UPPER(COALESCE(r.afdeling, '')) = UPPER(COALESCE(:afdeling, ''))
+                )
+          )
+
+        ORDER BY
+            CASE r.scope_type
+                WHEN 'AFDELING' THEN 1
+                WHEN 'LOCATIE' THEN 2
+                WHEN 'FIRMA' THEN 3
+                WHEN 'GLOBAL' THEN 4
+                ELSE 9
+            END,
+            r.prioriteit ASC
+
+        LIMIT 1
+    """
+
+    rows = fetch_all(sql, {
+        "taak_code": taak_code,
+        "firma": firma,
+        "locatie": locatie,
+        "afdeling": afdeling,
+    })
+
+    if not rows:
+        fallback_rows = fetch_all("""
+            SELECT
+                t.taak_code,
+                t.taak_naam,
+                t.categorie,
+                t.rag_document_code,
+                t.standaard_antwoord_kort,
+                t.informatie_eerst,
+                t.selfservice_mogelijk,
+                t.escalatie_verplicht,
+
+                r.route_id,
+                r.scope_type,
+                r.firma_naam,
+                r.locatie,
+                r.afdeling,
+                r.contactinstructie,
+                r.escalatie_instructie,
+                COALESCE(ec.naam, r.extern_contact_naam) AS extern_contact_naam,
+                COALESCE(ec.telefoon, r.extern_contact_telefoon) AS extern_contact_telefoon,
+                COALESCE(ec.email, r.extern_contact_email) AS extern_contact_email,
+                ec.website AS extern_contact_website,
+                ec.beschikbaarheid AS extern_contact_beschikbaarheid,
+                ec.opmerkingen AS extern_contact_opmerkingen,
+                ec.type AS extern_contact_type,
+
+                p.weergavenaam AS primair_naam,
+                p.email AS primair_email,
+                p.telefoon AS primair_telefoon,
+                p.mobiel AS primair_mobiel,
+
+                b.weergavenaam AS backup_naam,
+                b.email AS backup_email,
+                b.telefoon AS backup_telefoon,
+                b.mobiel AS backup_mobiel
+
+            FROM org_taak_routering r
+
+            JOIN org_taken t
+                ON t.taak_code = r.taak_code
+
+            LEFT JOIN org_personen p
+                ON p.person_id = r.primair_person_id
+
+            LEFT JOIN org_personen b
+                ON b.person_id = r.backup_person_id
+
+            LEFT JOIN org_externe_contacten ec
+                ON ec.extern_contact_id = r.extern_contact_id
+               AND ec.actief = TRUE
+
+            WHERE r.taak_code = :taak_code
+              AND r.actief = TRUE
+              AND t.actief = TRUE
+              AND (p.actief = TRUE OR p.person_id IS NULL)
+
+            ORDER BY
+                CASE r.scope_type
+                    WHEN 'GLOBAL' THEN 1
+                    WHEN 'FIRMA' THEN 2
+                    WHEN 'LOCATIE' THEN 3
+                    WHEN 'AFDELING' THEN 4
+                    ELSE 9
+                END,
+                r.prioriteit ASC
+        """, {
+            "taak_code": taak_code,
+        })
+
+        if len(fallback_rows) == 1:
+            rows = fallback_rows
+        else:
+            return {
+                "status": "not_found",
+                "taak_code": taak_code,
+                "message": "Taak herkend, maar geen eenduidige actieve routering gevonden. Vermeld firma of locatie.",
+                "debug": {
+                    "detected_firma": firma,
+                    "detected_locatie": locatie,
+                    "fallback_route_count": len(fallback_rows),
+                },
+                "write_actions_available": False,
+            }
+
+    row = rows[0]
+
+    return {
+        "status": "ok",
+        "query": q,
+        "debug": {
+            "detected_taak_code": taak_code,
+            "detected_firma": firma,
+            "detected_locatie": locatie,
+            "detected_afdeling": afdeling,
+            "selected_route_id": row["route_id"],
+            "selected_scope_type": row["scope_type"],
+        },
+        "taak_code": row["taak_code"],
+        "taak_naam": row["taak_naam"],
+        "categorie": row["categorie"],
+        "informatie_eerst": row["informatie_eerst"],
+        "selfservice_mogelijk": row["selfservice_mogelijk"],
+        "escalatie_verplicht": row["escalatie_verplicht"],
+        "rag_document_code": row["rag_document_code"],
+        "standaard_antwoord_kort": row["standaard_antwoord_kort"],
+        "scope": {
+            "scope_type": row["scope_type"],
+            "firma_naam": row["firma_naam"],
+            "locatie": row["locatie"],
+            "afdeling": row["afdeling"],
+        },
+        "primair_contact": {
+            "naam": row["primair_naam"],
+            "email": row["primair_email"],
+            "telefoon": row["primair_telefoon"],
+            "mobiel": row["primair_mobiel"],
+        },
+        "backup_contact": {
+            "naam": row["backup_naam"],
+            "email": row["backup_email"],
+            "telefoon": row["backup_telefoon"],
+            "mobiel": row["backup_mobiel"],
+        },
+        "extern_contact": {
+            "naam": row["extern_contact_naam"],
+            "type": row.get("extern_contact_type"),
+            "telefoon": row["extern_contact_telefoon"],
+            "email": row["extern_contact_email"],
+            "website": row.get("extern_contact_website"),
+            "beschikbaarheid": row.get("extern_contact_beschikbaarheid"),
+            "opmerkingen": row.get("extern_contact_opmerkingen"),
+        },
+        "contactinstructie": row["contactinstructie"],
+        "escalatie_instructie": row["escalatie_instructie"],
+        "write_actions_available": False,
+    }
+
+
+@router.post("/internal-help")
+def internal_help_post(payload: InternalHelpRequest):
+    return internal_help(
+        q=payload.q,
+        firma=payload.firma,
+        locatie=payload.locatie,
+        afdeling=payload.afdeling,
+    )
+
+
+@router.post("/location-info")
+def location_info_post(payload: LocationInfoRequest):
+    return location_info(
+        firma=payload.firma,
+        locatie=payload.locatie,
+        q=payload.q,
+    )
+
+
+@router.post("/function-info")
+def function_info_post(body: FunctionInfoRequest):
+    return function_info(
+        q=body.q,
+        person_name=body.person_name,
+        functie_code=body.functie_code,
+    )
+
+
+@router.get("/function-info")
+def function_info(
+    q: str,
+    person_name: str | None = None,
+    functie_code: str | None = None,
+):
+    detected = detect_person_or_function_from_question(q)
+
+    person_name = normalize(person_name) or detected.get("person_name")
+    functie_code = normalize(functie_code) or detected.get("functie_code")
+
+    params = {
+        "person_name": person_name,
+        "functie_code": functie_code,
+    }
+
+    sql = """
+        SELECT
+            p.person_id,
+            p.weergavenaam,
+            p.email,
+            p.telefoon,
+            p.mobiel,
+            p.firma_naam,
+            p.locatie,
+            p.afdeling,
+            p.officiele_functienaam,
+
+            pf.persoon_functie_id,
+            pf.primair,
+            pf.geldig_vanaf,
+            pf.geldig_tot,
+            pf.opmerkingen AS koppeling_opmerkingen,
+
+            f.functie_code,
+            f.functie_naam,
+            f.categorie,
+            f.entiteit,
+            f.rapporteert_aan,
+            f.reikwijdte,
+            f.kernfocus,
+            f.doel,
+            f.resultaatgebieden,
+            f.kerntaken,
+            f.bevoegdheden,
+            f.kpis,
+            f.veiligheid_vca,
+            f.documentverantwoordelijkheden,
+            f.bron_doc_id
+
+        FROM org_persoon_functies pf
+
+        JOIN org_personen p
+            ON p.person_id = pf.person_id
+           AND p.actief = TRUE
+
+        JOIN org_functies f
+            ON f.functie_code = pf.functie_code
+           AND f.actief = TRUE
+
+        WHERE pf.geldig_tot IS NULL
+    """
+
+    if person_name:
+        sql += """
+          AND (
+                LOWER(p.weergavenaam) = LOWER(:person_name)
+             OR LOWER(CONCAT_WS(' ', p.voornaam, p.achternaam)) = LOWER(:person_name)
+             OR LOWER(p.weergavenaam) LIKE LOWER('%' || :person_name || '%')
+          )
+        """
+
+    if functie_code:
+        sql += """
+          AND f.functie_code = :functie_code
+        """
+
+    sql += """
+        ORDER BY
+            p.weergavenaam,
+            pf.primair DESC,
+            f.functie_naam
+        LIMIT 20
+    """
+
+    rows = fetch_all(sql, params)
+
+    if not rows:
+        return {
+            "status": "not_found",
+            "query": q,
+            "person_name": person_name,
+            "functie_code": functie_code,
+            "message": "Geen actieve functieomschrijving gevonden voor deze vraag.",
+            "write_actions_available": False,
+        }
+
+    return {
+        "status": "ok",
+        "query": q,
+        "person_name": person_name,
+        "functie_code": functie_code,
+        "results": rows,
+        "write_actions_available": False,
+    }
+
+
+@router.get("/location-info")
+def location_info(
+    firma: str | None = Query(default=None),
+    locatie: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+):
+    q_norm = (q or "").lower()
+
+    firma_norm = normalize(firma)
+    locatie_norm = normalize(locatie)
+
+    if not firma_norm or not locatie_norm:
+        detected_scope = detect_scope_from_question(q or "")
+
+        if not firma_norm:
+            firma_norm = detected_scope.get("firma") or "Promati"
+
+        if not locatie_norm:
+            locatie_norm = detected_scope.get("locatie")
+
+    sql = """
+        SELECT
+            firma_naam,
+            locatie,
+            telefoon,
+            email,
+            kvk_nummer,
+            btw_nummer,
+            ondernemingsnummer,
+            straat,
+            huisnummer,
+            postcode,
+            plaats,
+            land,
+            adres,
+            openingstijden,
+            noodnummer,
+            alarm_instructie,
+            opmerkingen
+        FROM org_locaties
+        WHERE actief = TRUE
+          AND LOWER(firma_naam) = LOWER(:firma_naam)
+    """
+
+    params = {
+        "firma_naam": firma_norm,
+    }
+
+    if locatie_norm:
+        sql += """
+          AND LOWER(locatie) = LOWER(:locatie)
+        """
+        params["locatie"] = locatie_norm
+
+    sql += """
+        ORDER BY locatie
+        LIMIT 10
+    """
+
+    rows = fetch_all(sql, params)
+
+    if not rows:
+        return {
+            "status": "not_found",
+            "query": q,
+            "firma": firma_norm,
+            "locatie": locatie_norm,
+            "message": "Geen actieve locatiegegevens gevonden.",
+            "write_actions_available": False,
+        }
+
+    return {
+        "status": "ok",
+        "query": q,
+        "firma": firma_norm,
+        "locatie": locatie_norm,
+        "results": rows,
+        "write_actions_available": False,
+    }

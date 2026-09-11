@@ -1,0 +1,140 @@
+$ErrorActionPreference = "Stop"
+
+$Path = "C:\ai-platform\test_promati_regression_v1.ps1"
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$Backup = "$Path.bak_$Stamp"
+$PatchPy = "C:\ai-platform\patch_promati_regression_v1_bandcode_v3_tmp.py"
+
+if (-not (Test-Path $Path)) {
+    throw "Bestand niet gevonden: $Path"
+}
+
+Copy-Item $Path $Backup -Force
+Write-Host "Backup: $Backup" -ForegroundColor DarkGray
+
+$PythonPatch = @'
+from pathlib import Path
+
+path = Path(
+    r"C:\ai-platform\test_promati_regression_v1.ps1"
+)
+
+text = path.read_text(encoding="utf-8-sig")
+
+MARKER = "PROMATI_REGRESSION_BANDCODE_V3"
+
+if MARKER in text:
+    print("PATCH_ALREADY_PRESENT")
+    raise SystemExit(0)
+
+
+# ============================================================
+# 1. V3 regressiecases toevoegen
+# ============================================================
+
+old_tests = '''    ("status van 5 modules", None),
+
+    ("controleer band V3", "V3"),
+'''
+
+new_tests = '''    ("status van 5 modules", None),
+
+    # PROMATI_REGRESSION_BANDCODE_V3
+    ("test_promati_regression_v1.ps1", None),
+    ("voer script.ps1 uit", None),
+    ("bestand patch_v2.py", None),
+    ("open report_v3.pdf", None),
+
+    ("controleer PS1", "PS1"),
+    ("controleer band PS1", "PS1"),
+
+    ("controleer band V3", "V3"),
+'''
+
+if old_tests not in text:
+    raise RuntimeError(
+        "Bandcode test-anchor niet gevonden."
+    )
+
+text = text.replace(
+    old_tests,
+    new_tests,
+    1,
+)
+
+
+# ============================================================
+# 2. V3 runtime-marker toevoegen
+# ============================================================
+
+old_markers = '''    "PROMATI_BANDCODE_VERSION_GUARD_V1",
+    "PROMATI_DIAGNOSTICS_META_ROUTING_V1",
+    "PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V2",
+]
+'''
+
+new_markers = '''    "PROMATI_BANDCODE_VERSION_GUARD_V1",
+    "PROMATI_DIAGNOSTICS_META_ROUTING_V1",
+    "PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V2",
+    "PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V3",
+]
+'''
+
+if old_markers not in text:
+    raise RuntimeError(
+        "Understanding marker-anchor niet gevonden."
+    )
+
+text = text.replace(
+    old_markers,
+    new_markers,
+    1,
+)
+
+path.write_text(
+    text,
+    encoding="utf-8",
+)
+
+print("PATCH_OK")
+'@
+
+Set-Content `
+    -Path $PatchPy `
+    -Value $PythonPatch `
+    -Encoding UTF8
+
+python $PatchPy
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Regression V3 patch mislukt. Backup: $Backup"
+}
+
+Remove-Item $PatchPy -Force
+
+$Content = Get-Content $Path -Raw
+
+Write-Host ""
+Write-Host "REGRESSION_V3_MARKER =" `
+    ($Content.Contains("PROMATI_REGRESSION_BANDCODE_V3"))
+
+Write-Host "GUARD_V3_MARKER_CHECK =" `
+    ($Content.Contains("PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V3"))
+
+Write-Host "PS1_FILE_CASE =" `
+    ($Content.Contains('("voer script.ps1 uit", None)'))
+
+Write-Host "PS1_VALID_CASE =" `
+    ($Content.Contains('("controleer PS1", "PS1")'))
+
+if (
+    -not $Content.Contains("PROMATI_REGRESSION_BANDCODE_V3") -or
+    -not $Content.Contains("PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V3") -or
+    -not $Content.Contains('("voer script.ps1 uit", None)') -or
+    -not $Content.Contains('("controleer PS1", "PS1")')
+) {
+    throw "Inhoudscontrole mislukt."
+}
+
+Write-Host ""
+Write-Host "PATCH_VALIDATED" -ForegroundColor Green

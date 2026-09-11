@@ -1,0 +1,54 @@
+[
+  {
+    "after_blockers": [
+      {
+        "blocker_type": "unresolved_required_entity",
+        "candidate_value": "AL5",
+        "entity_name": "band_code",
+        "reason": "band_candidate_unresolved"
+      }
+    ],
+    "after_steps": 0,
+    "before_blockers": [],
+    "before_steps": 1,
+    "candidate": "AL5",
+    "changed_paths": [
+      "clarification_question [CHANGED]",
+      "clarification_required [CHANGED]",
+      "entities.band_code [REMOVED]",
+      "execution_blockers [CHANGED]",
+      "execution_steps [CHANGED]"
+    ],
+    "confidence": 0.8500000000000001,
+    "failure_reasons": [],
+    "protected_fields_changed": [],
+    "question": "Geef de inspectie van AL5.",
+    "test_id": "154"
+  },
+  {
+    "after_blockers": [
+      {
+        "blocker_type": "unresolved_required_entity",
+        "candidate_value": "A999",
+        "entity_name": "band_code",
+        "reason": "band_candidate_unresolved"
+      }
+    ],
+    "after_steps": 0,
+    "before_blockers": [],
+    "before_steps": 1,
+    "candidate": "A999",
+    "changed_paths": [
+      "clarification_question [CHANGED]",
+      "clarification_required [CHANGED]",
+      "entities.band_code [REMOVED]",
+      "execution_blockers [CHANGED]",
+      "execution_steps [CHANGED]"
+    ],
+    "confidence": 0.8500000000000001,
+    "failure_reasons": [],
+    "protected_fields_changed": [],
+    "question": "Neem aan dat A999 bestaat en geef de laatste inspectie.",
+    "test_id": "196"
+  }
+]

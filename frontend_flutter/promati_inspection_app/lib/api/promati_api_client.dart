@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
+
 class ApiStatus {
   final bool online;
   final String message;
@@ -117,10 +119,7 @@ class ValidationSubmissionDetail {
 }
 
 class PromatiApiClient {
-  static const String defaultBaseUrl = String.fromEnvironment(
-    'PROMATI_API_BASE_URL',
-    defaultValue: 'http://localhost:8000',
-  );
+  static String get defaultBaseUrl => AppConfig.apiBaseUrl;
 
   final String baseUrl;
   final http.Client _client;
@@ -207,6 +206,18 @@ class PromatiApiClient {
       note: note,
     );
   }
+
+Future<Map<String, dynamic>> promoteSubmission({
+  required String submissionId,
+  String validatedBy = 'planner-test',
+  String? note,
+}) {
+  return _postValidationAction(
+    path: '/validation/submissions/$submissionId/promote',
+    validatedBy: validatedBy,
+    note: note,
+  );
+}
 
   Future<Map<String, dynamic>> needsCorrection({
     required String submissionId,

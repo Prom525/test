@@ -1,0 +1,726 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A A2c RUNTIME COUNTERFACTUAL V1" -ForegroundColor Cyan
+Write-Host " PROCESS-LOCAL MONKEYPATCH - NO APP FILE CHANGES" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+$ShadowPath = `
+    "C:\ai-platform\api\app\orchestrator\band_candidate_shadow.py"
+
+$UnderstandingPath = `
+    "C:\ai-platform\api\app\orchestrator\understanding.py"
+
+
+foreach ($Path in @(
+    $ContractPath,
+    $ShadowPath,
+    $UnderstandingPath
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Bestand niet gevonden: $Path"
+    }
+}
+
+
+# ============================================================
+# Accepted A2b freeze guards
+# ============================================================
+
+$ExpectedShadowHash = `
+    "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484"
+
+$ExpectedUnderstandingHash = `
+    "6BC1E001BE109981F02478285647EB9C2517007B06C2661930C3BA57F5536AC7"
+
+
+$ActualShadowHash = (
+    Get-FileHash `
+        $ShadowPath `
+        -Algorithm SHA256
+).Hash
+
+$ActualUnderstandingHash = (
+    Get-FileHash `
+        $UnderstandingPath `
+        -Algorithm SHA256
+).Hash
+
+
+Write-Host ""
+Write-Host "SHADOW_SHA256=$ActualShadowHash"
+Write-Host "UNDERSTANDING_SHA256=$ActualUnderstandingHash"
+
+
+if ($ActualShadowHash -ne $ExpectedShadowHash) {
+    throw "Accepted A2b shadow hash wijkt af."
+}
+
+if ($ActualUnderstandingHash -ne $ExpectedUnderstandingHash) {
+    throw "Accepted A2b understanding hash wijkt af."
+}
+
+
+Write-Host "A2B_FREEZE_HASHES_OK" `
+    -ForegroundColor Green
+
+
+# ============================================================
+# Golden questions
+# ============================================================
+
+$Rows = @(
+    Import-Csv $ContractPath
+)
+
+if ($Rows.Count -ne 200) {
+    throw "Golden contract count=$($Rows.Count), verwacht 200."
+}
+
+
+$Payload = @(
+    $Rows |
+        ForEach-Object {
+            [pscustomobject]@{
+                test_id = [string]$_.test_id
+                question = [string]$_.question
+            }
+        }
+) |
+    ConvertTo-Json `
+        -Depth 4 `
+        -Compress
+
+
+# ============================================================
+# Container-side runtime counterfactual.
+#
+# No temp files:
+# Python code is passed through -c.
+# Golden payload arrives through stdin.
+# ============================================================
+
+$PythonCode = @'
+import copy
+import json
+import sys
+from enum import Enum
+
+import app.orchestrator.understanding as understanding
+
+from app.orchestrator.band_candidate_shadow import (
+    classify_band_candidate_shadow,
+)
+
+
+tests = json.load(sys.stdin)
+
+if len(tests) != 200:
+    raise RuntimeError(
+        f"test count={len(tests)}, expected 200"
+    )
+
+
+original_detector = understanding.detect_band_code
+
+
+# ============================================================
+# Convert QueryPlan / Pydantic / Enum structures to plain data
+# ============================================================
+
+def plain(value):
+
+    if isinstance(value, Enum):
+        return value.value
+
+    if hasattr(value, "model_dump"):
+        return plain(
+            value.model_dump()
+        )
+
+    if hasattr(value, "dict") and callable(value.dict):
+        return plain(
+            value.dict()
+        )
+
+    if isinstance(value, dict):
+        return {
+            str(key): plain(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            plain(item)
+            for item in value
+        ]
+
+    return value
+
+
+def run_plan(question, policy):
+
+    if policy == "legacy":
+        understanding.detect_band_code = (
+            original_detector
+        )
+
+    else:
+
+        def policy_detector(normalized_question):
+
+            band = original_detector(
+                normalized_question
+            )
+
+            shadow = (
+                classify_band_candidate_shadow(
+                    normalized_question,
+                    band,
+                )
+            )
+
+            if shadow is None:
+                return band
+
+            status = shadow.status.value
+
+
+            # A2c SAFE PARTIAL POLICY:
+            #
+            # - mention_only is not active business object
+            # - comparison_member should be represented by
+            #   comparison context rather than singular band_code
+            # - unresolved remains legacy for now
+            if policy == "safe_partial":
+
+                if status in {
+                    "mention_only",
+                    "comparison_member",
+                }:
+                    return None
+
+                return band
+
+
+            # Diagnostic counterfactual only.
+            # This policy is NOT proposed for activation.
+            if policy == "suppress_all_nonvalidated":
+
+                if status != "validated":
+                    return None
+
+                return band
+
+
+            raise RuntimeError(
+                f"unknown policy={policy}"
+            )
+
+
+        understanding.detect_band_code = (
+            policy_detector
+        )
+
+
+    try:
+        return plain(
+            understanding.understand_query(
+                question
+            )
+        )
+    finally:
+        understanding.detect_band_code = (
+            original_detector
+        )
+
+
+# ============================================================
+# Recursive semantic diff
+# ============================================================
+
+def diff_paths(before, after, prefix=""):
+
+    changes = []
+
+    if (
+        isinstance(before, dict)
+        and isinstance(after, dict)
+    ):
+
+        keys = sorted(
+            set(before) | set(after)
+        )
+
+        for key in keys:
+
+            path = (
+                f"{prefix}.{key}"
+                if prefix
+                else key
+            )
+
+            if key not in before:
+                changes.append(
+                    path + " [ADDED]"
+                )
+                continue
+
+            if key not in after:
+                changes.append(
+                    path + " [REMOVED]"
+                )
+                continue
+
+            changes.extend(
+                diff_paths(
+                    before[key],
+                    after[key],
+                    path,
+                )
+            )
+
+        return changes
+
+
+    if (
+        isinstance(before, list)
+        and isinstance(after, list)
+    ):
+
+        if before != after:
+            changes.append(
+                prefix + " [CHANGED]"
+            )
+
+        return changes
+
+
+    if before != after:
+        changes.append(
+            prefix + " [CHANGED]"
+        )
+
+    return changes
+
+
+# ============================================================
+# Run all three worlds
+# ============================================================
+
+records = []
+
+
+for test in tests:
+
+    test_id = str(
+        test["test_id"]
+    )
+
+    question = test["question"]
+
+    legacy = run_plan(
+        question,
+        "legacy",
+    )
+
+    safe = run_plan(
+        question,
+        "safe_partial",
+    )
+
+    full = run_plan(
+        question,
+        "suppress_all_nonvalidated",
+    )
+
+
+    safe_diff = diff_paths(
+        legacy,
+        safe,
+    )
+
+    full_diff = diff_paths(
+        legacy,
+        full,
+    )
+
+
+    records.append(
+        {
+            "test_id": test_id,
+            "question": question,
+            "legacy": legacy,
+            "safe": safe,
+            "full": full,
+            "safe_diff": safe_diff,
+            "full_diff": full_diff,
+        }
+    )
+
+
+# ============================================================
+# SAFE PARTIAL POLICY analysis
+# ============================================================
+
+safe_changed = [
+    row
+    for row in records
+    if row["safe_diff"]
+]
+
+
+print("")
+print("=== SAFE PARTIAL POLICY ===")
+
+print(
+    f"SAFE_CHANGED_ROWS={len(safe_changed)}"
+)
+
+
+for row in safe_changed:
+
+    print("")
+    print(
+        f"[{row['test_id']}] "
+        f"{row['question']}"
+    )
+
+    print(
+        "  changed="
+        + ", ".join(
+            row["safe_diff"]
+        )
+    )
+
+    print(
+        "  legacy_domain="
+        f"{row['legacy'].get('primary_domain')} "
+        "safe_domain="
+        f"{row['safe'].get('primary_domain')}"
+    )
+
+    print(
+        "  legacy_intent="
+        f"{row['legacy'].get('intent')} "
+        "safe_intent="
+        f"{row['safe'].get('intent')}"
+    )
+
+    print(
+        "  legacy_clarification="
+        f"{row['legacy'].get('clarification_required')} "
+        "safe_clarification="
+        f"{row['safe'].get('clarification_required')}"
+    )
+
+    print(
+        "  legacy_steps="
+        f"{len(row['legacy'].get('execution_steps') or [])} "
+        "safe_steps="
+        f"{len(row['safe'].get('execution_steps') or [])}"
+    )
+
+
+# ============================================================
+# Strict desired safe-policy contract
+#
+# Only 118 and 185 should change.
+# Their only semantic delta should be removal of band_code.
+# ============================================================
+
+expected_safe_changed_ids = {
+    "118",
+    "185",
+}
+
+actual_safe_changed_ids = {
+    row["test_id"]
+    for row in safe_changed
+}
+
+
+if (
+    actual_safe_changed_ids
+    != expected_safe_changed_ids
+):
+    raise RuntimeError(
+        "Safe partial policy changed unexpected rows: "
+        f"{sorted(actual_safe_changed_ids)}"
+    )
+
+
+for test_id in sorted(
+    expected_safe_changed_ids,
+    key=int,
+):
+
+    row = next(
+        item
+        for item in safe_changed
+        if item["test_id"] == test_id
+    )
+
+    allowed_paths = {
+        "entities.band_code [REMOVED]",
+    }
+
+    actual_paths = set(
+        row["safe_diff"]
+    )
+
+    if actual_paths != allowed_paths:
+        raise RuntimeError(
+            f"Test {test_id} safe-policy delta "
+            f"is not entity-only: {sorted(actual_paths)}"
+        )
+
+
+    protected_fields = (
+        "query_class",
+        "primary_domain",
+        "domains",
+        "intent",
+        "clarification_required",
+        "research_required",
+        "execution_steps",
+    )
+
+    for field in protected_fields:
+
+        if (
+            row["legacy"].get(field)
+            != row["safe"].get(field)
+        ):
+            raise RuntimeError(
+                f"Test {test_id}: protected field "
+                f"changed: {field}"
+            )
+
+
+# Test 185 must retain comparison context.
+test185 = next(
+    row
+    for row in records
+    if row["test_id"] == "185"
+)
+
+safe185_entities = (
+    test185["safe"].get("entities")
+    or {}
+)
+
+if (
+    "comparison_scope_codes"
+    not in safe185_entities
+):
+    raise RuntimeError(
+        "Test 185 lost comparison_scope_codes."
+    )
+
+
+print("")
+print(
+    "SAFE_ONLY_TESTS_118_185_CHANGED=TRUE"
+)
+print(
+    "SAFE_ONLY_BAND_ENTITY_REMOVED=TRUE"
+)
+print(
+    "SAFE_ROUTING_FIELDS_UNCHANGED=TRUE"
+)
+print(
+    "SAFE_CLARIFICATION_UNCHANGED=TRUE"
+)
+print(
+    "SAFE_EXECUTION_STEPS_UNCHANGED=TRUE"
+)
+print(
+    "TEST185_COMPARISON_SCOPE_PRESERVED=TRUE"
+)
+
+
+# ============================================================
+# FULL suppression diagnostic
+# ============================================================
+
+full_changed = [
+    row
+    for row in records
+    if row["full_diff"]
+]
+
+
+print("")
+print("=== FULL NONVALIDATED SUPPRESSION ===")
+
+print(
+    f"FULL_CHANGED_ROWS={len(full_changed)}"
+)
+
+
+for row in full_changed:
+
+    print("")
+    print(
+        f"[{row['test_id']}] "
+        f"{row['question']}"
+    )
+
+    print(
+        "  changed="
+        + ", ".join(
+            row["full_diff"]
+        )
+    )
+
+    print(
+        "  domain: "
+        f"{row['legacy'].get('primary_domain')} "
+        "-> "
+        f"{row['full'].get('primary_domain')}"
+    )
+
+    print(
+        "  intent: "
+        f"{row['legacy'].get('intent')} "
+        "-> "
+        f"{row['full'].get('intent')}"
+    )
+
+    print(
+        "  clarification: "
+        f"{row['legacy'].get('clarification_required')} "
+        "-> "
+        f"{row['full'].get('clarification_required')}"
+    )
+
+    print(
+        "  steps: "
+        f"{len(row['legacy'].get('execution_steps') or [])} "
+        "-> "
+        f"{len(row['full'].get('execution_steps') or [])}"
+    )
+
+
+# ============================================================
+# Explicit unresolved impact report
+# ============================================================
+
+print("")
+print("=== UNRESOLVED COUNTERFACTUAL 154 / 196 ===")
+
+
+for test_id in (
+    "154",
+    "196",
+):
+
+    row = next(
+        item
+        for item in records
+        if item["test_id"] == test_id
+    )
+
+    print("")
+    print(
+        f"[{test_id}] "
+        f"{row['question']}"
+    )
+
+    print(
+        "  full_changed_paths="
+        + (
+            ", ".join(
+                row["full_diff"]
+            )
+            or "<NONE>"
+        )
+    )
+
+    print(
+        "  domain="
+        f"{row['legacy'].get('primary_domain')} "
+        "-> "
+        f"{row['full'].get('primary_domain')}"
+    )
+
+    print(
+        "  intent="
+        f"{row['legacy'].get('intent')} "
+        "-> "
+        f"{row['full'].get('intent')}"
+    )
+
+    print(
+        "  clarification="
+        f"{row['legacy'].get('clarification_required')} "
+        "-> "
+        f"{row['full'].get('clarification_required')}"
+    )
+
+    print(
+        "  execution_steps="
+        f"{len(row['legacy'].get('execution_steps') or [])} "
+        "-> "
+        f"{len(row['full'].get('execution_steps') or [])}"
+    )
+
+
+print("")
+print(
+    "A2C_SAFE_PARTIAL_POLICY_RUNTIME_PROVEN=TRUE"
+)
+
+print(
+    "A2C_UNRESOLVED_REMAINS_SEPARATE_POLICY_PROBLEM=TRUE"
+)
+
+print(
+    "PHASE_A_A2C_RUNTIME_COUNTERFACTUAL_OK"
+)
+'@
+
+
+$Raw = (
+    $Payload |
+        docker exec `
+            -e PYTHONPATH=/app `
+            -w /app `
+            -i `
+            ai-platform-api-1 `
+            python `
+            -c `
+            $PythonCode
+)
+
+if ($LASTEXITCODE -ne 0) {
+    throw "A2c runtime counterfactual audit mislukt."
+}
+
+
+$Raw |
+    ForEach-Object {
+        Write-Host $_
+    }
+
+
+Write-Host ""
+Write-Host "NO_APP_FILES_WRITTEN=TRUE"
+Write-Host "NO_TEMP_FILES_WRITTEN=TRUE"
+Write-Host "NO_REBUILD_PERFORMED=TRUE"
+Write-Host "NO_API_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_PROVIDER_CALLS=TRUE"
+Write-Host "NO_DB_WRITES_BY_AUDIT=TRUE"
+Write-Host "PROCESS_LOCAL_MONKEYPATCH_ONLY=TRUE"
+
+Write-Host "PHASE_A_A2C_COUNTERFACTUAL_AUDIT_COMPLETE" `
+    -ForegroundColor Green

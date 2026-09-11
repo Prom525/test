@@ -1,0 +1,97 @@
+﻿PROMATI PHASE-B3H LOCAL-ONLY EXECUTOR SHADOW FREEZE V1
+======================================================
+
+B3G executor posthash:
+327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3
+
+Pre-B3G executor hash:
+64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A
+
+B3G test hash:
+DB7A6843211A4BEEC79D43F172182EA313A577D963414FF6C928C4C6FA26901E
+
+Governance correction
+---------------------
+
+The historical Phase-A freeze included orchestrator\executor.py.
+
+Therefore:
+
+PHASE_A_FROZEN_SOURCE_HASH_SET_CHANGED=TRUE
+
+Changed historical Phase-A frozen source:
+orchestrator\executor.py
+
+This is classified as:
+AUTHORIZED_PHASE_B_EXECUTION_LAYER_EVOLUTION
+
+It is NOT classified as:
+PHASE_A_ROUTING_REGRESSION
+
+Phase-A routing/planner/understanding/classification source files:
+UNCHANGED
+
+The historical Phase-A freeze artifact is NOT rewritten.
+
+B3G structural invariants
+-------------------------
+
+legacy accepted assignment:
+UNCHANGED
+
+legacy result wrapper:
+UNCHANGED
+
+execute_plan return forms:
+UNCHANGED
+
+outward result schema:
+UNCHANGED
+
+shadow result exposed outward:
+FALSE
+
+transport state:
+COMPLETED
+
+domain mapping:
+step.domain.value
+
+duration_ms:
+EXPLICIT
+
+fail-open:
+TRUE
+
+fallback behavior changed:
+FALSE
+
+retry behavior changed:
+FALSE
+
+network behavior changed:
+FALSE
+
+evidence behavior changed:
+FALSE
+
+Tests
+-----
+
+B3B1 regression tests:
+18 GREEN
+
+B3G targeted tests:
+6 GREEN
+
+Runtime
+-------
+
+Docker rebuild performed:
+FALSE
+
+B3G code active in current baked runtime:
+FALSE
+
+Next step:
+READ_ONLY_B3I_REBUILD_AND_RUNTIME_VALIDATION_PLAN

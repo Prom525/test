@@ -1,0 +1,79 @@
+﻿PROMATI PHASE-B3E TRANSPORT STATE CONTRACT ADDENDUM V1
+======================================================
+
+Status:
+ACCEPTED_FOR_LOCAL_ONLY_SHADOW
+
+Base execution contract:
+promati.phase_b2e.execution_contract.v1
+
+Transport boundary:
+EXECUTOR_TO_SENDER_INVOCATION
+
+The transport boundary is explicitly NOT:
+- raw HTTP/network success
+- specialist semantic success
+
+State definitions:
+
+NOT_ATTEMPTED
+sender invocation did not begin
+
+COMPLETED
+sender callable returned normally with a result dict that reached
+post-call executor processing
+
+FAILED
+sender invocation raised or aborted before returning a usable result dict
+
+Semantic separation:
+
+COMPLETED implies HTTP success:
+FALSE
+
+COMPLETED implies specialist success:
+FALSE
+
+FAILED implies specialist semantic error:
+FALSE
+
+Transport and semantic outcome are orthogonal:
+TRUE
+
+Current default_sender:
+
+A caught HTTP/network exception is normalized into an error result dict.
+Therefore, at the execute_plan -> sender boundary:
+
+transport_state = COMPLETED
+semantic_outcome = ERROR
+
+Initial local-only executor shadow:
+
+Allowed transport state:
+COMPLETED only
+
+FAILED emitted:
+FALSE
+
+NOT_ATTEMPTED emitted:
+FALSE
+
+FAILED requires future executor control-flow support.
+NOT_ATTEMPTED requires future lifecycle support.
+
+Compatibility constraints:
+
+- no enum changes
+- no ExecutionResult schema changes
+- no legacy accepted changes
+- no legacy wrapper changes
+- no routing changes
+- no QueryPlan changes
+- no endpoint changes
+- no fallback changes
+- no retry changes
+- no evidence scoring
+
+Next step:
+READ_ONLY_B3F_LOCAL_ONLY_EXECUTOR_SHADOW_PATCH_PLAN

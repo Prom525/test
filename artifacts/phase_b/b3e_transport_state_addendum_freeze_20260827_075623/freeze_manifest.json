@@ -1,0 +1,101 @@
+﻿{
+    "schema_version":  "promati.phase_b3e.transport_state_addendum_freeze.v1",
+    "created_local":  "2026-08-27T07:56:23+02:00",
+    "freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b3e_transport_state_addendum_freeze_20260827_075623",
+    "review_status":  "ACCEPTED_FOR_LOCAL_ONLY_SHADOW",
+    "base_contract":  {
+                          "b2e_freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b2e_contract_design_freeze_20260826_215159",
+                          "b2e_contract_spec_sha256":  "5DE306324FB0B15163AB956C69A5220685D23C6BC68EF0583D3C92FAFA6CA2E6"
+                      },
+    "implementation_baseline":  {
+                                    "b3b2_freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b3b2_types_registry_shadow_freeze_20260827_074025",
+                                    "b3b2_manifest_sha256":  "0814F0A4B82C405C5BB370E91B77F540A0F028956F2535BC38EE9FC44C66B4D3"
+                                },
+    "b3d_transport_audit":  {
+                                "path":  "C:\\ai-platform_temp\\phase_b\\audit_phase_b3d_transport_state_boundary_v1.ps1",
+                                "sha256":  "F68FDB7AAEE23EC4E8DCD9068AE00F7CB4EA9E09E1404156E684E5E59B3F104D"
+                            },
+    "canonical_design_script":  {
+                                    "filename":  "design_phase_b3e_transport_state_addendum_v1.ps1",
+                                    "sha256":  "12BF99B55D003555EC41D8738855FA930A0462EFCE9114D328DE9902CD35DEBD"
+                                },
+    "transport_addendum":  {
+                               "filename":  "b3e_transport_state_addendum_v1.json",
+                               "sha256":  "10E1688D3CAAB617CCCC609EE3C0F43F0FB610DE187F0D061593E3B6FC04D9CA"
+                           },
+    "summary":  {
+                    "filename":  "b3e_transport_state_addendum_summary.txt",
+                    "sha256":  "C14B991A1C6E6B4BF0C94B2E958BE350C132A7299CF00D234361FC61130760F8"
+                },
+    "source_baseline":  [
+                            {
+                                "path":  "orchestrator\\executor.py",
+                                "sha256":  "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A"
+                            },
+                            {
+                                "path":  "orchestrator\\execution_contracts.py",
+                                "sha256":  "FF66191BAF057371A8802130AC10D5744C2C3775DC2D51362EBD2658667D660E"
+                            },
+                            {
+                                "path":  "orchestrator\\specialist_registry.py",
+                                "sha256":  "9694B81932F41C1C5B28005D40A8A3586EBD94DFEA9B15D90A65D8086AEF9F8F"
+                            },
+                            {
+                                "path":  "orchestrator\\execution_shadow.py",
+                                "sha256":  "F5122A5DEAB1635DD48CEE352B2BF5216DADF87CCB5D05CC26C75FFD1A311B8A"
+                            },
+                            {
+                                "path":  "orchestrator\\models.py",
+                                "sha256":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E"
+                            },
+                            {
+                                "path":  "orchestrator\\planner.py",
+                                "sha256":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68"
+                            },
+                            {
+                                "path":  "orchestrator\\service.py",
+                                "sha256":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761"
+                            },
+                            {
+                                "path":  "orchestrator\\understanding.py",
+                                "sha256":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78"
+                            },
+                            {
+                                "path":  "orchestrator\\band_candidate_shadow.py",
+                                "sha256":  "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484"
+                            },
+                            {
+                                "path":  "orchestrator\\query_classification.py",
+                                "sha256":  "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576"
+                            },
+                            {
+                                "path":  "orchestrator\\normalizer.py",
+                                "sha256":  "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB"
+                            },
+                            {
+                                "path":  "orchestrator\\complexity.py",
+                                "sha256":  "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022"
+                            }
+                        ],
+    "transport_contract":  {
+                               "boundary":  "EXECUTOR_TO_SENDER_INVOCATION",
+                               "not_attempted":  "sender invocation did not begin",
+                               "completed":  "sender callable returned normally with a result dict that reached post-call executor processing",
+                               "failed":  "sender invocation raised or aborted before returning a usable result dict",
+                               "initial_local_only_allowed_states":  [
+                                                                         "COMPLETED"
+                                                                     ]
+                           },
+    "invariants":  [
+                       "NO_PHASE_A_ROUTER_CHANGE",
+                       "NO_QUERYPLAN_CHANGE",
+                       "NO_ENDPOINT_CHANGE",
+                       "NO_LEGACY_ACCEPTED_CHANGE",
+                       "NO_LEGACY_WRAPPER_CHANGE",
+                       "NO_FALLBACK_CHANGE",
+                       "NO_RETRY_CHANGE",
+                       "NO_EVIDENCE_SCORING",
+                       "NO_RUNTIME_CHANGE_DURING_FREEZE"
+                   ],
+    "next_step_candidate":  "READ_ONLY_B3F_LOCAL_ONLY_EXECUTOR_SHADOW_PATCH_PLAN"
+}

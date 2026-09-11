@@ -1,0 +1,247 @@
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
+from ..schemas import RAGQuery
+from ..config import settings
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, PointStruct
+
+import hashlib
+import uuid
+import re
+import io
+
+# PDF/DOCX extractie libs (zorg dat requirements.txt pypdf + python-docx bevat)
+from pypdf import PdfReader
+from docx import Document
+
+router = APIRouter(prefix="/rag", tags=["rag"])
+
+# Qdrant client
+_qdr = QdrantClient(url=settings.QDRANT_URL, api_key=getattr(settings, "QDRANT_API_KEY", None))
+
+# Zorg dat collectie bestaat (met simpele 384-d vector standaard)
+try:
+    existing = [c.name for c in _qdr.get_collections().collections]
+    if settings.QDRANT_COLLECTION not in existing:
+        _qdr.create_collection(
+            collection_name=settings.QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+        )
+except Exception:
+    # In demo-setup willen we startup niet laten falen door Qdrant issues
+    pass
+
+
+# Eenvoudige fallback embedding (zonder OpenAI) – hashing trick (niet voor productie search kwaliteit)
+def _local_embed(text: str) -> list[float]:
+    h = hashlib.sha256(text.encode("utf-8")).digest()
+    vals = list(h) * (384 // len(h) + 1)
+    return [(v / 255.0) for v in vals[:384]]
+
+
+def _chunk_text(text: str, chunk_size: int = 900, chunk_overlap: int = 150) -> list[str]:
+    """
+    Simpele char-based chunker voor demo.
+    - chunk_size: max chars per chunk
+    - chunk_overlap: overlap tussen chunks voor context
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    if chunk_size <= 0:
+        return [text]
+
+    chunk_overlap = max(0, min(chunk_overlap, chunk_size - 1))
+    step = chunk_size - chunk_overlap
+
+    chunks: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        chunk = text[i : i + chunk_size].strip()
+        if chunk:
+            chunks.append(chunk)
+        i += step
+    return chunks
+
+
+def _normalize_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
+
+
+def _extractive_answer(vraag: str, context_chunks: list[str], max_chars: int = 700) -> str:
+    """
+    Demo 'antwoord' zonder LLM:
+    - pakt de meest relevante context (top chunks)
+    - neemt de eerste zinnen / bullet-achtige regels en knipt op lengte
+    """
+    if not context_chunks:
+        return "Geen relevante context gevonden in de index. (Heb je al ge-ingest?)"
+
+    combined = "\n".join([c.strip() for c in context_chunks if c and c.strip()])
+    parts = re.split(r"(?<=[\.\!\?])\s+|\n[-*]\s+|\n\d+\.\s+", combined)
+    parts = [_normalize_ws(p) for p in parts if _normalize_ws(p)]
+
+    out = []
+    total = 0
+    for p in parts:
+        if total + len(p) + 1 > max_chars:
+            break
+        out.append(p)
+        total += len(p) + 1
+
+    if not out:
+        return _normalize_ws(combined)[:max_chars]
+
+    answer = f"Op basis van de gevonden documentstukken voor: '{vraag}': " + " ".join(out)
+    return answer[: max_chars + 120]
+
+
+def _extract_text_from_pdf(data: bytes) -> str:
+    reader = PdfReader(io.BytesIO(data))
+    parts: list[str] = []
+    for page in reader.pages:
+        t = page.extract_text() or ""
+        if t.strip():
+            parts.append(t)
+    return "\n\n".join(parts)
+
+
+def _extract_text_from_docx(data: bytes) -> str:
+    doc = Document(io.BytesIO(data))
+    parts: list[str] = []
+    for p in doc.paragraphs:
+        if p.text and p.text.strip():
+            parts.append(p.text)
+    return "\n".join(parts)
+
+
+class RAGIngest(BaseModel):
+    doc_id: str
+    text: str
+    chunk_size: int = 900
+    chunk_overlap: int = 150
+
+
+@router.post("/ingest")
+def rag_ingest(body: RAGIngest):
+    """
+    Chunking ingest voor demo:
+    - split text in chunks
+    - embed per chunk
+    - upsert naar Qdrant met payload: {doc_id, chunk_index, text}
+    """
+    try:
+        chunks = _chunk_text(body.text, chunk_size=body.chunk_size, chunk_overlap=body.chunk_overlap)
+        if not chunks:
+            return {"status": "ok", "doc_id": body.doc_id, "chunks_upserted": 0}
+
+        points: list[PointStruct] = []
+        for idx, chunk in enumerate(chunks):
+            vec = _local_embed(chunk)
+            points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=vec,
+                    payload={"doc_id": body.doc_id, "chunk_index": idx, "text": chunk},
+                )
+            )
+
+        _qdr.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+        return {"status": "ok", "doc_id": body.doc_id, "chunks_upserted": len(points)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ingest-file")
+async def rag_ingest_file(
+    file: UploadFile = File(...),
+    doc_id: str | None = Form(None),
+    chunk_size: int = Form(900),
+    chunk_overlap: int = Form(150),
+):
+    """
+    Upload + ingest van PDF/DOCX:
+    - extract tekst
+    - chunk + upsert naar Qdrant
+    """
+    try:
+        data = await file.read()
+        filename = file.filename or "document"
+        effective_doc_id = doc_id or filename
+
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        if ext == "pdf":
+            text = _extract_text_from_pdf(data)
+        elif ext == "docx":
+            text = _extract_text_from_docx(data)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use .pdf or .docx")
+
+        chunks = _chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        if not chunks:
+            return {"status": "ok", "doc_id": effective_doc_id, "chunks_upserted": 0}
+
+        points: list[PointStruct] = []
+        for idx, chunk in enumerate(chunks):
+            vec = _local_embed(chunk)
+            points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=vec,
+                    payload={"doc_id": effective_doc_id, "chunk_index": idx, "text": chunk},
+                )
+            )
+
+        _qdr.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+        return {"status": "ok", "doc_id": effective_doc_id, "chunks_upserted": len(points)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/query")
+def rag_query(body: RAGQuery):
+    """
+    Eenvoudige RAG-query met lokale pseudo-embedding (demo).
+    Retourneert:
+    - context_hits (top_k points)
+    - antwoord (extractieve demo-samenvatting zonder LLM)
+    """
+    try:
+        vec = _local_embed(body.vraag)
+        top_k = getattr(body, "top_k", 5)
+
+        res = _qdr.query_points(
+            collection_name=settings.QDRANT_COLLECTION,
+            query=vec,
+            limit=top_k,
+            with_payload=True,
+        )
+
+        points = res.points if hasattr(res, "points") else res
+        hits = [{"id": p.id, "score": p.score, "payload": p.payload} for p in points]
+
+        context_texts: list[str] = []
+        for h in hits:
+            payload = h.get("payload") or {}
+            txt = payload.get("text")
+            if isinstance(txt, str) and txt.strip():
+                context_texts.append(txt)
+
+        antwoord = _extractive_answer(body.vraag, context_texts)
+
+        return {
+            "vraag": body.vraag,
+            "antwoord": antwoord,
+            "used_context": context_texts[:3],
+            "context_hits": hits,
+            "opmerking": "Demo: antwoord is extractief (zonder LLM). Gebruik echte embeddings + LLM voor betere kwaliteit.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

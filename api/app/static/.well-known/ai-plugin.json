@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Promati SQL Assistant",
+  "name_for_model": "promati_sql",
+  "description_for_human": "Vraag in natuurlijke taal. Ontvang antwoorden uit je PostgreSQL via veilige SELECT-queries.",
+  "description_for_model": "Gebruik de opgegeven OpenAPI specificatie. Roep altijd de /plugin/sql en /plugin/schema endpoints aan zoals gedefinieerd. Alle queries zijn READ-ONLY. Geen INSERT/UPDATE/DELETE/DROP. Voeg waar nodig LIMIT toe.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "http://localhost:8000/.well-known/promati-openapi.yaml",
+    "is_user_authenticated": false
+  },
+  "logo_url": "http://localhost:8000/.well-known/logo.png",
+  "contact_email": "admin@promati.local",
+  "legal_info_url": "http://localhost:8000/.well-known/legal"
+}

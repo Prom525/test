@@ -1,0 +1,19 @@
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import text
+from ..db import engine
+
+router = APIRouter(prefix="/chatdb", tags=["chatdb"])
+
+class QueryIn(BaseModel):
+    sql: str
+
+@router.post("/sql")
+def run_sql(query: QueryIn):
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(query.sql))
+            rows = [dict(row._mapping) for row in result]
+            return {"rows": rows}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

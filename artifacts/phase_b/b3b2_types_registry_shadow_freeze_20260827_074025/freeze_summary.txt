@@ -1,0 +1,48 @@
+﻿PROMATI PHASE-B3B2 TYPES / REGISTRY / SHADOW FREEZE V1
+======================================================
+
+B2E contract fidelity:
+EXACT
+
+Frozen B3B1 source modules:
+3
+
+Frozen B3B1 unit-test files:
+3
+
+Targeted tests:
+GREEN
+
+Dependency DAG:
+ACYCLIC
+
+Network / DB imports in new production modules:
+FALSE
+
+Executor integration:
+FALSE
+
+Other app integration:
+FALSE
+
+Legacy executor acceptance changed:
+FALSE
+
+Routing / QueryPlan / endpoints changed:
+FALSE
+
+Fallback / retry behavior changed:
+FALSE
+
+Evidence scoring added:
+FALSE
+
+Unresolved gates remain unresolved:
+- ANALYSIS_MODE_RUNTIME_EFFECT
+- RFQ_DIRECT_PLANNER_ABSENCE_INTENTIONALITY
+- ORG_DIAGNOSTICS_STATUS_TAXONOMY
+- RFQ_SUCCESS_STATUS_TAXONOMY
+- FALLBACK_RUNTIME_CONTRACT
+
+Next step:
+READ_ONLY_B3C_EXECUTOR_SHADOW_INTEGRATION_PLAN

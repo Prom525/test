@@ -1,0 +1,574 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A A2 BAND + DIAGNOSTICS SCOPE V1" -ForegroundColor Cyan
+Write-Host " ARTIFACT ONLY - READ ONLY - NO CONTAINER / APP / DB" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+$ScorePath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\a2_full_entity_contract_20260826_101110\a2_full_entity_contract.json"
+
+foreach ($Path in @(
+    $ContractPath,
+    $ScorePath
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Bestand niet gevonden: $Path"
+    }
+}
+
+
+$PythonCode = @'
+import csv
+import json
+import pathlib
+import sys
+from collections import Counter, defaultdict
+
+
+contract_path = pathlib.Path(sys.argv[1])
+score_path = pathlib.Path(sys.argv[2])
+
+
+with contract_path.open(
+    "r",
+    encoding="utf-8-sig",
+    newline="",
+) as handle:
+    contract = list(csv.DictReader(handle))
+
+with score_path.open(
+    "r",
+    encoding="utf-8-sig",
+) as handle:
+    score = json.load(handle)
+
+
+if len(contract) != 200:
+    raise RuntimeError(
+        f"Contract count={len(contract)}, expected 200"
+    )
+
+results = score.get("results", [])
+
+if len(results) != 200:
+    raise RuntimeError(
+        f"Score result count={len(results)}, expected 200"
+    )
+
+
+contract_by_id = {
+    str(row["test_id"]): row
+    for row in contract
+}
+
+result_by_id = {
+    str(row["test_id"]): row
+    for row in results
+}
+
+
+# ============================================================
+# Contract parser
+# ============================================================
+
+def raw_entities(row):
+    return (
+        row.get("expected_entities_raw")
+        or row.get("expected_entities")
+        or ""
+    ).strip()
+
+
+def positive_contract(raw):
+    result = {}
+
+    raw = (raw or "").strip()
+
+    if not raw or raw == "-":
+        return result
+
+    for clause in raw.split("|"):
+        clause = clause.strip()
+
+        if not clause:
+            continue
+
+        if clause.upper().startswith("NO_"):
+            continue
+
+        if "=" in clause:
+            key, value = clause.split("=", 1)
+
+            result[key.strip()] = value.strip()
+        else:
+            result[clause] = None
+
+    return result
+
+
+def values(value):
+    if value is None:
+        return []
+
+    if isinstance(value, (list, tuple)):
+        return [
+            str(item).strip().casefold()
+            for item in value
+        ]
+
+    text = str(value).strip()
+
+    if not text:
+        return []
+
+    if "," in text:
+        return [
+            part.strip().casefold()
+            for part in text.split(",")
+            if part.strip()
+        ]
+
+    return [text.casefold()]
+
+
+# ============================================================
+# PART 1: all standalone_band_pattern detections
+# ============================================================
+
+band_rows = []
+
+band_class_counts = Counter()
+
+
+for test_id, result in result_by_id.items():
+
+    entities = (
+        result.get("actual_entities")
+        or {}
+    )
+
+    band = entities.get("band_code")
+
+    if not band:
+        continue
+
+    if band.get("source") != "standalone_band_pattern":
+        continue
+
+    contract_row = contract_by_id[test_id]
+
+    expected = positive_contract(
+        raw_entities(contract_row)
+    )
+
+    actual_value = str(
+        band.get("value")
+        or ""
+    ).strip()
+
+    actual_norm = actual_value.casefold()
+
+    classification = None
+
+
+    # --------------------------------------------------------
+    # Explicit positive single/multi band expectation.
+    # --------------------------------------------------------
+
+    expected_band_values = []
+
+    if "band_code" in expected:
+        expected_band_values.extend(
+            values(expected["band_code"])
+        )
+
+    if "band_codes" in expected:
+        expected_band_values.extend(
+            values(expected["band_codes"])
+        )
+
+    if (
+        expected_band_values
+        and actual_norm in expected_band_values
+    ):
+        classification = "EXPECTED_BAND"
+
+
+    # --------------------------------------------------------
+    # Comparison context wins over standalone interpretation.
+    # --------------------------------------------------------
+
+    if classification is None:
+
+        comparison_expected = (
+            "comparison_scope" in expected
+            or "comparison_scope_codes" in expected
+        )
+
+        comparison_runtime = (
+            "comparison_scope_codes" in entities
+        )
+
+        if comparison_expected or comparison_runtime:
+            classification = "COMPARISON_CONTEXT_OVERREACH"
+
+
+    # --------------------------------------------------------
+    # Diagnostic/meta questions mentioning code interpretation.
+    # --------------------------------------------------------
+
+    if classification is None:
+
+        if "diagnostics_domain" in expected:
+            classification = "DIAGNOSTIC_META_OVERREACH"
+
+
+    if classification is None:
+        classification = "UNSUPPORTED_EXTRA_REVIEW"
+
+
+    band_class_counts[classification] += 1
+
+    band_rows.append(
+        {
+            "test_id": test_id,
+            "classification": classification,
+            "value": actual_value,
+            "source": band.get("source"),
+            "query_class": result.get("query_class"),
+            "primary_domain": result.get("primary_domain"),
+            "intent": result.get("intent"),
+            "expected_entities": raw_entities(
+                contract_row
+            ),
+            "question": contract_row["question"],
+        }
+    )
+
+
+# ============================================================
+# PART 2: diagnostics_domain exact contract
+# ============================================================
+
+diag_rows = []
+
+diag_status_counts = Counter()
+diag_missing_by_category = Counter()
+diag_missing_by_primary_domain = Counter()
+diag_missing_by_intent = Counter()
+diag_missing_by_query_class = Counter()
+
+
+for row in contract:
+
+    test_id = str(row["test_id"])
+
+    expected = positive_contract(
+        raw_entities(row)
+    )
+
+    if "diagnostics_domain" not in expected:
+        continue
+
+    expected_value = (
+        expected["diagnostics_domain"]
+        or ""
+    ).strip().casefold()
+
+    result = result_by_id[test_id]
+
+    entities = (
+        result.get("actual_entities")
+        or {}
+    )
+
+    actual_entity = entities.get(
+        "diagnostics_domain"
+    )
+
+    if actual_entity is None:
+
+        status = "MISSING"
+        actual_value = None
+
+    else:
+
+        actual_value = (
+            str(
+                actual_entity.get("value")
+                or ""
+            )
+            .strip()
+            .casefold()
+        )
+
+        if actual_value == expected_value:
+            status = "PASS"
+        else:
+            status = "VALUE_MISMATCH"
+
+
+    diag_status_counts[status] += 1
+
+    category = (
+        row.get("test_category")
+        or row.get("category")
+        or ""
+    )
+
+    if status == "MISSING":
+
+        diag_missing_by_category[
+            category
+        ] += 1
+
+        diag_missing_by_primary_domain[
+            str(
+                result.get("primary_domain")
+                or "<NONE>"
+            )
+        ] += 1
+
+        diag_missing_by_intent[
+            str(
+                result.get("intent")
+                or "<NONE>"
+            )
+        ] += 1
+
+        diag_missing_by_query_class[
+            str(
+                result.get("query_class")
+                or "<NONE>"
+            )
+        ] += 1
+
+
+    diag_rows.append(
+        {
+            "test_id": test_id,
+            "status": status,
+            "expected": expected_value,
+            "actual": actual_value,
+            "query_class":
+                result.get("query_class"),
+            "primary_domain":
+                result.get("primary_domain"),
+            "intent":
+                result.get("intent"),
+            "category":
+                category,
+            "actual_entity_keys":
+                sorted(entities.keys()),
+            "question":
+                row["question"],
+        }
+    )
+
+
+# ============================================================
+# Guards against changing evidence assumptions
+# ============================================================
+
+if len(band_rows) != 35:
+    raise RuntimeError(
+        f"standalone_band_pattern count={len(band_rows)}, expected 35"
+    )
+
+if len(diag_rows) != 29:
+    raise RuntimeError(
+        f"diagnostics_domain expectation count={len(diag_rows)}, expected 29"
+    )
+
+
+# ============================================================
+# Conclusions
+# ============================================================
+
+band_expected = band_class_counts[
+    "EXPECTED_BAND"
+]
+
+band_overreach = (
+    band_class_counts[
+        "COMPARISON_CONTEXT_OVERREACH"
+    ]
+    + band_class_counts[
+        "DIAGNOSTIC_META_OVERREACH"
+    ]
+    + band_class_counts[
+        "UNSUPPORTED_EXTRA_REVIEW"
+    ]
+)
+
+
+print("")
+print("=== STANDALONE BAND PATTERN ===")
+print(f"TOTAL={len(band_rows)}")
+
+for key in sorted(band_class_counts):
+    print(
+        f"{key}={band_class_counts[key]}"
+    )
+
+print(
+    f"BAND_SEMANTIC_OVERREACH_TOTAL={band_overreach}"
+)
+
+
+print("")
+print("=== NON-EXPECTED BAND DETECTIONS ===")
+
+for item in band_rows:
+
+    if item["classification"] == "EXPECTED_BAND":
+        continue
+
+    print(
+        f"[{item['test_id']}] "
+        f"{item['classification']} "
+        f"band_code={item['value']} | "
+        f"{item['question']}"
+    )
+
+    print(
+        f"    expected={item['expected_entities']}"
+    )
+
+
+print("")
+print("=== DIAGNOSTICS DOMAIN CONTRACT ===")
+print(f"TOTAL={len(diag_rows)}")
+
+for key in (
+    "PASS",
+    "MISSING",
+    "VALUE_MISMATCH",
+):
+    print(
+        f"{key}={diag_status_counts[key]}"
+    )
+
+
+print("")
+print("=== DIAGNOSTICS DOMAIN FAILURES ===")
+
+for item in diag_rows:
+
+    if item["status"] == "PASS":
+        continue
+
+    print(
+        f"[{item['test_id']}] "
+        f"{item['status']} "
+        f"expected={item['expected']} "
+        f"actual={item['actual']} "
+        f"class={item['query_class']} "
+        f"domain={item['primary_domain']} "
+        f"intent={item['intent']} | "
+        f"{item['question']}"
+    )
+
+
+def print_counter(title, counter):
+    print("")
+    print(title)
+
+    for key, count in sorted(
+        counter.items(),
+        key=lambda item: (
+            -item[1],
+            item[0],
+        ),
+    ):
+        print(
+            f"{key}={count}"
+        )
+
+
+print_counter(
+    "=== MISSING BY QUERY CLASS ===",
+    diag_missing_by_query_class,
+)
+
+print_counter(
+    "=== MISSING BY PRIMARY DOMAIN ===",
+    diag_missing_by_primary_domain,
+)
+
+print_counter(
+    "=== MISSING BY INTENT ===",
+    diag_missing_by_intent,
+)
+
+print_counter(
+    "=== MISSING BY CATEGORY ===",
+    diag_missing_by_category,
+)
+
+
+# ============================================================
+# Decision markers
+# ============================================================
+
+print("")
+
+if (
+    band_expected >= 30
+    and band_overreach > 0
+):
+    print(
+        "BAND_DECISION="
+        "NARROW_CANDIDATE_GROUNDING_JUSTIFIED"
+    )
+else:
+    print(
+        "BAND_DECISION="
+        "REVIEW_BEFORE_GROUNDING"
+    )
+
+
+if (
+    diag_status_counts["MISSING"]
+    >= 10
+):
+    print(
+        "DIAGNOSTICS_DECISION="
+        "SEPARATE_CLASSIFICATION_PROBLEM"
+    )
+else:
+    print(
+        "DIAGNOSTICS_DECISION="
+        "SMALL_ENTITY_FIX"
+    )
+
+
+print("")
+print("NO_FILES_WRITTEN=TRUE")
+print("NO_APP_CODE_CHANGED=TRUE")
+print("NO_CONTAINER_CALLS=TRUE")
+print("NO_API_CALLS=TRUE")
+print("NO_SPECIALIST_CALLS=TRUE")
+print("NO_RESEARCH_PROVIDER_CALLS=TRUE")
+print("NO_DB_WRITES=TRUE")
+print("PHASE_A_A2_SCOPE_AUDIT_OK")
+'@
+
+
+$Raw = (
+    $PythonCode |
+        python - `
+            $ContractPath `
+            $ScorePath
+)
+
+if ($LASTEXITCODE -ne 0) {
+    throw "A2 scope audit mislukt."
+}

@@ -1,0 +1,1209 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A A2e BAND_CODES 192 COUNTERFACTUAL" -ForegroundColor Cyan
+Write-Host " 200 TESTS / PROCESS LOCAL / READ ONLY" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$Container = "ai-platform-api-1"
+$ContractPath = "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+$AppRoot = "C:\ai-platform\api\app\orchestrator"
+
+$ExpectedContractHash = "EE02DDC2FE72501F31DB80B97C4555B8D3E261A7C64A53079FAB5FB85F545529"
+
+$ExpectedHashes = [ordered]@{
+    "models.py" = "CFAA831CCF5CFA39FBBA98800376F1099E587C8047EE552BCA0D6D815E852374"
+    "understanding.py" = "84D9986097F5C93B70FC3800BB568B0D7B45A23A4A8605A94C8F7F36482CCB29"
+    "planner.py" = "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68"
+    "band_candidate_shadow.py" = "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484"
+    "query_classification.py" = "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576"
+    "normalizer.py" = "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB"
+    "complexity.py" = "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022"
+    "service.py" = "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761"
+    "executor.py" = "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A"
+}
+
+Write-Host ""
+Write-Host "=== FROZEN INPUT GUARDS ==="
+
+if (-not (Test-Path -LiteralPath $ContractPath -PathType Leaf)) {
+    throw "Golden contract ontbreekt."
+}
+
+$ContractHash = (Get-FileHash $ContractPath -Algorithm SHA256).Hash
+
+Write-Host "CONTRACT_SHA256=$ContractHash"
+
+if ($ContractHash -ne $ExpectedContractHash) {
+    throw "Golden contract hash mismatch."
+}
+
+foreach ($Name in $ExpectedHashes.Keys) {
+
+    $LocalPath = Join-Path $AppRoot $Name
+
+    if (-not (Test-Path -LiteralPath $LocalPath -PathType Leaf)) {
+        throw "Local appbestand ontbreekt: $Name"
+    }
+
+    $LocalHash = (Get-FileHash $LocalPath -Algorithm SHA256).Hash
+
+    if ($LocalHash -ne $ExpectedHashes[$Name]) {
+        throw "Local frozen hash mismatch: $Name"
+    }
+
+    $ContainerPath = "/app/app/orchestrator/$Name"
+
+    $RuntimeOutput = @(
+        docker exec `
+            $Container `
+            python `
+            -B `
+            -c `
+            "import hashlib,pathlib,sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest().upper())" `
+            $ContainerPath
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Runtime hashcheck mislukt: $Name"
+    }
+
+    $RuntimeHash = ($RuntimeOutput -join "").Trim()
+
+    Write-Host "$Name local=$LocalHash runtime=$RuntimeHash"
+
+    if ($RuntimeHash -ne $ExpectedHashes[$Name]) {
+        throw "Runtime frozen hash mismatch: $Name"
+    }
+}
+
+Write-Host "A2E_BAND192_CF_FROZEN_HASHES_OK" -ForegroundColor Green
+
+
+# ============================================================
+# Exact 200 golden questions
+# ============================================================
+
+$Rows = @(Import-Csv $ContractPath)
+
+if ($Rows.Count -ne 200) {
+    throw "Golden contract count=$($Rows.Count), verwacht 200."
+}
+
+$Tests = @(
+    foreach ($Row in $Rows) {
+        [pscustomobject]@{
+            test_id = [string]$Row.test_id
+            question = [string]$Row.question
+        }
+    }
+)
+
+$Payload = $Tests | ConvertTo-Json -Depth 4 -Compress
+
+
+# ============================================================
+# Process-local Python helper
+# ============================================================
+
+$Python = @'
+import json
+import re
+import sys
+from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel
+
+import app.orchestrator.understanding as understanding
+
+from app.orchestrator.complexity import (
+    assess_research_requirement,
+)
+
+from app.orchestrator.models import (
+    DetectedEntity,
+)
+
+from app.orchestrator.planner import (
+    build_execution_plan,
+)
+
+
+tests = json.load(sys.stdin)
+
+if len(tests) != 200:
+    raise RuntimeError(
+        f"tests={len(tests)}, expected 200"
+    )
+
+
+class HypotheticalExecutionBlocker(BaseModel):
+    blocker_type: Literal[
+        "unsupported_multi_band_execution"
+    ] = "unsupported_multi_band_execution"
+
+    entity_name: str
+    candidate_value: Any = None
+    reason: str = "multi_band_execution_unsupported"
+
+
+def plain(value):
+
+    if isinstance(value, Enum):
+        return value.value
+
+    if isinstance(value, BaseModel):
+        return {
+            str(key): plain(item)
+            for key, item in value.__dict__.items()
+            if not str(key).startswith("_")
+        }
+
+    if isinstance(value, dict):
+        return {
+            str(key): plain(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            plain(item)
+            for item in value
+        ]
+
+    return value
+
+
+def entity_value(plan, key):
+
+    entities = (
+        getattr(
+            plan,
+            "entities",
+            None,
+        )
+        or {}
+    )
+
+    entity = entities.get(key)
+
+    if entity is None:
+        return None
+
+    if isinstance(entity, dict):
+        return entity.get("value")
+
+    return getattr(
+        entity,
+        "value",
+        entity,
+    )
+
+
+# Intentionally narrow.
+#
+# We are NOT reusing comparison_scope semantics.
+# This models an explicit "CODE of CODE" multi-band request.
+multi_band_pair = re.compile(
+    r"\b([A-Z]{1,3}\d{2,4})"
+    r"\s+of\s+"
+    r"([A-Z]{1,3}\d{2,4})\b",
+    flags=re.IGNORECASE,
+)
+
+
+def apply_counterfactual(plan):
+
+    normalized = (
+        getattr(
+            plan,
+            "normalized_question",
+            "",
+        )
+        or ""
+    )
+
+    matches = list(
+        multi_band_pair.finditer(
+            normalized
+        )
+    )
+
+    if len(matches) != 1:
+        return False
+
+    match = matches[0]
+
+    codes = [
+        match.group(1).upper(),
+        match.group(2).upper(),
+    ]
+
+    if codes[0] == codes[1]:
+        return False
+
+    current_band = entity_value(
+        plan,
+        "band_code",
+    )
+
+    # Strict safety boundary:
+    # current singular grounding must equal member 1.
+    if current_band != codes[0]:
+        return False
+
+    entities = (
+        getattr(
+            plan,
+            "entities",
+            None,
+        )
+        or {}
+    )
+
+    # Do not interfere with existing comparison semantics.
+    if "comparison_scope_codes" in entities:
+        return False
+
+    # Do not interfere with any existing grounding blocker.
+    if (
+        getattr(
+            plan,
+            "execution_blockers",
+            None,
+        )
+        or []
+    ):
+        return False
+
+    new_entities = dict(
+        entities
+    )
+
+    new_entities.pop(
+        "band_code",
+        None,
+    )
+
+    new_entities[
+        "band_codes"
+    ] = DetectedEntity(
+        name="band_codes",
+        raw_value=match.group(0),
+        value=codes,
+        confidence=0.95,
+        source="multi_band_pair_pattern",
+    )
+
+    blocker = HypotheticalExecutionBlocker(
+        entity_name="band_codes",
+        candidate_value=codes,
+    )
+
+    # Process-local counterfactual only.
+    #
+    # The real ExecutionBlockerType does not contain this
+    # hypothetical enum value yet, so bypass QueryPlan field
+    # validation while preserving planner truthiness semantics.
+    object.__setattr__(
+        plan,
+        "entities",
+        new_entities,
+    )
+
+    object.__setattr__(
+        plan,
+        "execution_blockers",
+        [blocker],
+    )
+
+    # Deliberately unchanged:
+    # query_class
+    # primary_domain/domains
+    # intent
+    # confidence
+    # research
+    # clarification
+    # scope_context_mode
+
+    return True
+
+
+def baseline_plan(question):
+
+    plan = understanding.understand_query(
+        question
+    )
+
+    plan = assess_research_requirement(
+        plan
+    )
+
+    plan = build_execution_plan(
+        plan
+    )
+
+    return plain(plan)
+
+
+def counterfactual_plan(question):
+
+    plan = understanding.understand_query(
+        question
+    )
+
+    # Keep research assessment on the frozen current plan.
+    # The hypothetical blocker models execution capability,
+    # not research necessity.
+    plan = assess_research_requirement(
+        plan
+    )
+
+    applied = apply_counterfactual(
+        plan
+    )
+
+    plan = build_execution_plan(
+        plan
+    )
+
+    return (
+        plain(plan),
+        applied,
+    )
+
+
+results = []
+
+
+for test in tests:
+
+    question = test["question"]
+
+    baseline = baseline_plan(
+        question
+    )
+
+    counterfactual, applied = counterfactual_plan(
+        question
+    )
+
+    results.append(
+        {
+            "test_id": str(test["test_id"]),
+            "question": question,
+            "counterfactual_applied": applied,
+            "baseline": baseline,
+            "counterfactual": counterfactual,
+        }
+    )
+
+
+print(
+    json.dumps(
+        results,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+)
+'@
+
+$HelperPath = "/data/promati_a2e_band192_cf_v1.py"
+
+Write-Host ""
+Write-Host "=== TEMP HELPER ==="
+
+$Python |
+    docker exec `
+        -i `
+        $Container `
+        sh `
+        -c `
+        "cat > $HelperPath"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Counterfactual helper schrijven mislukt."
+}
+
+$HelperRemoved = $false
+
+try {
+
+    docker exec `
+        -e PYTHONDONTWRITEBYTECODE=1 `
+        $Container `
+        python `
+        -B `
+        -c `
+        "import ast,pathlib,sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8-sig')); print('A2E_BAND192_CF_HELPER_SYNTAX_OK')" `
+        $HelperPath
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Counterfactual helper syntaxcheck mislukt."
+    }
+
+    $Raw = @(
+        $Payload |
+            docker exec `
+                -e PYTHONDONTWRITEBYTECODE=1 `
+                -e PYTHONPATH=/app `
+                -w /app `
+                -i `
+                $Container `
+                python `
+                -B `
+                $HelperPath
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Band192 counterfactual runtime mislukt."
+    }
+}
+finally {
+
+    docker exec `
+        $Container `
+        rm `
+        -f `
+        $HelperPath `
+        2>$null |
+        Out-Null
+
+    if ($LASTEXITCODE -eq 0) {
+        $HelperRemoved = $true
+    }
+}
+
+if (-not $HelperRemoved) {
+    throw "Temporary counterfactual helper kon niet worden verwijderd."
+}
+
+Write-Host "TEMP_HELPER_REMOVED=TRUE"
+
+$Json = (
+    $Raw -join [Environment]::NewLine
+).Trim()
+
+if ([string]::IsNullOrWhiteSpace($Json)) {
+    throw "Counterfactual gaf geen JSON."
+}
+
+Write-Host "A2E_BAND192_CF_200_COMPLETE=TRUE"
+
+
+# ============================================================
+# Artifact only
+# ============================================================
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$OutputDir = Join-Path `
+    "C:\ai-platform\artifacts\golden_testset_v1" `
+    "a2e_band_codes_192_counterfactual_$Stamp"
+
+New-Item `
+    -ItemType Directory `
+    -Path $OutputDir `
+    -Force |
+    Out-Null
+
+$ResultPath = Join-Path `
+    $OutputDir `
+    "a2e_band_codes_192_counterfactual_200.json"
+
+Set-Content `
+    -LiteralPath $ResultPath `
+    -Value $Json `
+    -Encoding UTF8
+
+
+# ============================================================
+# Strict 200-test comparator
+# ============================================================
+
+$ComparePython = @'
+import json
+import pathlib
+import sys
+
+
+path = pathlib.Path(sys.argv[1])
+
+with path.open(
+    "r",
+    encoding="utf-8-sig",
+) as handle:
+    rows = json.load(handle)
+
+
+if len(rows) != 200:
+    raise RuntimeError(
+        f"rows={len(rows)}, expected 200"
+    )
+
+
+def diff_paths(left, right, prefix=""):
+
+    diffs = []
+
+    if type(left) is not type(right):
+
+        diffs.append(
+            prefix or "<root>"
+        )
+
+        return diffs
+
+    if isinstance(left, dict):
+
+        keys = sorted(
+            set(left)
+            | set(right)
+        )
+
+        for key in keys:
+
+            current = (
+                f"{prefix}.{key}"
+                if prefix
+                else key
+            )
+
+            if key not in left:
+
+                diffs.append(
+                    current + " [ADDED]"
+                )
+
+                continue
+
+            if key not in right:
+
+                diffs.append(
+                    current + " [REMOVED]"
+                )
+
+                continue
+
+            diffs.extend(
+                diff_paths(
+                    left[key],
+                    right[key],
+                    current,
+                )
+            )
+
+        return diffs
+
+    if isinstance(left, list):
+
+        if left != right:
+            diffs.append(
+                prefix or "<root>"
+            )
+
+        return diffs
+
+    if left != right:
+
+        diffs.append(
+            prefix or "<root>"
+        )
+
+    return diffs
+
+
+def entity_value(plan, key):
+
+    entity = (
+        plan.get(
+            "entities",
+            {}
+        )
+        or {}
+    ).get(key)
+
+    if isinstance(entity, dict):
+        return entity.get("value")
+
+    return entity
+
+
+changed = []
+applied_ids = []
+queryclass_changes = []
+diagnostics_domain_changes = []
+control_failures = []
+
+controls = {
+    "118",
+    "154",
+    "185",
+    "196",
+}
+
+
+for row in rows:
+
+    test_id = str(
+        row["test_id"]
+    )
+
+    baseline = row["baseline"]
+    cf = row["counterfactual"]
+
+    if row.get(
+        "counterfactual_applied"
+    ):
+        applied_ids.append(
+            test_id
+        )
+
+    diffs = diff_paths(
+        baseline,
+        cf,
+    )
+
+    if diffs:
+
+        changed.append(
+            {
+                "test_id": test_id,
+                "question": row["question"],
+                "changed_paths": diffs,
+            }
+        )
+
+    if (
+        baseline.get("query_class")
+        != cf.get("query_class")
+    ):
+        queryclass_changes.append(
+            test_id
+        )
+
+    base_diag = entity_value(
+        baseline,
+        "diagnostics_domain",
+    )
+
+    cf_diag = entity_value(
+        cf,
+        "diagnostics_domain",
+    )
+
+    if base_diag != cf_diag:
+        diagnostics_domain_changes.append(
+            test_id
+        )
+
+    if (
+        test_id in controls
+        and baseline != cf
+    ):
+        control_failures.append(
+            test_id
+        )
+
+
+changed_ids = [
+    item["test_id"]
+    for item in changed
+]
+
+
+print("")
+print("=== COUNTERFACTUAL SCOPE ===")
+
+print("TOTAL=200")
+
+print(
+    "COUNTERFACTUAL_APPLIED_COUNT="
+    + str(len(applied_ids))
+)
+
+print(
+    "COUNTERFACTUAL_APPLIED_IDS="
+    + ",".join(
+        sorted(
+            applied_ids,
+            key=int,
+        )
+    )
+)
+
+print(
+    "CHANGED_TEST_COUNT="
+    + str(len(changed_ids))
+)
+
+print(
+    "CHANGED_TEST_IDS="
+    + ",".join(
+        sorted(
+            changed_ids,
+            key=int,
+        )
+    )
+)
+
+print(
+    "INVARIANT_TEST_COUNT="
+    + str(
+        200 - len(changed_ids)
+    )
+)
+
+
+exact_target_scope = (
+    set(applied_ids) == {"192"}
+    and set(changed_ids) == {"192"}
+)
+
+
+row192s = [
+    row
+    for row in rows
+    if str(row["test_id"]) == "192"
+]
+
+if len(row192s) != 1:
+    raise RuntimeError(
+        "test192 result count != 1"
+    )
+
+
+row192 = row192s[0]
+
+baseline = row192["baseline"]
+cf = row192["counterfactual"]
+
+
+baseline_band = entity_value(
+    baseline,
+    "band_code",
+)
+
+cf_band = entity_value(
+    cf,
+    "band_code",
+)
+
+cf_band_codes = entity_value(
+    cf,
+    "band_codes",
+)
+
+
+blockers = (
+    cf.get(
+        "execution_blockers"
+    )
+    or []
+)
+
+
+blocker_ok = (
+    len(blockers) == 1
+    and blockers[0].get(
+        "blocker_type"
+    )
+        == "unsupported_multi_band_execution"
+    and blockers[0].get(
+        "entity_name"
+    )
+        == "band_codes"
+    and blockers[0].get(
+        "candidate_value"
+    )
+        == ["A319", "A320"]
+    and blockers[0].get(
+        "reason"
+    )
+        == "multi_band_execution_unsupported"
+)
+
+
+route_fields = (
+    "query_class",
+    "primary_domain",
+    "domains",
+    "intent",
+    "confidence",
+    "research_required",
+    "clarification_required",
+    "clarification_question",
+)
+
+
+route_changes = [
+    field
+    for field in route_fields
+    if baseline.get(field)
+        != cf.get(field)
+]
+
+
+baseline_steps = (
+    baseline.get(
+        "execution_steps"
+    )
+    or []
+)
+
+cf_steps = (
+    cf.get(
+        "execution_steps"
+    )
+    or []
+)
+
+
+changed192 = next(
+    (
+        item
+        for item in changed
+        if item["test_id"] == "192"
+    ),
+    None,
+)
+
+
+changed_paths_192 = (
+    changed192["changed_paths"]
+    if changed192
+    else []
+)
+
+
+expected_changed_paths = {
+    "entities.band_code [REMOVED]",
+    "entities.band_codes [ADDED]",
+    "execution_blockers",
+    "execution_steps",
+}
+
+
+changed_path_shape_ok = (
+    set(changed_paths_192)
+    == expected_changed_paths
+)
+
+
+print("")
+print("=== TEST 192 COUNTERFACTUAL ===")
+
+print(
+    "BASELINE_BAND_CODE="
+    + repr(baseline_band)
+)
+
+print(
+    "CF_BAND_CODE="
+    + repr(cf_band)
+)
+
+print(
+    "CF_BAND_CODES="
+    + repr(cf_band_codes)
+)
+
+print(
+    "CF_EXECUTION_BLOCKERS="
+    + repr(blockers)
+)
+
+print(
+    "BASELINE_EXECUTION_STEP_COUNT="
+    + str(len(baseline_steps))
+)
+
+print(
+    "CF_EXECUTION_STEP_COUNT="
+    + str(len(cf_steps))
+)
+
+print(
+    "BASELINE_CLARIFICATION_REQUIRED="
+    + repr(
+        baseline.get(
+            "clarification_required"
+        )
+    )
+)
+
+print(
+    "CF_CLARIFICATION_REQUIRED="
+    + repr(
+        cf.get(
+            "clarification_required"
+        )
+    )
+)
+
+print(
+    "ROUTING_SEMANTIC_CHANGES="
+    + repr(route_changes)
+)
+
+print(
+    "CHANGED_PATHS="
+    + repr(changed_paths_192)
+)
+
+
+target_entity_ok = (
+    baseline_band == "A319"
+    and cf_band is None
+    and cf_band_codes
+        == ["A319", "A320"]
+)
+
+
+execution_boundary_ok = (
+    len(baseline_steps) == 1
+    and len(cf_steps) == 0
+    and blocker_ok
+)
+
+
+clarification_semantics_ok = (
+    baseline.get(
+        "clarification_required"
+    ) is False
+    and cf.get(
+        "clarification_required"
+    ) is False
+    and baseline.get(
+        "clarification_question"
+    )
+        == cf.get(
+            "clarification_question"
+        )
+)
+
+
+route_invariant = (
+    len(route_changes) == 0
+)
+
+
+print("")
+print("=== INVARIANTS ===")
+
+print(
+    "BAND192_CF_EXACT_TARGET_SCOPE="
+    + str(exact_target_scope).upper()
+)
+
+print(
+    "BAND192_CF_SINGULAR_REMOVED_MULTI_GROUNDED="
+    + str(target_entity_ok).upper()
+)
+
+print(
+    "BAND192_CF_TYPED_BLOCKER_SHAPE_OK="
+    + str(blocker_ok).upper()
+)
+
+print(
+    "BAND192_CF_EXECUTION_1_TO_0="
+    + str(execution_boundary_ok).upper()
+)
+
+print(
+    "BAND192_CF_CLARIFICATION_UNCHANGED_FALSE="
+    + str(
+        clarification_semantics_ok
+    ).upper()
+)
+
+print(
+    "BAND192_CF_ROUTE_CONFIDENCE_RESEARCH_INVARIANT="
+    + str(route_invariant).upper()
+)
+
+print(
+    "BAND192_CF_CHANGED_PATHS_EXACT="
+    + str(
+        changed_path_shape_ok
+    ).upper()
+)
+
+print(
+    "QUERYCLASS_CHANGES="
+    + str(
+        len(queryclass_changes)
+    )
+)
+
+print(
+    "A2C_A2D_CONTROL_FAILURES="
+    + str(
+        len(control_failures)
+    )
+)
+
+print(
+    "DIAGNOSTICS_DOMAIN_CHANGES="
+    + str(
+        len(diagnostics_domain_changes)
+    )
+)
+
+
+historical_controls_ok = all(
+    str(test_id) not in changed_ids
+    for test_id in (
+        6,
+        35,
+        48,
+        118,
+        154,
+        155,
+        185,
+        196,
+    )
+)
+
+
+print(
+    "BAND192_CF_HISTORICAL_CONTROLS_INVARIANT="
+    + str(
+        historical_controls_ok
+    ).upper()
+)
+
+
+safe_candidate = (
+    exact_target_scope
+    and target_entity_ok
+    and blocker_ok
+    and execution_boundary_ok
+    and clarification_semantics_ok
+    and route_invariant
+    and changed_path_shape_ok
+    and not queryclass_changes
+    and not control_failures
+    and not diagnostics_domain_changes
+    and historical_controls_ok
+)
+
+
+print("")
+print(
+    "BAND192_SOURCE_PATCH_CANDIDATE="
+    + str(safe_candidate).upper()
+)
+
+
+if safe_candidate:
+
+    print(
+        "A2E_BAND192_NEXT_STEP="
+        "STRUCTURAL_SOURCE_PATCH_DESIGN_MODELS_PLUS_UNDERSTANDING"
+    )
+
+else:
+
+    print(
+        "A2E_BAND192_NEXT_STEP="
+        "DO_NOT_PATCH_REVIEW_COUNTERFACTUAL_DELTAS"
+    )
+
+
+print("")
+print("NO_APP_CODE_CHANGED=TRUE")
+print("NO_EXECUTOR_CALLED=TRUE")
+print("NO_SPECIALIST_CALLED=TRUE")
+print("NO_RESEARCH_PROVIDER_CALLED=TRUE")
+print("NO_DB_WRITES=TRUE")
+
+print(
+    "PHASE_A_A2E_BAND_CODES_192_COUNTERFACTUAL_OK"
+)
+'@
+
+
+$CompareOutput = @(
+    $ComparePython |
+        & python - `
+            $ResultPath
+)
+
+$CompareExit = $LASTEXITCODE
+
+$CompareOutput | ForEach-Object {
+    Write-Host $_
+}
+
+if ($CompareExit -ne 0) {
+    throw "Band192 counterfactual comparator mislukt."
+}
+
+
+# ============================================================
+# Final frozen-state proof
+# ============================================================
+
+Write-Host ""
+Write-Host "=== FINAL IMMUTABILITY ==="
+
+foreach ($Name in $ExpectedHashes.Keys) {
+
+    $LocalPath = Join-Path $AppRoot $Name
+
+    $LocalHash = (
+        Get-FileHash $LocalPath -Algorithm SHA256
+    ).Hash
+
+    if ($LocalHash -ne $ExpectedHashes[$Name]) {
+        throw "Local source veranderde: $Name"
+    }
+
+    $ContainerPath = "/app/app/orchestrator/$Name"
+
+    $RuntimeOutput = @(
+        docker exec `
+            $Container `
+            python `
+            -B `
+            -c `
+            "import hashlib,pathlib,sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest().upper())" `
+            $ContainerPath
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Final runtime hashcheck mislukt: $Name"
+    }
+
+    $RuntimeHash = (
+        $RuntimeOutput -join ""
+    ).Trim()
+
+    if ($RuntimeHash -ne $ExpectedHashes[$Name]) {
+        throw "Runtime source veranderde: $Name"
+    }
+}
+
+
+Write-Host ""
+Write-Host "COUNTERFACTUAL_ARTIFACT=$ResultPath"
+Write-Host "COUNTERFACTUAL_ARTIFACT_SHA256=$((Get-FileHash $ResultPath -Algorithm SHA256).Hash)"
+
+Write-Host "PROMATI_APP_CODE_CHANGED=FALSE"
+Write-Host "BAND_CANDIDATE_SHADOW_CHANGED=FALSE"
+Write-Host "PLANNER_CHANGED=FALSE"
+Write-Host "NO_REBUILD_PERFORMED=TRUE"
+Write-Host "NO_API_ENDPOINT_CALLS=TRUE"
+Write-Host "NO_EXECUTOR_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_PROVIDER_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+
+Write-Host "PHASE_A_A2E_BAND_CODES_192_COUNTERFACTUAL_COMPLETE" -ForegroundColor Green

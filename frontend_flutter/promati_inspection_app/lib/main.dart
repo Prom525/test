@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'api/promati_api_client.dart';
 import 'features/validation/validation_queue_page.dart';
 import 'features/mobile/mobile_plans_page.dart';
+import 'features/planner/planner_page.dart';
 
 void main() {
   runApp(const PromatiInspectionApp());
@@ -106,7 +107,13 @@ class _HomeScreenState extends State<HomeScreen> {
               title: 'Planner',
               subtitle: 'Inspectieplannen maken, publiceren en opvolgen.',
               icon: Icons.calendar_month,
-              onTap: () => _showComingSoon(context, 'Planner'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PlannerPage(),
+                  ),
+                );
+              },
             ),
             _MenuCard(
               title: 'Validatie',
@@ -124,12 +131,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String module) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$module wordt in de volgende stap gebouwd.')),
     );
   }
 }

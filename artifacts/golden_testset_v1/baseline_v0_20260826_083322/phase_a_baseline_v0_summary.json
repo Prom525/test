@@ -1,0 +1,66 @@
+﻿{
+    "baseline_version":  "phase_a_v0",
+    "timestamp":  "20260826_083322",
+    "api_url":  "http://127.0.0.1:8000/orchestrator/ask",
+    "contract":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\phase_a_test_contract_v2.csv",
+    "counts":  {
+                   "total_tests":  200,
+                   "request_errors":  0,
+                   "overall_pass":  41,
+                   "overall_fail":  159,
+                   "unexpected_band_code_tests":  5
+               },
+    "metrics":  {
+                    "query_class":  {
+                                        "scored":  0,
+                                        "passed":  0,
+                                        "failed":  0,
+                                        "accuracy_pct":  null
+                                    },
+                    "domain":  {
+                                   "scored":  102,
+                                   "passed":  96,
+                                   "failed":  6,
+                                   "accuracy_pct":  94.12
+                               },
+                    "intent":  {
+                                   "scored":  200,
+                                   "passed":  83,
+                                   "failed":  117,
+                                   "accuracy_pct":  41.5
+                               },
+                    "entities":  {
+                                     "scored":  132,
+                                     "passed":  36,
+                                     "failed":  96,
+                                     "accuracy_pct":  27.27
+                                 },
+                    "research":  {
+                                     "scored":  200,
+                                     "passed":  169,
+                                     "failed":  31,
+                                     "accuracy_pct":  84.5
+                                 },
+                    "clarification":  {
+                                          "scored":  200,
+                                          "passed":  110,
+                                          "failed":  90,
+                                          "accuracy_pct":  55
+                                      }
+                },
+    "latency_ms":  {
+                       "average":  1072.4,
+                       "p50":  10.8,
+                       "p95":  1895.2
+                   },
+    "data_quality_warnings":  [
+                                  "CATEGORY_WARNING: \u0027Htechnical\u0027 occurs 1x. Not corrected.",
+                                  "DOMAIN_WARNING: expected domain \u0027none\u0027 occurs 20x. Not corrected."
+                              ],
+    "output_files":  {
+                         "results":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_20260826_083322\\phase_a_baseline_v0_results.csv",
+                         "failures":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_20260826_083322\\phase_a_baseline_v0_failures.csv",
+                         "raw_jsonl":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_20260826_083322\\phase_a_baseline_v0_raw.jsonl",
+                         "warnings":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_20260826_083322\\phase_a_baseline_v0_data_quality_warnings.txt"
+                     }
+}

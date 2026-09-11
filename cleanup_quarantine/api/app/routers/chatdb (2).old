@@ -1,0 +1,51 @@
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from ..db import engine
+
+router = APIRouter(prefix="/chatdb", tags=["chatdb"])
+
+ALLOWED_PREFIXES = ("select", "with")  # CTE's zijn toegestaan
+BLOCKED_KEYWORDS = (
+    "drop", "truncate", "delete", "update", "insert", "alter", "create",
+    "grant", "revoke", "execute", "copy", "attach", "vacuum"
+)
+
+class QueryIn(BaseModel):
+    sql: str = Field(..., description="Alleen veilige SELECT/CTE queries.")
+    max_rows: int = Field(500, ge=1, le=5000, description="Hard cap op # rijen.")
+    timeout_ms: int = Field(6000, ge=100, le=30000, description="Statement timeout (ms).")
+
+def _validate_sql(sql: str):
+    s = sql.strip().lower()
+    if not s.startswith(ALLOWED_PREFIXES):
+        raise HTTPException(status_code=400, detail="Alleen SELECT/CTE queries zijn toegestaan.")
+    for kw in BLOCKED_KEYWORDS:
+        if f" {kw} " in f" {s} ":
+            raise HTTPException(status_code=400, detail=f"Keyword '{kw}' is niet toegestaan.")
+    # Optioneel: beperk tot whitelisted tabellen
+    # (voorbeeld) alleen query op deze tabellen
+    allowed_tables = {"machines", "inspecties", "onderdelen", "afwijkingen", "acties"}
+    for t in allowed_tables:
+        pass  # laat we het simpel houden; evt. regex op FROM/JOIN voor hardere checks
+    return True
+
+@router.post("/sql")
+def run_sql(query: QueryIn):
+    _validate_sql(query.sql)
+
+    # Apply veilige limieten: statement_timeout + row limit
+    # Postgres: SET LOCAL statement_timeout = X; en wrap de query in outer SELECT LIMIT
+    safe_sql = f"SET LOCAL statement_timeout = {query.timeout_ms}; {query.sql}"
+    limit_clause = " limit " not in query.sql.lower()
+    if limit_clause:
+        safe_sql += f" LIMIT {query.max_rows}"
+
+    try:
+        with engine.connect() as conn:
+            # transaction-scoped GUC (werkt in transaction); voor eenvoud auto-commit uit laten
+            result = conn.execute(text(safe_sql))
+            rows = [dict(row._mapping) for row in result]
+            return {"rows": rows}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

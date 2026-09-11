@@ -1,0 +1,452 @@
+﻿{
+    "schema_version":  "promati.phase_b2e.execution_contract.v1",
+    "review_status":  "ACCEPTED_FOR_SHADOW_ONLY",
+    "shadow_contract_design_ready":  true,
+    "production_contract_enforcement_ready":  false,
+    "production_enforcement_blocker_count":  6,
+    "canonical_design_script":  {
+                                    "path":  "C:\\ai-platform_temp\\phase_b\\design_phase_b2e_typed_execution_contract_v1.ps1",
+                                    "sha256":  "0480A607F371505A531BC5C7A0324857A4F851965213B709159D18573640DEEB"
+                                },
+    "transport_states":  [
+                             "NOT_ATTEMPTED",
+                             "COMPLETED",
+                             "FAILED"
+                         ],
+    "semantic_outcomes":  [
+                              "SUCCESS",
+                              "CLARIFICATION_REQUIRED",
+                              "AMBIGUOUS",
+                              "CONTEXT_CONFLICT",
+                              "NOT_FOUND",
+                              "UNAVAILABLE",
+                              "REDIRECT",
+                              "ERROR",
+                              "UNKNOWN"
+                          ],
+    "fallback_policies":  [
+                              "DISABLED",
+                              "EXPLICIT",
+                              "UNRESOLVED"
+                          ],
+    "execution_request":  {
+                              "fields":  [
+                                             "contract_version:str",
+                                             "step_id:str",
+                                             "domain:str",
+                                             "action:str",
+                                             "endpoint:str",
+                                             "params:dict[str,Any]",
+                                             "required:bool",
+                                             "timeout_seconds:float",
+                                             "retry_count:int",
+                                             "fallback_policy:FallbackPolicy",
+                                             "legacy_fallback_allowed:bool|None"
+                                         ],
+                              "timeout_default_seconds":  30,
+                              "retry_count_current":  0
+                          },
+    "execution_result":  {
+                             "fields":  [
+                                            "contract_version:str",
+                                            "step_id:str",
+                                            "action:str",
+                                            "domain:str",
+                                            "endpoint:str",
+                                            "transport_state:ExecutionTransportState",
+                                            "semantic_outcome:ExecutionOutcome",
+                                            "specialist_status:str|None",
+                                            "legacy_accepted:bool",
+                                            "result:dict[str,Any]",
+                                            "error:str|None",
+                                            "attempt_count:int",
+                                            "duration_ms:int|None",
+                                            "evidence_metadata:dict[str,Any]|None",
+                                            "provenance_metadata:dict[str,Any]|None"
+                                        ]
+                         },
+    "backward_compatibility_rules":  [
+                                         "KEEP_CURRENT_EXECUTOR_WRAPPER_UNCHANGED_DURING_SHADOW",
+                                         "PRESERVE_LEGACY_ACCEPTED_BOOLEAN",
+                                         "PRESERVE_RAW_SPECIALIST_RESULT",
+                                         "PRESERVE_RAW_SPECIALIST_STATUS",
+                                         "DERIVE_SEMANTIC_OUTCOME_SEPARATELY",
+                                         "DO_NOT_USE_SEMANTIC_OUTCOME_FOR_ROUTING_IN_PHASE_B",
+                                         "DO_NOT_CHANGE_PHASE_A_QUERYPLAN",
+                                         "DO_NOT_CHANGE_SPECIALIST_HTTP_ENDPOINTS",
+                                         "DO_NOT_ENABLE_NEW_FALLBACK_BEHAVIOR",
+                                         "DO_NOT_ENABLE_RETRIES"
+                                     ],
+    "legacy_accepted_semantics":  {
+                                      "meaning":  "LEGACY_EXECUTOR_ACCEPTANCE_ONLY",
+                                      "semantic_success_equivalent":  false
+                                  },
+    "semantic_outcome_rules":  {
+                                   "ok":  "SUCCESS",
+                                   "resolved":  "SUCCESS",
+                                   "clarification_required":  "CLARIFICATION_REQUIRED",
+                                   "ambiguous":  "AMBIGUOUS",
+                                   "context_conflict":  "CONTEXT_CONFLICT",
+                                   "not_found":  "NOT_FOUND",
+                                   "unavailable":  "UNAVAILABLE",
+                                   "redirect":  "REDIRECT",
+                                   "error":  "ERROR",
+                                   "failed":  "ERROR",
+                                   "failure":  "ERROR",
+                                   "\u003cmissing_or_unknown\u003e":  "UNKNOWN"
+                               },
+    "evidence_boundary":  [
+                              "METADATA_PLACEHOLDERS_ONLY_IN_PHASE_B",
+                              "NO_EVIDENCE_QUALITY_SCORING_IN_PHASE_B",
+                              "NO_CONFIDENCE_REDESIGN_IN_PHASE_B",
+                              "NO_BOUNDED_RESEARCH_POLICY_CHANGE_IN_PHASE_B",
+                              "PHASE_C_OWNS_EVIDENCE_ASSESSMENT"
+                          ],
+    "specialists":  [
+                        {
+                            "action":  "product_assistant",
+                            "endpoint":  "/product/assistant/ask",
+                            "owner":  "routers/hybrid_api.py:product_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "q",
+                                                          "family_name",
+                                                          "family_code",
+                                                          "belt_width_mm",
+                                                          "choice_type",
+                                                          "component_group",
+                                                          "mode",
+                                                          "limit"
+                                                      ],
+                            "planner_fields":  [
+                                                   "vraag",
+                                                   "mode"
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "family_code",
+                                                    "belt_width_mm",
+                                                    "choice_type",
+                                                    "component_group",
+                                                    "mode",
+                                                    "limit"
+                                                ],
+                            "direct_planner":  "YES",
+                            "legacy_fallback_allowed":  true,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "STATIC_OBSERVED",
+                            "status_map":  {
+                                               "ok":  "SUCCESS"
+                                           }
+                        },
+                        {
+                            "action":  "analysis_assistant",
+                            "endpoint":  "/analysis/assistant/ask",
+                            "owner":  "routers/analysis_api_v10.py:analysis_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "lijn_code",
+                                                          "date_from",
+                                                          "date_to",
+                                                          "band_code",
+                                                          "scraper_type",
+                                                          "zijde",
+                                                          "scope_code",
+                                                          "scope_type",
+                                                          "area_code",
+                                                          "installation_code",
+                                                          "limit"
+                                                      ],
+                            "planner_fields":  [
+                                                   "vraag",
+                                                   "mode"
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "lijn_code",
+                                                    "band_code",
+                                                    "scraper_type",
+                                                    "zijde",
+                                                    "date_from",
+                                                    "date_to",
+                                                    "mode",
+                                                    "limit",
+                                                    "scope_code",
+                                                    "scope_type",
+                                                    "area_code",
+                                                    "installation_code"
+                                                ],
+                            "direct_planner":  "YES",
+                            "legacy_fallback_allowed":  true,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "STATIC_OBSERVED",
+                            "status_map":  {
+                                               "resolved":  "SUCCESS",
+                                               "clarification_required":  "CLARIFICATION_REQUIRED",
+                                               "ambiguous":  "AMBIGUOUS",
+                                               "context_conflict":  "CONTEXT_CONFLICT",
+                                               "not_found":  "NOT_FOUND",
+                                               "unavailable":  "UNAVAILABLE"
+                                           }
+                        },
+                        {
+                            "action":  "technical_assistant",
+                            "endpoint":  "/technical/assistant/ask",
+                            "owner":  "routers/hybrid_api.py:technical_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "q",
+                                                          "topic_group",
+                                                          "source_code",
+                                                          "item_type",
+                                                          "use_rag",
+                                                          "limit"
+                                                      ],
+                            "planner_fields":  [
+                                                   "vraag",
+                                                   "use_rag"
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "topic_group",
+                                                    "source_code",
+                                                    "item_type",
+                                                    "use_rag",
+                                                    "limit"
+                                                ],
+                            "direct_planner":  "YES",
+                            "legacy_fallback_allowed":  true,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "STATIC_OBSERVED",
+                            "status_map":  {
+                                               "ok":  "SUCCESS",
+                                               "redirect":  "REDIRECT"
+                                           }
+                        },
+                        {
+                            "action":  "rfq_assistant",
+                            "endpoint":  "/rfq/assistant/ask",
+                            "owner":  "routers/hybrid_api.py:rfq_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "q",
+                                                          "rfq_id",
+                                                          "position_id",
+                                                          "product_type",
+                                                          "bearing_type",
+                                                          "rubber_material",
+                                                          "language",
+                                                          "mode",
+                                                          "limit"
+                                                      ],
+                            "planner_fields":  [
+
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "rfq_id",
+                                                    "position_id",
+                                                    "product_type",
+                                                    "bearing_type",
+                                                    "rubber_material",
+                                                    "language",
+                                                    "mode",
+                                                    "limit"
+                                                ],
+                            "direct_planner":  "NO_UNRESOLVED_INTENT",
+                            "legacy_fallback_allowed":  null,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "STATIC_PARTIAL_ERROR_ONLY",
+                            "status_map":  {
+                                               "error":  "ERROR",
+                                               "\u003cother\u003e":  "UNKNOWN"
+                                           }
+                        },
+                        {
+                            "action":  "org_assistant",
+                            "endpoint":  "/org/assistant/ask",
+                            "owner":  "routers/hybrid_api.py:org_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "firma",
+                                                          "locatie",
+                                                          "afdeling",
+                                                          "mode"
+                                                      ],
+                            "planner_fields":  [
+                                                   "vraag",
+                                                   "firma",
+                                                   "mode"
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "firma",
+                                                    "locatie",
+                                                    "afdeling",
+                                                    "mode"
+                                                ],
+                            "direct_planner":  "YES",
+                            "legacy_fallback_allowed":  true,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "DELEGATED_NO_STATIC_STATUS",
+                            "status_map":  {
+                                               "\u003cunknown\u003e":  "UNKNOWN"
+                                           }
+                        },
+                        {
+                            "action":  "diagnostics_assistant",
+                            "endpoint":  "/diagnostics/assistant/ask",
+                            "owner":  "routers/hybrid_api.py:diagnostics_assistant_ask",
+                            "required_fields":  [
+                                                    "vraag"
+                                                ],
+                            "accepted_input_fields":  [
+                                                          "vraag",
+                                                          "domain",
+                                                          "mode",
+                                                          "objects",
+                                                          "inspection_key",
+                                                          "lijn_code",
+                                                          "band_code",
+                                                          "source_file_contains",
+                                                          "sheet",
+                                                          "diagnosis_code",
+                                                          "filters",
+                                                          "depth",
+                                                          "limit"
+                                                      ],
+                            "planner_fields":  [
+                                                   "vraag",
+                                                   "domain",
+                                                   "mode",
+                                                   "depth",
+                                                   "limit"
+                                               ],
+                            "research_fields":  [
+                                                    "vraag",
+                                                    "domain",
+                                                    "mode",
+                                                    "inspection_key",
+                                                    "lijn_code",
+                                                    "band_code",
+                                                    "source_file_contains",
+                                                    "sheet",
+                                                    "diagnosis_code",
+                                                    "depth",
+                                                    "limit"
+                                                ],
+                            "direct_planner":  "YES",
+                            "legacy_fallback_allowed":  true,
+                            "fallback_policy":  "UNRESOLVED",
+                            "status_contract_state":  "DELEGATED_DYNAMIC_STATUS",
+                            "status_map":  {
+                                               "\u003cunknown\u003e":  "UNKNOWN"
+                                           }
+                        }
+                    ],
+    "design_gates":  [
+                         {
+                             "name":  "ANALYSIS_MODE_SCHEMA_DRIFT",
+                             "classification":  "PROVEN",
+                             "enforcement_blocker":  true,
+                             "note":  "planner/research include mode; request schema does not"
+                         },
+                         {
+                             "name":  "ANALYSIS_MODE_RUNTIME_EFFECT",
+                             "classification":  "UNKNOWN",
+                             "enforcement_blocker":  true,
+                             "note":  "extra policy not statically declared"
+                         },
+                         {
+                             "name":  "RFQ_DIRECT_PLANNER_CAPABILITY_ASYMMETRY",
+                             "classification":  "PROVEN",
+                             "enforcement_blocker":  false,
+                             "note":  "active handler plus research capability, no direct planner step"
+                         },
+                         {
+                             "name":  "RFQ_DIRECT_PLANNER_ABSENCE_INTENTIONALITY",
+                             "classification":  "UNKNOWN",
+                             "enforcement_blocker":  true,
+                             "note":  "do not add RFQ planner step without separate decision"
+                         },
+                         {
+                             "name":  "EXECUTOR_SEMANTIC_ACCEPTANCE_FLATTENING",
+                             "classification":  "PROVEN",
+                             "enforcement_blocker":  false,
+                             "note":  "shadow outcome may be added without changing legacy accepted"
+                         },
+                         {
+                             "name":  "ORG_DELEGATED_OUTPUT_OWNERSHIP",
+                             "classification":  "PROVEN",
+                             "enforcement_blocker":  false,
+                             "note":  "delegates uniquely to /rag/query"
+                         },
+                         {
+                             "name":  "DIAGNOSTICS_DELEGATED_OUTPUT_OWNERSHIP",
+                             "classification":  "PROVEN",
+                             "enforcement_blocker":  false,
+                             "note":  "delegates uniquely to /diagnostics/analyze"
+                         },
+                         {
+                             "name":  "ORG_DIAGNOSTICS_STATUS_TAXONOMY",
+                             "classification":  "PARTIAL",
+                             "enforcement_blocker":  true,
+                             "note":  "owners proven; complete semantic status schema not proven"
+                         },
+                         {
+                             "name":  "RFQ_SUCCESS_STATUS_TAXONOMY",
+                             "classification":  "PARTIAL",
+                             "enforcement_blocker":  true,
+                             "note":  "static handler audit exposed error only"
+                         },
+                         {
+                             "name":  "FALLBACK_RUNTIME_CONTRACT",
+                             "classification":  "UNKNOWN",
+                             "enforcement_blocker":  true,
+                             "note":  "legacy planner flag exists; executor fallback execution not proven"
+                         }
+                     ],
+    "permitted_next_production_scope":  [
+                                            "ADD_TYPES",
+                                            "ADD_SPECIALIST_REGISTRY",
+                                            "ADD_TYPED_RESULT_SHADOW_DERIVATION",
+                                            "ADD_SHADOW_COMPARISON_TESTS"
+                                        ],
+    "forbidden_next_production_scope":  [
+                                            "NO_PHASE_A_ROUTER_CHANGE",
+                                            "NO_QUERYPLAN_BEHAVIOR_CHANGE",
+                                            "NO_SPECIALIST_ENDPOINT_CHANGE",
+                                            "NO_SPECIALIST_REQUEST_BEHAVIOR_CHANGE",
+                                            "NO_SPECIALIST_RESULT_ENFORCEMENT",
+                                            "NO_FALLBACK_BEHAVIOR_CHANGE",
+                                            "NO_RETRY_BEHAVIOR_CHANGE",
+                                            "NO_PHASE_C_EVIDENCE_ASSESSMENT",
+                                            "NO_CONFIDENCE_REDESIGN",
+                                            "NO_RFQ_PLANNER_CAPABILITY_ADDITION",
+                                            "NO_ANALYSIS_MODE_FIX_WITHOUT_SEPARATE_DECISION"
+                                        ],
+    "implementation_sequence":  [
+                                    "ADD_TYPES_AND_REGISTRY_ONLY",
+                                    "DERIVE_TYPED_RESULT_IN_SHADOW",
+                                    "COMPARE_TYPED_SHADOW_WITH_LEGACY_WRAPPER",
+                                    "ADD_CONTRACT_TESTS",
+                                    "RESOLVE_UNKNOWN_GATES",
+                                    "ONLY_THEN_CONSIDER_ENFORCEMENT"
+                                ],
+    "next_step_candidate":  "READ_ONLY_B3A_TYPES_REGISTRY_SHADOW_IMPLEMENTATION_PLAN"
+}

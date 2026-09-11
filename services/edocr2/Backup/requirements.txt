@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+minio==7.2.12
+python-multipart
+pydantic
+httpx
+boto3
+psycopg[binary]
+qdrant-client
+pillow
+pypdf
+pdf2image
+pytesseract

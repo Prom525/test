@@ -1,0 +1,5120 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Promati GPT Core API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev"
+    }
+  ],
+  "paths": {
+    "/analysis/dataset/summary": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Dataset Summary",
+        "operationId": "get_dataset_summary_analysis_dataset_summary_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/band/{band_code}/diagnose": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Diagnose",
+        "operationId": "get_band_diagnose_analysis_band__band_code__diagnose_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "include_points",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Points"
+            }
+          },
+          {
+            "name": "include_inspecties",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inspecties"
+            }
+          },
+          {
+            "name": "include_all_cycles",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include All Cycles"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/inspection-summary": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Inspection Summary",
+        "operationId": "get_inspection_summary_analysis_inspection_summary_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "min_meshoogte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Meshoogte"
+            }
+          },
+          {
+            "name": "only_replacement",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Replacement"
+            }
+          },
+          {
+            "name": "only_opmerkingen",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Opmerkingen"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/inspection/latest-v2": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Latest Inspections V2",
+        "operationId": "get_latest_inspections_v2_analysis_inspection_latest_v2_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/dataset/full": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Full Dataset",
+        "operationId": "get_full_dataset_analysis_dataset_full_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "scraper_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scraper Type"
+            }
+          },
+          {
+            "name": "record_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "POSITION",
+                    "OBSERVATION"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Record Type"
+            }
+          },
+          {
+            "name": "data_quality_flag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Quality Flag"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/word/config": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Word Config Endpoint",
+        "operationId": "get_word_config_endpoint_analysis_word_config_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/band/{band_code}/word-config": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Word Config Endpoint",
+        "operationId": "get_band_word_config_endpoint_analysis_band__band_code__word_config_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/band/{band_code}/performance-v1": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Performance V1",
+        "operationId": "get_band_performance_v1_analysis_band__band_code__performance_v1_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/band/{band_code}/analysis-v7": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Analysis V7",
+        "operationId": "get_band_analysis_v7_analysis_band__band_code__analysis_v7_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/location/{locatie_code}/performance-v1": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Location Performance V1",
+        "operationId": "get_location_performance_v1_analysis_location__locatie_code__performance_v1_get",
+        "parameters": [
+          {
+            "name": "locatie_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Locatie Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/scraper/{scraper_type}/performance-v1": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Scraper Performance V1",
+        "operationId": "get_scraper_performance_v1_analysis_scraper__scraper_type__performance_v1_get",
+        "parameters": [
+          {
+            "name": "scraper_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scraper Type"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/mes/latest": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Meshoogte Latest",
+        "operationId": "get_meshoogte_latest_analysis_mes_latest_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "scraper_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scraper Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/mes/lifecycle": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Mes Lifecycle",
+        "operationId": "get_mes_lifecycle_analysis_mes_lifecycle_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "scraper_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scraper Type"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/mes/forecast-3mm": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Mes Forecast 3Mm",
+        "operationId": "get_mes_forecast_3mm_analysis_mes_forecast_3mm_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "scraper_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scraper Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/replacement/advice": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Replacement Advice",
+        "operationId": "get_replacement_advice_analysis_replacement_advice_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/maintenance/positions": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Maintenance Positions",
+        "operationId": "get_maintenance_positions_analysis_maintenance_positions_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/maintenance/planning": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Maintenance Planning",
+        "operationId": "get_maintenance_planning_analysis_maintenance_planning_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/monteurs/performance": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Monteur Performance",
+        "operationId": "get_monteur_performance_analysis_monteurs_performance_get",
+        "parameters": [
+          {
+            "name": "monteur",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Monteur"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "min_inspecties",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 3,
+              "title": "Min Inspecties"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/monteurs/{monteur}/findings": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Monteur Findings",
+        "operationId": "get_monteur_findings_analysis_monteurs__monteur__findings_get",
+        "parameters": [
+          {
+            "name": "monteur",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Monteur"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "only_problems",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Problems"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/monteurs/{monteur}/top-problemen": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Monteur Top Problemen",
+        "operationId": "get_monteur_top_problemen_analysis_monteurs__monteur__top_problemen_get",
+        "parameters": [
+          {
+            "name": "monteur",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Monteur"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/banden/scraper-status": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Scraper Status",
+        "operationId": "get_band_scraper_status_analysis_banden_scraper_status_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "band_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "scraper_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scraper Status"
+            }
+          },
+          {
+            "name": "only_without_scrapers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Without Scrapers"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/banden/{band_code}/scrapers": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Band Scrapers",
+        "operationId": "get_band_scrapers_analysis_banden__band_code__scrapers_get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "only_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Only Active"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/lijnen/{lijn_code}/bands": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Line Band Scrapers",
+        "operationId": "get_line_band_scrapers_analysis_lijnen__lijn_code__bands_get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/products": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "List Products",
+        "description": "Productlijst uit scraper_product.\nFilter optioneel op slot via allowed_slots.",
+        "operationId": "list_products_products_get",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter op allowed slot: primary, secondary, tertiary",
+              "title": "Slot"
+            },
+            "description": "Filter op allowed slot: primary, secondary, tertiary"
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/products/slots": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "List Slots",
+        "description": "Laat alle unieke allowed slots zien die in scraper_product voorkomen.\nHandig om te controleren welke filters geldig zijn.",
+        "operationId": "list_slots_products_slots_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/products/{product_id}": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Get Product",
+        "operationId": "get_product_products__product_id__get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/products/by-model/{model}": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Get Product By Model",
+        "operationId": "get_product_by_model_products_by_model__model__get",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/scrapers/catalog": {
+      "get": {
+        "tags": [
+          "scrapers"
+        ],
+        "summary": "Scraper Catalog",
+        "operationId": "scraper_catalog_scrapers_catalog_get",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot"
+            }
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/inspecties": {
+      "get": {
+        "tags": [
+          "inspecties"
+        ],
+        "summary": "List Inspecties",
+        "description": "Laatste inspecties (zoals in sb_inspections_v0).",
+        "operationId": "list_inspecties_inspecties_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Inspecties Inspecties Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/inspecties/stats/per-jaar": {
+      "get": {
+        "tags": [
+          "inspecties"
+        ],
+        "summary": "Stats Per Jaar",
+        "description": "Aantal inspecties per jaar.",
+        "operationId": "stats_per_jaar_inspecties_stats_per_jaar_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Stats Per Jaar Inspecties Stats Per Jaar Get"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/inspecties/stats/per-maand": {
+      "get": {
+        "tags": [
+          "inspecties"
+        ],
+        "summary": "Stats Per Maand",
+        "description": "Aantal inspecties per maand (jaar+maand).",
+        "operationId": "stats_per_maand_inspecties_stats_per_maand_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Stats Per Maand Inspecties Stats Per Maand Get"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/inspecties/stats/top-lijnen": {
+      "get": {
+        "tags": [
+          "inspecties"
+        ],
+        "summary": "Stats Top Lijnen",
+        "description": "Top lijnen op aantal inspecties.",
+        "operationId": "stats_top_lijnen_inspecties_stats_top_lijnen_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Stats Top Lijnen Inspecties Stats Top Lijnen Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/{rfq_id}/positions/{position_id}": {
+      "get": {
+        "tags": [
+          "gpt-context"
+        ],
+        "summary": "Get Rfq Position Gpt Context",
+        "operationId": "get_rfq_position_gpt_context_analysis_context_rfq__rfq_id__positions__position_id__get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/{rfq_id}/positions/{position_id}/engineering-review": {
+      "get": {
+        "tags": [
+          "gpt-context"
+        ],
+        "summary": "Get Rfq Position Engineering Review",
+        "operationId": "get_rfq_position_engineering_review_analysis_context_rfq__rfq_id__positions__position_id__engineering_review_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Rfq Positions",
+        "operationId": "get_rfq_positions_analysis_rfq__rfq_id__positions_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/suppliers": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "List Suppliers",
+        "operationId": "list_suppliers_analysis_rfq_suppliers_get",
+        "parameters": [
+          {
+            "name": "route",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Route"
+            }
+          },
+          {
+            "name": "product_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Type"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/supplier-routing": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Supplier Routing For Rfq",
+        "operationId": "supplier_routing_for_rfq_analysis_rfq__rfq_id__supplier_routing_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "default": 3,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/supplier-comparison": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Supplier Comparison For Rfq",
+        "operationId": "supplier_comparison_for_rfq_analysis_rfq__rfq_id__supplier_comparison_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/suppliers/kpi": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Supplier Kpi",
+        "operationId": "supplier_kpi_analysis_rfq_suppliers_kpi_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/list": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "List Rfqs",
+        "operationId": "list_rfqs_analysis_rfq_list_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/timeline": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Rfq Timeline",
+        "operationId": "rfq_timeline_analysis_rfq__rfq_id__timeline_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Rfq",
+        "operationId": "get_rfq_analysis_rfq__rfq_id__get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions/{position_id}/datasheet": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Rfq Position Datasheet",
+        "operationId": "get_rfq_position_datasheet_analysis_rfq__rfq_id__positions__position_id__datasheet_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          },
+          {
+            "name": "commercial_approved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Commercial Approved"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf-url": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Rfq Position Datasheet Pdf Url",
+        "operationId": "get_rfq_position_datasheet_pdf_url_analysis_rfq__rfq_id__positions__position_id__datasheet_pdf_url_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/artifacts": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "List Rfq Artifacts",
+        "operationId": "list_rfq_artifacts_analysis_rfq__rfq_id__artifacts_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/pdf/list": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "List Rfq Pdfs",
+        "operationId": "list_rfq_pdfs_analysis_rfq__rfq_id__pdf_list_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions/{position_id}/technical-review": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Technical Review Rfq Position",
+        "operationId": "technical_review_rfq_position_analysis_rfq__rfq_id__positions__position_id__technical_review_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/supplier-rfqs": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Supplier Rfqs",
+        "operationId": "get_supplier_rfqs_analysis_rfq__rfq_id__supplier_rfqs_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions/{position_id}/documents/status": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "Get Position Documents Status",
+        "operationId": "get_position_documents_status_analysis_rfq__rfq_id__positions__position_id__documents_status_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/rfq/{rfq_id}/positions/{position_id}/documents": {
+      "get": {
+        "tags": [
+          "rfq"
+        ],
+        "summary": "List Position Documents",
+        "operationId": "list_position_documents_analysis_rfq__rfq_id__positions__position_id__documents_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/health": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Health",
+        "operationId": "diagnostics_health_diagnostics_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/modules": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Modules",
+        "operationId": "diagnostics_modules_diagnostics_modules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/tables": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Tables",
+        "operationId": "diagnostics_database_tables_diagnostics_database_tables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/views": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Views",
+        "operationId": "diagnostics_database_views_diagnostics_database_views_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/summary": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Summary",
+        "operationId": "diagnostics_database_summary_diagnostics_database_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/domain/inspections/core": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Domain Inspections Core",
+        "operationId": "diagnostics_database_domain_inspections_core_diagnostics_database_domain_inspections_core_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/domain/rfq/core": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Domain Rfq Core",
+        "operationId": "diagnostics_database_domain_rfq_core_diagnostics_database_domain_rfq_core_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/database/domain/crm/core": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Database Domain Crm Core",
+        "operationId": "diagnostics_database_domain_crm_core_diagnostics_database_domain_crm_core_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/overview": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Overview",
+        "operationId": "diagnostics_overview_diagnostics_overview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/database/catalog": {
+      "get": {
+        "tags": [
+          "database-context"
+        ],
+        "summary": "Get Database Catalog",
+        "operationId": "get_database_catalog_analysis_context_database_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/database/table/{schema}/{table}": {
+      "get": {
+        "tags": [
+          "database-context"
+        ],
+        "summary": "Get Database Table Sample",
+        "operationId": "get_database_table_sample_analysis_context_database_table__schema___table__get",
+        "parameters": [
+          {
+            "name": "schema",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Table"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApplyFromItemsOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "inspections_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspections Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ApplyFromItemsOut"
+      },
+      "ApplyOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated"
+          },
+          "inspections_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspections Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ApplyOut"
+      },
+      "AssistantAskRequest": {
+        "properties": {
+          "vraag": {
+            "type": "string",
+            "title": "Vraag"
+          },
+          "lijn_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lijn Code"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "band_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Code"
+          },
+          "scraper_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scraper Type"
+          },
+          "zijde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zijde"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 20
+          }
+        },
+        "type": "object",
+        "required": [
+          "vraag"
+        ],
+        "title": "AssistantAskRequest"
+      },
+      "BerekeningRunIn": {
+        "properties": {
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params",
+            "description": "Vrije parameters voor de berekening"
+          },
+          "calc_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calc Name",
+            "description": "Optionele naam van de berekening"
+          }
+        },
+        "type": "object",
+        "required": [
+          "params"
+        ],
+        "title": "BerekeningRunIn",
+        "description": "Wrapper zodat OpenAPI een object schema met properties heeft\n(Actions vindt 'dict' zonder properties te vaag)."
+      },
+      "Body_assistant_upload_drawing_rfq_analysis_rfq_assistant_upload_drawing_rfq_post": {
+        "properties": {
+          "odoo_reference": {
+            "type": "string",
+            "title": "Odoo Reference"
+          },
+          "customer_name_internal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name Internal"
+          },
+          "verkoper": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verkoper"
+          },
+          "request_type": {
+            "type": "string",
+            "title": "Request Type",
+            "default": "Trommels en rollen aanvraag"
+          },
+          "drawing_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Reference"
+          },
+          "drawing_file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Drawing File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "odoo_reference",
+          "drawing_file"
+        ],
+        "title": "Body_assistant_upload_drawing_rfq_analysis_rfq_assistant_upload_drawing_rfq_post"
+      },
+      "Body_create_rfq_position_from_drawing_analysis_rfq__rfq_id__positions_from_drawing_post": {
+        "properties": {
+          "product_type": {
+            "type": "string",
+            "title": "Product Type",
+            "default": "TROMMEL"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "default": 1
+          },
+          "drawing": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Drawing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "drawing"
+        ],
+        "title": "Body_create_rfq_position_from_drawing_analysis_rfq__rfq_id__positions_from_drawing_post"
+      },
+      "Body_rag_ingest_file_rag_ingest_file_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "title": "Chunk Size",
+            "default": 1200
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "title": "Chunk Overlap",
+            "default": 200
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_rag_ingest_file_rag_ingest_file_post"
+      },
+      "Body_upload_position_document_analysis_rfq__rfq_id__positions__position_id__documents_post": {
+        "properties": {
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "uploaded_by": {
+            "type": "string",
+            "title": "Uploaded By",
+            "default": "John"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_type",
+          "file"
+        ],
+        "title": "Body_upload_position_document_analysis_rfq__rfq_id__positions__position_id__documents_post"
+      },
+      "CalendarLineMappingBulkIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarLineMappingIn"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "CalendarLineMappingBulkIn",
+        "description": "Wrapper zodat request body een object is (Actions kan slecht overweg met 'array as root')."
+      },
+      "CalendarLineMappingIn": {
+        "properties": {
+          "line_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Line Name",
+            "description": "Line naam zoals in sb_maintenance_calendar_v0.line_name"
+          },
+          "lijn_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Lijn Code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_name",
+          "lijn_code"
+        ],
+        "title": "CalendarLineMappingIn"
+      },
+      "CalendarLineMappingOut": {
+        "properties": {
+          "line_name": {
+            "type": "string",
+            "title": "Line Name"
+          },
+          "lijn_code": {
+            "type": "string",
+            "title": "Lijn Code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_name",
+          "lijn_code"
+        ],
+        "title": "CalendarLineMappingOut"
+      },
+      "CalendarLineSuggestionOut": {
+        "properties": {
+          "line_name": {
+            "type": "string",
+            "title": "Line Name"
+          },
+          "cells": {
+            "type": "integer",
+            "title": "Cells"
+          },
+          "performed_cells": {
+            "type": "integer",
+            "title": "Performed Cells"
+          },
+          "blocked_cells": {
+            "type": "integer",
+            "title": "Blocked Cells"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_name",
+          "cells",
+          "performed_cells",
+          "blocked_cells"
+        ],
+        "title": "CalendarLineSuggestionOut"
+      },
+      "CanonicalApproveIn": {
+        "properties": {
+          "approved_by": {
+            "type": "string",
+            "title": "Approved By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved_by"
+        ],
+        "title": "CanonicalApproveIn"
+      },
+      "CanonicalModelIn": {
+        "properties": {
+          "customer_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Customer Context"
+          },
+          "conveyor_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Conveyor Data"
+          },
+          "engineering_requirements": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Engineering Requirements"
+          },
+          "documentation_requirements": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Documentation Requirements"
+          },
+          "commercial_strategy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Commercial Strategy"
+          },
+          "supplier_strategy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Supplier Strategy"
+          },
+          "position_summary": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Position Summary"
+          },
+          "missing_data": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Data"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "CanonicalModelIn"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LijnMappingBulkIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LijnMappingIn"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "LijnMappingBulkIn",
+        "description": "Wrapper zodat request body een object is (Actions kan slecht overweg met 'array as root')."
+      },
+      "LijnMappingIn": {
+        "properties": {
+          "source_file": {
+            "type": "string",
+            "minLength": 3,
+            "title": "Source File",
+            "description": "Volledig pad (zoals in DB opgeslagen). Let op: exact match vereist."
+          },
+          "lijn_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Lijn Code",
+            "description": "Doel lijn_code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Optionele toelichting"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_file",
+          "lijn_code"
+        ],
+        "title": "LijnMappingIn"
+      },
+      "LijnMappingOut": {
+        "properties": {
+          "source_file": {
+            "type": "string",
+            "title": "Source File"
+          },
+          "lijn_code": {
+            "type": "string",
+            "title": "Lijn Code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_file",
+          "lijn_code"
+        ],
+        "title": "LijnMappingOut"
+      },
+      "MachineIn": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "serienummer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serienummer"
+          },
+          "locatie": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locatie"
+          },
+          "installatiedatum": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installatiedatum"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "MachineIn"
+      },
+      "MachineOut": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "serienummer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serienummer"
+          },
+          "locatie": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locatie"
+          },
+          "installatiedatum": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installatiedatum"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "machine_id": {
+            "type": "integer",
+            "title": "Machine Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "machine_id"
+        ],
+        "title": "MachineOut"
+      },
+      "QueryIn": {
+        "properties": {
+          "sql": {
+            "type": "string",
+            "title": "Sql"
+          },
+          "max_rows": {
+            "type": "integer",
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Max Rows",
+            "default": 500
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "maximum": 30000.0,
+            "minimum": 100.0,
+            "title": "Timeout Ms",
+            "default": 6000
+          }
+        },
+        "type": "object",
+        "required": [
+          "sql"
+        ],
+        "title": "QueryIn"
+      },
+      "RAGIngest": {
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "title": "Chunk Size",
+            "default": 1200
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "title": "Chunk Overlap",
+            "default": 200
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "text"
+        ],
+        "title": "RAGIngest"
+      },
+      "RAGQuery": {
+        "properties": {
+          "vraag": {
+            "type": "string",
+            "title": "Vraag"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K",
+            "default": 5
+          },
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id"
+          },
+          "doc_id_contains": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id Contains"
+          },
+          "doc_id_not_contains": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id Not Contains"
+          },
+          "answer_mode": {
+            "type": "string",
+            "enum": [
+              "extractive",
+              "llm"
+            ],
+            "title": "Answer Mode",
+            "default": "extractive"
+          },
+          "use_mmr": {
+            "type": "boolean",
+            "title": "Use Mmr",
+            "default": true
+          },
+          "rerank_candidates": {
+            "type": "integer",
+            "title": "Rerank Candidates",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "vraag"
+        ],
+        "title": "RAGQuery"
+      },
+      "RecommendationIn": {
+        "properties": {
+          "slots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Slots",
+            "description": "bijv ['primary'] of ['primary','secondary']"
+          },
+          "belt_speed": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Belt Speed"
+          },
+          "material": {
+            "type": "string",
+            "title": "Material",
+            "description": "dry | wet | sticky | dusty"
+          },
+          "critical": {
+            "type": "boolean",
+            "title": "Critical",
+            "default": false
+          },
+          "carryback_risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carryback Risk",
+            "description": "low | medium | high"
+          },
+          "headroom": {
+            "type": "boolean",
+            "title": "Headroom",
+            "default": true
+          },
+          "existing_cleaners": {
+            "type": "integer",
+            "title": "Existing Cleaners",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "slots",
+          "belt_speed",
+          "material"
+        ],
+        "title": "RecommendationIn"
+      },
+      "RfqApproveIn": {
+        "properties": {
+          "approved_by": {
+            "type": "string",
+            "title": "Approved By"
+          },
+          "selected_route": {
+            "type": "string",
+            "title": "Selected Route",
+            "default": "UNDECIDED"
+          },
+          "customer_type": {
+            "type": "string",
+            "title": "Customer Type",
+            "default": "UNKNOWN"
+          },
+          "user_override": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User Override"
+          },
+          "final_decision": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Final Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved_by"
+        ],
+        "title": "RfqApproveIn"
+      },
+      "RfqAssistantApproveGenerateIn": {
+        "properties": {
+          "approved_by": {
+            "type": "string",
+            "title": "Approved By"
+          },
+          "selected_route": {
+            "type": "string",
+            "title": "Selected Route",
+            "default": "OEM"
+          },
+          "customer_type": {
+            "type": "string",
+            "title": "Customer Type",
+            "default": "OEM"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/RfqPositionIn"
+            },
+            "type": "array",
+            "title": "Positions"
+          },
+          "generate_languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Generate Languages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved_by"
+        ],
+        "title": "RfqAssistantApproveGenerateIn"
+      },
+      "RfqAssistantProcessIn": {
+        "properties": {
+          "odoo_reference": {
+            "type": "string",
+            "title": "Odoo Reference"
+          },
+          "customer_name_internal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name Internal"
+          },
+          "verkoper": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verkoper"
+          },
+          "request_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Type",
+            "default": "Trommels en rollen aanvraag"
+          },
+          "drawing_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Reference"
+          },
+          "drawing_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Text"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/RfqPositionIn"
+            },
+            "type": "array",
+            "title": "Positions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "odoo_reference"
+        ],
+        "title": "RfqAssistantProcessIn"
+      },
+      "RfqPositionCreateIn": {
+        "properties": {
+          "product_type": {
+            "type": "string",
+            "title": "Product Type",
+            "default": "TROMMEL"
+          },
+          "drawing_mark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Mark"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "default": 1
+          },
+          "extracted_specs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extracted Specs"
+          }
+        },
+        "type": "object",
+        "title": "RfqPositionCreateIn"
+      },
+      "RfqPositionIn": {
+        "properties": {
+          "pos_nr": {
+            "type": "string",
+            "title": "Pos Nr"
+          },
+          "drawing_mark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Mark"
+          },
+          "product_type": {
+            "type": "string",
+            "title": "Product Type",
+            "default": "UNKNOWN"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "default": 1
+          },
+          "extracted_specs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extracted Specs"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Fields"
+          },
+          "confidence_score": {
+            "type": "number",
+            "title": "Confidence Score",
+            "default": 50
+          }
+        },
+        "type": "object",
+        "required": [
+          "pos_nr"
+        ],
+        "title": "RfqPositionIn"
+      },
+      "RfqPositionTechnicalSpecsIn": {
+        "properties": {
+          "extracted_specs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extracted Specs"
+          },
+          "missing_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Fields"
+          },
+          "confidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extracted_specs"
+        ],
+        "title": "RfqPositionTechnicalSpecsIn"
+      },
+      "RfqPositionsProposeIn": {
+        "properties": {
+          "raw_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Text"
+          },
+          "drawing_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawing Reference"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/RfqPositionIn"
+            },
+            "type": "array",
+            "title": "Positions"
+          }
+        },
+        "type": "object",
+        "title": "RfqPositionsProposeIn"
+      },
+      "RfqStartIn": {
+        "properties": {
+          "odoo_reference": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Odoo Reference"
+          },
+          "customer_name_internal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name Internal"
+          },
+          "verkoper": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verkoper"
+          },
+          "request_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Type",
+            "default": "UNKNOWN"
+          },
+          "rfq_value_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rfq Value Eur"
+          },
+          "quoted_value_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoted Value Eur"
+          },
+          "awarded_value_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awarded Value Eur"
+          },
+          "commercial_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commercial Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "odoo_reference"
+        ],
+        "title": "RfqStartIn"
+      },
+      "SuggestionOut": {
+        "properties": {
+          "source_file": {
+            "type": "string",
+            "title": "Source File"
+          },
+          "n_items_unknown": {
+            "type": "integer",
+            "title": "N Items Unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_file",
+          "n_items_unknown"
+        ],
+        "title": "SuggestionOut"
+      },
+      "SupplierEventIn": {
+        "properties": {
+          "supplier_id": {
+            "type": "string",
+            "title": "Supplier Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "event_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Note"
+          },
+          "offer_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Value"
+          },
+          "order_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Value"
+          },
+          "response_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_id",
+          "event_type"
+        ],
+        "title": "SupplierEventIn"
+      },
+      "SupplierIn": {
+        "properties": {
+          "supplier_name": {
+            "type": "string",
+            "title": "Supplier Name"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "specialties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Specialties"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_name"
+        ],
+        "title": "SupplierIn"
+      },
+      "SupplierQualificationIn": {
+        "properties": {
+          "classification": {
+            "type": "string",
+            "title": "Classification",
+            "default": "REVIEW"
+          },
+          "technical_score": {
+            "type": "number",
+            "title": "Technical Score",
+            "default": 3
+          },
+          "response_score": {
+            "type": "number",
+            "title": "Response Score",
+            "default": 3
+          },
+          "engineering_score": {
+            "type": "number",
+            "title": "Engineering Score",
+            "default": 3
+          },
+          "commercial_score": {
+            "type": "number",
+            "title": "Commercial Score",
+            "default": 3
+          },
+          "strategic_score": {
+            "type": "number",
+            "title": "Strategic Score",
+            "default": 3
+          },
+          "approved_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Approved For"
+          },
+          "blocked_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked For"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "SupplierQualificationIn"
+      },
+      "SupplierQuoteConfirmIn": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierQuoteConfirmLineIn"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "SupplierQuoteConfirmIn"
+      },
+      "SupplierQuoteConfirmLineIn": {
+        "properties": {
+          "supplier_id": {
+            "type": "string",
+            "title": "Supplier Id"
+          },
+          "position_id": {
+            "type": "string",
+            "title": "Position Id"
+          },
+          "quoted_amount": {
+            "type": "number",
+            "title": "Quoted Amount"
+          },
+          "delivery_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Time"
+          },
+          "technical_deviations": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Deviations"
+          },
+          "commercial_deviations": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commercial Deviations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_id",
+          "position_id",
+          "quoted_amount"
+        ],
+        "title": "SupplierQuoteConfirmLineIn"
+      },
+      "SupplierQuoteImportTextIn": {
+        "properties": {
+          "supplier_id": {
+            "type": "string",
+            "title": "Supplier Id"
+          },
+          "quote_text": {
+            "type": "string",
+            "title": "Quote Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_id",
+          "quote_text"
+        ],
+        "title": "SupplierQuoteImportTextIn"
+      },
+      "SupplierScoreIn": {
+        "properties": {
+          "oem_score": {
+            "type": "number",
+            "title": "Oem Score",
+            "default": 50
+          },
+          "premium_score": {
+            "type": "number",
+            "title": "Premium Score",
+            "default": 50
+          },
+          "price_score": {
+            "type": "number",
+            "title": "Price Score",
+            "default": 50
+          },
+          "delivery_score": {
+            "type": "number",
+            "title": "Delivery Score",
+            "default": 50
+          },
+          "quality_score": {
+            "type": "number",
+            "title": "Quality Score",
+            "default": 50
+          },
+          "documentation_score": {
+            "type": "number",
+            "title": "Documentation Score",
+            "default": 50
+          },
+          "response_score": {
+            "type": "number",
+            "title": "Response Score",
+            "default": 50
+          }
+        },
+        "type": "object",
+        "title": "SupplierScoreIn"
+      },
+      "SupplierSelectIn": {
+        "properties": {
+          "supplier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supplier Ids"
+          },
+          "selected_by": {
+            "type": "string",
+            "title": "Selected By"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_ids",
+          "selected_by"
+        ],
+        "title": "SupplierSelectIn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

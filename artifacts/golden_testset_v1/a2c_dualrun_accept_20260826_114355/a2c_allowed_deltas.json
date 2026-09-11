@@ -1,0 +1,42 @@
+[
+  {
+    "a2b_band": {
+      "confidence": 0.82,
+      "name": "band_code",
+      "raw_value": "al5",
+      "source": "standalone_band_pattern",
+      "value": "AL5"
+    },
+    "a2b_confidence": 0.2,
+    "a2c_band": null,
+    "a2c_confidence": 0.15,
+    "changed_paths": [
+      "confidence [CHANGED]",
+      "entities.band_code [REMOVED]"
+    ],
+    "failure_reasons": [],
+    "protected_fields_changed": [],
+    "question": "Waarom wordt AL5 als bandcode gezien?",
+    "test_id": "118"
+  },
+  {
+    "a2b_band": {
+      "confidence": 0.82,
+      "name": "band_code",
+      "raw_value": "mv1",
+      "source": "standalone_band_pattern",
+      "value": "MV1"
+    },
+    "a2b_confidence": 0.2,
+    "a2c_band": null,
+    "a2c_confidence": 0.15,
+    "changed_paths": [
+      "confidence [CHANGED]",
+      "entities.band_code [REMOVED]"
+    ],
+    "failure_reasons": [],
+    "protected_fields_changed": [],
+    "question": "Vergelijk MV1 en MV2.",
+    "test_id": "185"
+  }
+]

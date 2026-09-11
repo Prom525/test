@@ -1,0 +1,86 @@
+import json
+from typing import Any
+
+from app.orchestrator.executor import Sender, execute_plan
+from app.orchestrator.models import OrchestratorAskRequest
+from app.orchestrator.planner import build_execution_plan
+from app.orchestrator.understanding import understand_query
+
+
+def _model_to_dict(model) -> dict[str, Any]:
+    """
+    Compatibel met Pydantic v1 en v2.
+    Geeft JSON-veilige waarden terug, dus ook Enum -> string.
+    """
+    if hasattr(model, "model_dump"):
+        return model.model_dump(mode="json")
+
+    return json.loads(model.json())
+
+
+def run_orchestrator(
+    payload: OrchestratorAskRequest,
+    sender: Sender | None = None,
+) -> dict[str, Any]:
+    """
+    Centrale orchestrator-service.
+
+    Flow:
+        vraag
+        -> understanding
+        -> planning
+        -> execution
+        -> stabiele response
+
+    Deze service bevat bewust:
+    - geen FastAPI-router;
+    - geen databasecode;
+    - geen domein-SQL;
+    - geen automatische fallback-relaxation.
+
+    Die verantwoordelijkheden blijven gescheiden.
+    """
+    question = (
+        payload.q
+        if payload.q
+        else payload.vraag
+    ).strip()
+
+    plan = understand_query(question)
+    plan = build_execution_plan(plan)
+
+    results, trace = execute_plan(
+        plan,
+        sender=sender,
+    )
+
+    clarification = {
+        "required": plan.clarification_required,
+        "question": plan.clarification_question,
+    }
+
+    if plan.clarification_required:
+        status = "clarification_required"
+    elif plan.execution_steps and not any(
+        item.get("accepted") is True
+        for item in results
+    ):
+        status = "error"
+    else:
+        status = "ok"
+
+    response = {
+        "status": status,
+        "context_type": "orchestrator",
+        "question": question,
+        "query_plan": _model_to_dict(plan),
+        "clarification": clarification,
+        "results": results,
+    }
+
+    if payload.include_trace:
+        response["trace"] = _model_to_dict(trace)
+    else:
+        response["trace"] = None
+
+    return response

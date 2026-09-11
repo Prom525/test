@@ -1,0 +1,260 @@
+{
+    "schema_version":  "promati.phase_b3o.runtime_activation_freeze.v1",
+    "created_local":  "2026-08-27T10:11:30+02:00",
+    "freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b3o_runtime_activation_freeze_20260827_101130748",
+    "phase":  {
+                  "phase_a_routing_frozen":  true,
+                  "phase_a_router_source_changed":  false,
+                  "phase_a_routing_behavior_change_introduced_by_b3g":  false,
+                  "phase_a_frozen_source_hash_set_changed":  true,
+                  "phase_b_authorized_executor_supersession":  true,
+                  "historical_phase_a_freeze_rewritten":  false,
+                  "phase_b3_local_only_shadow_activation_frozen":  true,
+                  "phase_b_complete":  false,
+                  "phase_c_started":  false
+              },
+    "execution_contract":  {
+                               "mode":  "shadow_only",
+                               "typed_contract_enforcement_active":  false,
+                               "local_only_executor_shadow_active":  true,
+                               "outward_response_schema_changed_by_b3g":  false,
+                               "specialist_registry_metadata_exposed_outward":  false
+                           },
+    "executor_supersession":  {
+                                  "historical_phase_a_executor_sha256":  "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A",
+                                  "failed_b3g_stage_executor_sha256":  "ECE622F1891CBEC3E95F5B8E2DF69C3AE76F84F8BEE91B1D76D25EFC0C9BE98C",
+                                  "active_phase_b_executor_sha256":  "327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3"
+                              },
+    "runtime":  {
+                    "previous_container_id":  "0bfb36a799684e2d811e8d462d92ab7a93ae3f07acc553dfcd25f0ca7a8c4e07",
+                    "previous_image_id":  "sha256:7cd5bcdb20882ea743d237743b76a4bc5c175a743959e61bb8115e2c9c38254e",
+                    "active_container_id":  "d38b4eb814be40ac0d1f9997b81eb1d9c2bbded052972b9a6f6c741837c94b95",
+                    "active_image_id":  "sha256:ec13b5719c0f840d202e638fcb1cd002cf433e59786036352b8ab5fd1fa348f7",
+                    "active_image_ref":  "ai-platform-api",
+                    "running":  true,
+                    "restart_count":  0,
+                    "source_shadowing_mount_count":  0,
+                    "orchestrator_artifact_count":  0
+                },
+    "build_inputs":  {
+                         "compose_sha256":  "67DB02F7D52A9BAED224F3BEAF092043FCA0F5E1BB58325F08C3D2C323F8549E",
+                         "dockerfile_sha256":  "E569DF4A1A240D2D11C2E3333FEDD31102BB661763335DE560E60214C887153D",
+                         "requirements_sha256":  "FF2FCA32870E7840B2711C8A8D2FE523DFF228EFBC389EB90C661AC9F085EA76"
+                     },
+    "tests":  {
+                  "b3b1_test_count":  18,
+                  "b3b1_green_in_b3k":  true,
+                  "b3g_test_count":  6,
+                  "b3g_green_in_b3k":  true,
+                  "b3g_test_sha256":  "DB7A6843211A4BEEC79D43F172182EA313A577D963414FF6C928C4C6FA26901E"
+              },
+    "smoke":  {
+                  "capabilities":  {
+                                       "proven":  true,
+                                       "http_status":  200,
+                                       "response_sha256":  "7CD04D5D363319CB4829B59770555423D567F868F7BB2572AC271522FF6D5B2E"
+                                   },
+                  "conversational_source_contract":  {
+                                                         "proven":  true,
+                                                         "fixture":  "bedankt",
+                                                         "fixture_origin":  "frozen_source_contract",
+                                                         "frozen_test_fixture":  false,
+                                                         "http_status":  200,
+                                                         "response_sha256":  "D6E11548F142BEEFE4BE0D2CC6AE09325B494D0281DB08D51C0FD82770E70272",
+                                                         "query_class":  "conversational",
+                                                         "execution_step_count":  0,
+                                                         "trace_attempt_count":  0,
+                                                         "result_count":  0,
+                                                         "clarification_required":  false,
+                                                         "fallback_used":  false,
+                                                         "observed_answer_length":  0,
+                                                         "answer_content_contracted":  false
+                                                     },
+                  "specialist_smoke_performed":  false
+              },
+    "source_hashes":  [
+                          {
+                              "Name":  "executor.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\executor.py",
+                              "ContainerPath":  "/app/app/orchestrator/executor.py",
+                              "Hash":  "327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3",
+                              "Phase":  "B3G"
+                          },
+                          {
+                              "Name":  "execution_contracts.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\execution_contracts.py",
+                              "ContainerPath":  "/app/app/orchestrator/execution_contracts.py",
+                              "Hash":  "FF66191BAF057371A8802130AC10D5744C2C3775DC2D51362EBD2658667D660E",
+                              "Phase":  "B3B2"
+                          },
+                          {
+                              "Name":  "specialist_registry.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\specialist_registry.py",
+                              "ContainerPath":  "/app/app/orchestrator/specialist_registry.py",
+                              "Hash":  "9694B81932F41C1C5B28005D40A8A3586EBD94DFEA9B15D90A65D8086AEF9F8F",
+                              "Phase":  "B3B2"
+                          },
+                          {
+                              "Name":  "execution_shadow.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\execution_shadow.py",
+                              "ContainerPath":  "/app/app/orchestrator/execution_shadow.py",
+                              "Hash":  "F5122A5DEAB1635DD48CEE352B2BF5216DADF87CCB5D05CC26C75FFD1A311B8A",
+                              "Phase":  "B3B2"
+                          },
+                          {
+                              "Name":  "models.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\models.py",
+                              "ContainerPath":  "/app/app/orchestrator/models.py",
+                              "Hash":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "understanding.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\understanding.py",
+                              "ContainerPath":  "/app/app/orchestrator/understanding.py",
+                              "Hash":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "planner.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\planner.py",
+                              "ContainerPath":  "/app/app/orchestrator/planner.py",
+                              "Hash":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "band_candidate_shadow.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\band_candidate_shadow.py",
+                              "ContainerPath":  "/app/app/orchestrator/band_candidate_shadow.py",
+                              "Hash":  "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "query_classification.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\query_classification.py",
+                              "ContainerPath":  "/app/app/orchestrator/query_classification.py",
+                              "Hash":  "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "normalizer.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\normalizer.py",
+                              "ContainerPath":  "/app/app/orchestrator/normalizer.py",
+                              "Hash":  "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "complexity.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\complexity.py",
+                              "ContainerPath":  "/app/app/orchestrator/complexity.py",
+                              "Hash":  "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022",
+                              "Phase":  "A"
+                          },
+                          {
+                              "Name":  "service.py",
+                              "Path":  "C:\\ai-platform\\api\\app\\orchestrator\\service.py",
+                              "ContainerPath":  "/app/app/orchestrator/service.py",
+                              "Hash":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761",
+                              "Phase":  "A"
+                          }
+                      ],
+    "runtime_source_hashes":  [
+                                  {
+                                      "name":  "executor.py",
+                                      "container_path":  "/app/app/orchestrator/executor.py",
+                                      "sha256":  "327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3",
+                                      "phase":  "B3G"
+                                  },
+                                  {
+                                      "name":  "execution_contracts.py",
+                                      "container_path":  "/app/app/orchestrator/execution_contracts.py",
+                                      "sha256":  "FF66191BAF057371A8802130AC10D5744C2C3775DC2D51362EBD2658667D660E",
+                                      "phase":  "B3B2"
+                                  },
+                                  {
+                                      "name":  "specialist_registry.py",
+                                      "container_path":  "/app/app/orchestrator/specialist_registry.py",
+                                      "sha256":  "9694B81932F41C1C5B28005D40A8A3586EBD94DFEA9B15D90A65D8086AEF9F8F",
+                                      "phase":  "B3B2"
+                                  },
+                                  {
+                                      "name":  "execution_shadow.py",
+                                      "container_path":  "/app/app/orchestrator/execution_shadow.py",
+                                      "sha256":  "F5122A5DEAB1635DD48CEE352B2BF5216DADF87CCB5D05CC26C75FFD1A311B8A",
+                                      "phase":  "B3B2"
+                                  },
+                                  {
+                                      "name":  "models.py",
+                                      "container_path":  "/app/app/orchestrator/models.py",
+                                      "sha256":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "understanding.py",
+                                      "container_path":  "/app/app/orchestrator/understanding.py",
+                                      "sha256":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "planner.py",
+                                      "container_path":  "/app/app/orchestrator/planner.py",
+                                      "sha256":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "band_candidate_shadow.py",
+                                      "container_path":  "/app/app/orchestrator/band_candidate_shadow.py",
+                                      "sha256":  "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "query_classification.py",
+                                      "container_path":  "/app/app/orchestrator/query_classification.py",
+                                      "sha256":  "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "normalizer.py",
+                                      "container_path":  "/app/app/orchestrator/normalizer.py",
+                                      "sha256":  "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "complexity.py",
+                                      "container_path":  "/app/app/orchestrator/complexity.py",
+                                      "sha256":  "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022",
+                                      "phase":  "A"
+                                  },
+                                  {
+                                      "name":  "service.py",
+                                      "container_path":  "/app/app/orchestrator/service.py",
+                                      "sha256":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761",
+                                      "phase":  "A"
+                                  }
+                              ],
+    "provenance":  {
+                       "b3n3_script_sha256":  "6E8DE3EC0302101114DD172E22A466B92632CB442688302398859DB5316205B8",
+                       "b3n4_script_sha256":  "7C24A5D3E16A27F3BAE7CBF723C4D9FE07644539E7DE14BC2A03BECCC738B7D2",
+                       "b3n2b_script_sha256":  "413EB395A6AF645A70A3BBDFB8C66D0DFCE8B3499EA8A6093156D9DA67C508EE",
+                       "b3m_script_sha256":  "AA36249C94A2B4143447B10B1B54570A92C15FB4C7B95996BDB843D269C9C5D8",
+                       "b3l_script_sha256":  "018F847319FD7D828366E88814FD7431B05CC3D42955215C06DF1F8C23B16263",
+                       "b3k_script_sha256":  "1187B488821414308ED04CC4E038F75588E6D47440C86B09CF8E3DEA6C4A032A",
+                       "b3k1_script_sha256":  "471745DF98F68DC103AD7A2EE04A19C236D0152EAFFCB181B57586341D986C87",
+                       "b3j_script_sha256":  "F1DAC7158852DCC57C8549A1430AC530FC1520025479D7864311B89304A55CC0",
+                       "b3j_manifest_sha256":  "ABCD75B47B16BD3AA3119D54EF83198F51EFF42EEEB9BC2A2074BC67250F510F",
+                       "b3k1_manifest_sha256":  "52C11B6F070E98E0C7CC2DB567424D09FD719A4A0E53443D1A5B060B644F4FFD",
+                       "b3h_manifest_sha256":  "42F42C05A5AF5FC43975A8026D2309ECAE7CBEBA016C1F6989D2490B0CCA4A44"
+                   },
+    "files":  {
+                  "freeze_summary_sha256":  "2B7BC0314F4A83CEE7C724434779A784F303A24313BEF73782ED1813E40E351E",
+                  "freeze_hashes_sha256":  "6EFB13C5421C238E37001729A36D0584133246DEE3872B2F52A3AB660FA34E45"
+              },
+    "actions_during_b3o":  {
+                               "http_calls":  0,
+                               "direct_specialist_calls":  0,
+                               "rebuilds":  0,
+                               "db_commands":  0,
+                               "promati_source_writes":  0
+                           },
+    "next_step_candidate":  "B4_OR_B3P_EXECUTION_OBSERVABILITY"
+}

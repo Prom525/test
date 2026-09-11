@@ -1,0 +1,275 @@
+﻿$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+if (-not (Test-Path $ContractPath)) {
+    throw "Contract niet gevonden: $ContractPath"
+}
+
+$Tests = @(
+    Import-Csv $ContractPath |
+        ForEach-Object {
+            [pscustomobject]@{
+                test_id = $_.test_id
+                category = $_.test_category
+                question = $_.question
+                expected = (
+                    [string]$_.expected_query_class
+                ).Trim().ToLowerInvariant()
+            }
+        }
+)
+
+if ($Tests.Count -ne 200) {
+    throw "Verwacht 200 tests, gevonden: $($Tests.Count)"
+}
+
+$Payload = $Tests |
+    ConvertTo-Json `
+        -Depth 5 `
+        -Compress
+
+
+$PythonCode = @'
+import json
+import sys
+from collections import Counter, defaultdict
+
+from app.orchestrator.query_classification import classify_query
+
+
+tests = json.load(sys.stdin)
+
+results = []
+
+for item in tests:
+    actual = classify_query(
+        item["question"]
+    ).value.lower()
+
+    expected = (
+        item["expected"] or ""
+    ).strip().lower()
+
+    results.append({
+        "test_id": item["test_id"],
+        "category": item["category"],
+        "question": item["question"],
+        "expected": expected,
+        "actual": actual,
+        "pass": actual == expected,
+    })
+
+
+total = len(results)
+passed = sum(1 for r in results if r["pass"])
+
+print("==============================================")
+print(" PHASE-A A1a QUERYCLASS SHADOW EVALUATION")
+print("==============================================")
+print(f"TOTAL={total}")
+print(f"PASSED={passed}")
+print(f"FAILED={total - passed}")
+print(
+    f"ACCURACY={100.0 * passed / total:.2f}%"
+)
+
+print("")
+print("=== BY EXPECTED QUERY CLASS ===")
+
+for expected in sorted(
+    {r["expected"] for r in results}
+):
+    group = [
+        r for r in results
+        if r["expected"] == expected
+    ]
+
+    group_passed = sum(
+        1 for r in group
+        if r["pass"]
+    )
+
+    print(
+        f"{expected}: "
+        f"{group_passed}/{len(group)} "
+        f"({100.0 * group_passed / len(group):.1f}%)"
+    )
+
+
+print("")
+print("=== BY TEST CATEGORY ===")
+
+categories = sorted(
+    {r["category"] for r in results}
+)
+
+for category in categories:
+    group = [
+        r for r in results
+        if r["category"] == category
+    ]
+
+    group_passed = sum(
+        1 for r in group
+        if r["pass"]
+    )
+
+    print(
+        f"{category}: "
+        f"{group_passed}/{len(group)} "
+        f"({100.0 * group_passed / len(group):.1f}%)"
+    )
+
+
+print("")
+print("=== CONFUSION ===")
+
+confusion = Counter(
+    (r["expected"], r["actual"])
+    for r in results
+)
+
+for (expected, actual), count in sorted(
+    confusion.items(),
+    key=lambda x: (-x[1], x[0]),
+):
+    print(
+        f"{count:3d}  "
+        f"{expected} -> {actual}"
+    )
+
+
+print("")
+print("=== FAILURES ===")
+
+for r in results:
+    if r["pass"]:
+        continue
+
+    print(
+        f"[{r['test_id']}] "
+        f"{r['expected']} -> {r['actual']} | "
+        f"{r['question']}"
+    )
+'@
+
+
+$TempPython = Join-Path `
+    $env:TEMP `
+    "promati_queryclass_eval_a1a_v1_2.py"
+
+$ContainerPython = `
+    "/tmp/promati_queryclass_eval_a1a_v1_2.py"
+
+
+# ============================================================
+# Write evaluator as a real Python file
+# ============================================================
+
+Set-Content `
+    -Path $TempPython `
+    -Value $PythonCode `
+    -Encoding UTF8
+
+
+try {
+
+    # --------------------------------------------------------
+    # Local Python syntaxcheck
+    # --------------------------------------------------------
+
+    python -c `
+        "import ast,pathlib,sys; p=pathlib.Path(sys.argv[1]); ast.parse(p.read_text(encoding='utf-8-sig')); print('LOCAL_EVALUATOR_PYTHON_SYNTAX_OK')" `
+        $TempPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Lokale Python syntaxcheck mislukt."
+    }
+
+
+    # --------------------------------------------------------
+    # Copy actual .py file into container
+    # --------------------------------------------------------
+
+    $DockerTarget = (
+        "ai-platform-api-1:{0}" -f $ContainerPython
+    )
+
+    docker cp `
+        $TempPython `
+        $DockerTarget
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker cp van evaluator mislukt."
+    }
+
+
+    # --------------------------------------------------------
+    # Container syntaxcheck
+    # --------------------------------------------------------
+
+    docker exec `
+        ai-platform-api-1 `
+        python `
+        -m `
+        py_compile `
+        $ContainerPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Container Python syntaxcheck mislukt."
+    }
+
+    Write-Host `
+        "CONTAINER_EVALUATOR_PYTHON_SYNTAX_OK" `
+        -ForegroundColor Green
+
+
+    # --------------------------------------------------------
+    # QueryClass-only evaluation
+    #
+    # stdin bevat uitsluitend het JSON testcontract.
+    # Pythonbestand is nu een echt bestand, dus geen
+    # PowerShell/docker/python -c quoting meer.
+    # --------------------------------------------------------
+
+    $Payload |
+        docker exec `
+            -i `
+            ai-platform-api-1 `
+            python `
+            $ContainerPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "QueryClass evaluator mislukt."
+    }
+}
+finally {
+
+    if (Test-Path $TempPython) {
+        Remove-Item `
+            -Path $TempPython `
+            -Force
+    }
+
+    docker exec `
+        ai-platform-api-1 `
+        rm `
+        -f `
+        $ContainerPython `
+        2>$null |
+        Out-Null
+}
+
+
+Write-Host ""
+Write-Host "NO_ORCHESTRATOR_ASK_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+Write-Host `
+    "QUERYCLASS_EVALUATOR_A1A_V1_2_COMPLETE" `
+    -ForegroundColor Green

@@ -1,0 +1,20 @@
+{
+    "schema_version":  "v1",
+    "name_for_human":  "Promati Analysis Assistant",
+    "name_for_model":  "promati_analysis",
+    "description_for_human":  "Analyse van bandschrapers, configuraties, tijdlijnen, advies, forecast en GPT-ready onderhoudscontext.",
+    "description_for_model":  "Gebruik deze plugin voor bandschraper-analyse, configuratie v6/v7 advies, forecast, lijnrapportages, tijdlijnanalyse van status en meshoogte, en GPT-ready context voor onderhouds- en voorraadbeslissingen.",
+    "auth":  {
+                 "type":  "none"
+             },
+    "api":  {
+                "type":  "openapi",
+                "url":  "https://uninveighing-nguyet-hilly.ngrok-free.dev/openapi.json",
+                "is_user_authenticated":  true
+            },
+    "custom_headers":  {
+                           "ngrok-skip-browser-warning":  "true"
+                       },
+    "contact_email":  "john@promati.com",
+    "legal_info_url":  "https://uninveighing-nguyet-hilly.ngrok-free.dev/healthz"
+}

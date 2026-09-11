@@ -1,0 +1,992 @@
+import json
+import os
+from typing import Any
+
+from app.orchestrator.complexity import assess_research_requirement
+from app.orchestrator.research import run_bounded_research
+from app.orchestrator.research_runtime import run_bounded_research_agent
+from app.orchestrator.executor import Sender, execute_plan
+from app.orchestrator.models import OrchestratorAskRequest
+from app.orchestrator.planner import build_execution_plan
+from app.orchestrator.understanding import understand_query
+from app.text_encoding import repair_mojibake_text
+
+
+# PROMATI_RESEARCH_AGENT_SERVICE_GATE_6B3
+def _research_agent_enabled() -> bool:
+    raw = os.getenv(
+        "AI_RESEARCH_AGENT_ENABLED",
+        "false",
+    )
+    return str(raw).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+def _model_to_dict(model) -> dict[str, Any]:
+    """
+    Compatibel met Pydantic v1 en v2.
+    Geeft JSON-veilige waarden terug, dus ook Enum -> string.
+    """
+    if hasattr(model, "model_dump"):
+        return model.model_dump(mode="json")
+
+    return json.loads(model.json())
+
+
+
+def _display_name_code(
+    name: Any,
+    code: Any,
+) -> str:
+    name_text = (
+        str(name).strip()
+        if name is not None
+        else ""
+    )
+    code_text = (
+        str(code).strip()
+        if code is not None
+        else ""
+    )
+
+    if name_text and code_text:
+        if name_text.upper() == code_text.upper():
+            return name_text
+
+        return f"{name_text} ({code_text})"
+
+    if name_text:
+        return name_text
+
+    if code_text:
+        return code_text
+
+    return "onbekend"
+
+
+def _format_quantity(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value)
+
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+
+    return str(value)
+
+
+def _build_product_article_lines(
+    specialist_result: dict[str, Any],
+    *,
+    include_inventory: bool,
+    include_price: bool,
+) -> list[str]:
+    """
+    Bouwt brongebonden artikelinformatie uit config_options.
+
+    Er worden geen voorraad- of prijswaarden uit RAG afgeleid.
+    Alleen concrete specialistvelden worden gepresenteerd.
+    """
+    config_options = specialist_result.get("config_options")
+
+    if not isinstance(config_options, dict):
+        return []
+
+    rows = config_options.get("results")
+
+    if not isinstance(rows, list) or not rows:
+        return []
+
+    lines = ["Actuele artikelinformatie:"]
+    seen: set[str] = set()
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        internal_ref = str(row.get("internal_ref") or "").strip()
+        product_name = str(row.get("product_name") or "").strip()
+        option_value = str(row.get("option_value") or "").strip()
+        component_group = str(row.get("component_group") or "").strip()
+
+        dedupe_key = internal_ref or "|".join(
+            [product_name, option_value, component_group]
+        )
+
+        if dedupe_key in seen:
+            continue
+
+        seen.add(dedupe_key)
+
+        details: list[str] = []
+
+        if include_inventory:
+            available_qty = row.get("available_qty")
+            expected_qty = row.get("expected_qty")
+            uom = str(row.get("uom") or "stuks").strip()
+
+            if available_qty is not None:
+                details.append(
+                    "voorraad: "
+                    f"{_format_quantity(available_qty)} {uom}"
+                )
+
+            if (
+                isinstance(expected_qty, (int, float))
+                and not isinstance(expected_qty, bool)
+                and expected_qty > 0
+            ):
+                details.append(
+                    "verwacht: "
+                    f"{_format_quantity(expected_qty)} {uom}"
+                )
+
+        if include_price:
+            sale_price = row.get("sale_price")
+
+            if sale_price is not None:
+                details.append(
+                    "verkoopprijs: "
+                    f"{_format_quantity(sale_price)}"
+                )
+
+        if not details:
+            continue
+
+        label = product_name or internal_ref or option_value or component_group
+
+        if internal_ref and internal_ref not in label:
+            label = f"{label} ({internal_ref})"
+
+        lines.append(
+            f"- {label}: " + "; ".join(details)
+        )
+
+    if len(lines) == 1:
+        return []
+
+    return lines
+
+def _build_user_answer(
+    results: list[dict[str, Any]],
+    requested_information: list[str] | None = None,
+) -> str | None:
+    """
+    Bouwt een user-facing presentatielaag boven specialistresultaten.
+
+    Bronnen blijven gescheiden:
+    - asset_context is leidend voor asset-identiteit;
+    - product family_context is leidend voor productkennis;
+    - ORG gebruikt alleen gestructureerde ORG-resultaten;
+    - technical gebruikt alleen specialistdata die werkelijk
+      in het resultaat aanwezig is;
+    - ruwe specialistdata wordt nooit gewijzigd.
+    """
+    requested = {
+        str(item).strip().casefold()
+        for item in (requested_information or [])
+        if str(item).strip()
+    }
+
+    # -----------------------------------------------------
+    # 1. ASSET ANSWER
+    # Bestaand gedrag houdt bewust de hoogste prioriteit.
+    # -----------------------------------------------------
+
+    asset_result = None
+
+    for item in results:
+        specialist_result = item.get("result")
+
+        if not isinstance(
+            specialist_result,
+            dict,
+        ):
+            continue
+
+        if isinstance(
+            specialist_result.get(
+                "asset_resolution"
+            ),
+            dict,
+        ):
+            asset_result = specialist_result
+            break
+
+    if asset_result is not None:
+        context = asset_result.get(
+            "asset_context"
+        )
+
+        if not isinstance(context, dict):
+            context = {}
+
+        entities = asset_result.get("entities")
+
+        if not isinstance(entities, dict):
+            entities = {}
+
+        customer = (
+            context.get("customer_code")
+            or "onbekend"
+        )
+
+        site = (
+            context.get("site_code")
+            or "onbekend"
+        )
+
+        area = _display_name_code(
+            context.get("area_name"),
+            context.get("area_code"),
+        )
+
+        installation = _display_name_code(
+            context.get("installation_name"),
+            context.get("installation_code"),
+        )
+
+        band = (
+            context.get("band_code_display")
+            or context.get("band_code_norm")
+            or entities.get("band_code")
+            or "onbekend"
+        )
+
+        result_text = (
+            asset_result.get("message")
+            or asset_result.get("kort_resultaat")
+        )
+
+        answer_lines = [
+            f"Klant: {customer}",
+            f"Plaats: {site}",
+            f"Gebied: {area}",
+            f"Installatie: {installation}",
+            f"Bandnummer: {band}",
+        ]
+
+        if result_text:
+            answer_lines.extend(
+                [
+                    "",
+                    str(result_text),
+                ]
+            )
+
+        return "\n".join(answer_lines)
+
+    # -----------------------------------------------------
+    # 2. NON-ASSET ANSWERS
+    # -----------------------------------------------------
+
+    for item in results:
+        specialist_result = item.get("result")
+
+        if not isinstance(
+            specialist_result,
+            dict,
+        ):
+            continue
+
+        action = str(
+            item.get("action") or ""
+        )
+
+        context_type = str(
+            specialist_result.get(
+                "context_type"
+            )
+            or ""
+        )
+
+        # -------------------------------------------------
+        # PROMATI_SCOPE_PRESENTATION_V13_1
+        # CANONICAL ANALYSIS SCOPE
+        # -------------------------------------------------
+
+        if context_type == "analysis_scope":
+            short = specialist_result.get(
+                "kort_resultaat"
+            )
+
+            operation = str(
+                specialist_result.get(
+                    "operation"
+                )
+                or ""
+            )
+
+            subject = str(
+                specialist_result.get(
+                    "subject"
+                )
+                or ""
+            )
+
+            count_semantics = str(
+                specialist_result.get(
+                    "count_semantics"
+                )
+                or ""
+            )
+
+            answer_lines: list[str] = []
+
+            if short:
+                answer_lines.append(
+                    str(short)
+                )
+
+            if (
+                operation == "list"
+                and subject == "bands"
+            ):
+                bands = specialist_result.get(
+                    "bands"
+                )
+
+                if (
+                    isinstance(bands, list)
+                    and bands
+                    and not short
+                ):
+                    answer_lines.append(
+                        "Banden: "
+                        + ", ".join(
+                            str(band)
+                            for band in bands
+                        )
+                    )
+
+            data_quality = specialist_result.get(
+                "data_quality"
+            )
+
+            if not isinstance(
+                data_quality,
+                dict,
+            ):
+                data_quality = {}
+
+            if (
+                count_semantics
+                == "current_registered_scraper_positions"
+            ):
+                semantic_note = (
+                    data_quality.get(
+                        "semantic_note"
+                    )
+                )
+
+                if semantic_note:
+                    answer_lines.extend(
+                        [
+                            "",
+                            str(semantic_note),
+                        ]
+                    )
+
+            if (
+                count_semantics
+                == "historical_maintenance_ranking_rows"
+            ):
+                answer_lines.extend(
+                    [
+                        "",
+                        (
+                            "Let op: dit betreft "
+                            "historische onderhoudsregels "
+                            "binnen de canonical scope. "
+                            "Dat is niet automatisch dezelfde "
+                            "set als de actuele unified "
+                            "schraperposities."
+                        ),
+                    ]
+                )
+
+            if operation == "analyse":
+                answer_lines.extend(
+                    [
+                        "",
+                        (
+                            "De wear-evidence kan historische "
+                            "posities/cycli bevatten en wordt "
+                            "daarom als aanvullende historie "
+                            "naast de actuele unified snapshot "
+                            "gebruikt."
+                        ),
+                    ]
+                )
+
+            if answer_lines:
+                return "\n".join(
+                    answer_lines
+                )
+
+        # -------------------------------------------------
+        # PRODUCT
+        # Structured family_context is authoritative.
+        # RAG wordt hier bewust niet als primaire bron
+        # gebruikt.
+        # -------------------------------------------------
+
+        if (
+            action == "product_assistant"
+            or context_type == "product_assistant"
+        ):
+            family_context = specialist_result.get(
+                "family_context"
+            )
+
+            if isinstance(family_context, dict):
+                family_rows = family_context.get(
+                    "results"
+                )
+
+                if (
+                    isinstance(family_rows, list)
+                    and family_rows
+                    and isinstance(
+                        family_rows[0],
+                        dict,
+                    )
+                ):
+                    family = family_rows[0]
+
+                    name = (
+                        family.get("family_name")
+                        or family.get("family_code")
+                    )
+
+                    strengths = family.get(
+                        "strengths"
+                    )
+
+                    limitations = family.get(
+                        "limitations"
+                    )
+
+                    selection_advice = family.get(
+                        "selection_advice"
+                    )
+
+                    answer_lines = []
+
+                    if name:
+                        answer_lines.append(
+                            str(name)
+                        )
+
+                    if strengths:
+                        answer_lines.extend(
+                            [
+                                "",
+                                (
+                                    "Sterktes: "
+                                    f"{strengths}"
+                                ),
+                            ]
+                        )
+
+                    if limitations:
+                        answer_lines.extend(
+                            [
+                                "",
+                                (
+                                    "Beperkingen: "
+                                    f"{limitations}"
+                                ),
+                            ]
+                        )
+
+                    if selection_advice:
+                        answer_lines.extend(
+                            [
+                                "",
+                                (
+                                    "Selectieadvies: "
+                                    f"{selection_advice}"
+                                ),
+                            ]
+                        )
+
+                    include_inventory = "inventory" in requested
+                    include_price = "price" in requested
+
+                    if include_inventory or include_price:
+                        article_lines = _build_product_article_lines(
+                            specialist_result,
+                            include_inventory=include_inventory,
+                            include_price=include_price,
+                        )
+
+                        if article_lines:
+                            answer_lines.extend(
+                                [
+                                    "",
+                                    *article_lines,
+                                ]
+                            )
+
+                    if answer_lines:
+                        return "\n".join(
+                            answer_lines
+                        )
+
+        # -------------------------------------------------
+        # ORG
+        # Alleen nested structured ORG-result gebruiken.
+        # -------------------------------------------------
+
+        if (
+            action == "org_assistant"
+            or context_type == "org_assistant"
+        ):
+            org_result = specialist_result.get(
+                "result"
+            )
+
+            if not isinstance(
+                org_result,
+                dict,
+            ):
+                continue
+
+            org_status = str(
+                org_result.get("status")
+                or specialist_result.get("status")
+                or ""
+            ).lower()
+
+            message = org_result.get(
+                "message"
+            )
+
+            if (
+                org_status == "not_found"
+                and message
+            ):
+                return str(message)
+
+            mode = str(
+                specialist_result.get("mode")
+                or ""
+            )
+
+            if mode == "location_info":
+                location_rows = org_result.get(
+                    "results"
+                )
+
+                if isinstance(
+                    location_rows,
+                    list,
+                ):
+                    locations = []
+
+                    for location in location_rows:
+                        if not isinstance(
+                            location,
+                            dict,
+                        ):
+                            continue
+
+                        address = location.get(
+                            "adres"
+                        )
+
+                        place = location.get(
+                            "plaats"
+                        )
+
+                        label = (
+                            location.get("locatie")
+                            or place
+                        )
+
+                        # Alleen concrete locatiegegevens.
+                        # De algemene firma-routeringsregel
+                        # zonder adres/plaats wordt niet als
+                        # vestigingsadres gepresenteerd.
+                        if address:
+                            if label:
+                                locations.append(
+                                    f"- {label}: {address}"
+                                )
+                            else:
+                                locations.append(
+                                    f"- {address}"
+                                )
+
+                        elif place:
+                            land = location.get(
+                                "land"
+                            )
+
+                            value = str(place)
+
+                            if land:
+                                value += (
+                                    f", {land}"
+                                )
+
+                            if label:
+                                locations.append(
+                                    f"- {label}: {value}"
+                                )
+                            else:
+                                locations.append(
+                                    f"- {value}"
+                                )
+
+                    if locations:
+                        return "\n".join(
+                            [
+                                "Promati is gevestigd op:",
+                                *locations,
+                            ]
+                        )
+
+        # -------------------------------------------------
+        # TECHNICAL - CEMA
+        #
+        # Het specialistresultaat bevat de CEMA-bron,
+        # maar niet de volledige definitie van CEMA.
+        # De formatter vult die dus niet uit zichzelf aan.
+        # -------------------------------------------------
+
+        if (
+            action == "technical_assistant"
+            or context_type == "technical_assistant"
+        ):
+            source_code = (
+                specialist_result.get(
+                    "source_code"
+                )
+            )
+
+            if (
+                source_code
+                == "CEMA_BELT_CONVEYORS_7"
+            ):
+                technical_context = (
+                    specialist_result.get(
+                        "technical_context"
+                    )
+                )
+
+                source_title = None
+
+                if isinstance(
+                    technical_context,
+                    dict,
+                ):
+                    technical_rows = (
+                        technical_context.get(
+                            "results"
+                        )
+                    )
+
+                    if isinstance(
+                        technical_rows,
+                        list,
+                    ):
+                        for row in technical_rows:
+                            if not isinstance(
+                                row,
+                                dict,
+                            ):
+                                continue
+
+                            candidate = row.get(
+                                "source_title"
+                            )
+
+                            if candidate:
+                                source_title = str(
+                                    candidate
+                                )
+                                break
+
+                # -----------------------------------------
+                # Grounded CEMA definition
+                #
+                # Alleen used_context geldt als bronbewijs.
+                # rag_context.antwoord is op zichzelf
+                # nadrukkelijk niet voldoende.
+                # -----------------------------------------
+
+                full_name = (
+                    "Conveyor Equipment Manufacturers Association"
+                )
+
+                grounded_full_name = False
+
+                rag_context = (
+                    specialist_result.get(
+                        "rag_context"
+                    )
+                )
+
+                if isinstance(
+                    rag_context,
+                    dict,
+                ):
+                    used_context = (
+                        rag_context.get(
+                            "used_context"
+                        )
+                    )
+
+                    if isinstance(
+                        used_context,
+                        list,
+                    ):
+                        for item in used_context:
+
+                            context_text = None
+
+                            if isinstance(
+                                item,
+                                str,
+                            ):
+                                context_text = item
+
+                            elif isinstance(
+                                item,
+                                dict,
+                            ):
+                                candidate_text = (
+                                    item.get(
+                                        "text"
+                                    )
+                                )
+
+                                if isinstance(
+                                    candidate_text,
+                                    str,
+                                ):
+                                    context_text = (
+                                        candidate_text
+                                    )
+
+                            if not context_text:
+                                continue
+
+                            if (
+                                full_name.casefold()
+                                in context_text.casefold()
+                            ):
+                                grounded_full_name = True
+                                break
+
+                if grounded_full_name:
+                    if source_title:
+                        return (
+                            f"CEMA staat voor {full_name}. "
+                            f"Bron: {source_title}."
+                        )
+
+                    return (
+                        f"CEMA staat voor {full_name}."
+                    )
+
+                if source_title:
+                    return (
+                        "CEMA-referentiegegevens zijn "
+                        f"beschikbaar uit {source_title}. "
+                        "In dit specialistresultaat is "
+                        "geen definitierecord van CEMA "
+                        "aanwezig."
+                    )
+
+                return (
+                    "CEMA-referentiegegevens zijn "
+                    "beschikbaar, maar in dit "
+                    "specialistresultaat is geen "
+                    "definitierecord van CEMA aanwezig."
+                )
+
+    return None
+
+def run_orchestrator(
+    payload: OrchestratorAskRequest,
+    sender: Sender | None = None,
+) -> dict[str, Any]:
+    """
+    Centrale orchestrator-service.
+
+    Flow:
+        vraag
+        -> understanding
+        -> planning
+        -> execution
+        -> stabiele response
+
+    Deze service bevat bewust:
+    - geen FastAPI-router;
+    - geen databasecode;
+    - geen domein-SQL;
+    - geen automatische fallback-relaxation.
+
+    Die verantwoordelijkheden blijven gescheiden.
+    """
+    question = (
+        payload.q
+        if payload.q
+        else payload.vraag
+    ).strip()
+
+    plan = understand_query(question)
+    plan = assess_research_requirement(plan)
+    plan = build_execution_plan(plan)
+
+    results, trace = execute_plan(
+        plan,
+        sender=sender,
+    )
+
+    specialist_clarification = None
+
+    for item in results:
+        specialist_result = item.get("result")
+
+        if not isinstance(
+            specialist_result,
+            dict,
+        ):
+            continue
+
+        specialist_status = str(
+            specialist_result.get(
+                "status",
+                "",
+            )
+        ).lower()
+
+        if specialist_status == "clarification_required":
+            specialist_clarification = specialist_result
+            break
+
+    clarification = {
+        "required": plan.clarification_required,
+        "question": plan.clarification_question,
+    }
+
+    if plan.clarification_required:
+        # Query-understanding clarification houdt
+        # de hoogste prioriteit.
+        status = "clarification_required"
+
+    elif specialist_clarification is not None:
+        # Een specialist kan tijdens uitvoering ontdekken
+        # dat aanvullende context nodig is, bijvoorbeeld
+        # bij een band/installatie-conflict.
+        clarification_question = (
+            specialist_clarification.get("message")
+        )
+
+        if not clarification_question:
+            detail = specialist_clarification.get(
+                "clarification"
+            )
+
+            if isinstance(detail, dict):
+                clarification_question = detail.get(
+                    "question"
+                )
+
+            elif isinstance(detail, str):
+                clarification_question = detail
+
+        if not clarification_question:
+            clarification_question = (
+                "Kun je de ontbrekende context "
+                "verduidelijken?"
+            )
+
+        clarification = {
+            "required": True,
+            "question": str(
+                clarification_question
+            ),
+        }
+
+        status = "clarification_required"
+
+    elif plan.execution_steps and not any(
+        item.get("accepted") is True
+        for item in results
+    ):
+        status = "error"
+
+    else:
+        status = "ok"
+    # PROMATI_BOUNDED_RESEARCH_V1_GATE
+    # Deterministic specialist execution always happens first. Only a clear,
+    # successful research_required plan may use one bounded AI synthesis call.
+    research = {
+        "status": "not_required",
+        "required": bool(plan.research_required),
+        "mode": "bounded_synthesis_v1",
+        "ai_calls_used": 0,
+        "max_ai_calls": 1,
+        "follow_up_rounds_used": 0,
+        "max_follow_up_rounds": 0,
+        "answer": None,
+    }
+
+    if (
+        status == "ok"
+        and plan.research_required
+        and not clarification.get("required")
+    ):
+        research_agent_enabled = _research_agent_enabled()
+
+        if research_agent_enabled:
+            research = run_bounded_research_agent(
+                plan,
+                results,
+                sender=sender,
+            )
+        else:
+            research = run_bounded_research(
+                plan,
+                results,
+            )
+
+    answer = _build_user_answer(
+        results,
+        requested_information=plan.requested_information,
+    )
+
+    if (
+        research.get("status") == "ok"
+        and research.get("answer")
+    ):
+        answer = str(research["answer"])
+
+    if answer:
+        answer = repair_mojibake_text(answer)
+
+
+    response = {
+        "status": status,
+        "answer": answer,
+        "context_type": "orchestrator",
+        "question": question,
+        "query_plan": _model_to_dict(plan),
+        "research": research,
+        "clarification": clarification,
+        "results": results,
+    }
+
+    if payload.include_trace:
+        response["trace"] = _model_to_dict(trace)
+    else:
+        response["trace"] = None
+
+    return response

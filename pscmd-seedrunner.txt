@@ -1,0 +1,2 @@
+Set-Location C:\ai-platform
+.\Seed-PromatiV3.ps1

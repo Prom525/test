@@ -1,0 +1,3 @@
+﻿"test_id","category","entity","expected","actual","raw_contract","question"
+"101","diagnostics","diagnostics_domain","system","database","diagnostics_domain=system","Geef een systeemdiagnose."
+"192","clarification","band_code","A319,A320","a319","band_codes=A319,A320","Wat is er mis met A319 of A320?"

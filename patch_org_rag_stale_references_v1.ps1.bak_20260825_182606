@@ -1,0 +1,326 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$BackupDir = "C:\ai-platform\backups"
+$BackupPath = Join-Path `
+    $BackupDir `
+    "org_rag_stale_references_v1_$Stamp.csv"
+
+New-Item `
+    -ItemType Directory `
+    -Path $BackupDir `
+    -Force |
+    Out-Null
+
+
+Write-Host ""
+Write-Host "==================================================" `
+    -ForegroundColor Cyan
+Write-Host " ORG RAG STALE REFERENCES V1" `
+    -ForegroundColor Cyan
+Write-Host " 2 BEWEZEN CORRECTION_CANDIDATES" `
+    -ForegroundColor Cyan
+Write-Host "==================================================" `
+    -ForegroundColor Cyan
+
+
+# ============================================================
+# 1. Host-backup van huidige toestand
+# ============================================================
+
+$BackupSql = @'
+COPY (
+    SELECT
+        t.taak_code,
+        t.rag_document_code,
+        t.actief,
+        t.updated_at
+    FROM org_taken t
+    WHERE t.taak_code IN (
+        'INFO_MAILBOX',
+        'KREDIETLIMIETEN'
+    )
+    ORDER BY t.taak_code
+)
+TO STDOUT
+WITH (
+    FORMAT CSV,
+    HEADER TRUE
+);
+'@
+
+$BackupOutput = $BackupSql |
+    docker exec -i `
+        ai-platform-postgres-1 `
+        sh -lc 'psql -X -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Backup-query mislukt."
+}
+
+Set-Content `
+    -Path $BackupPath `
+    -Value $BackupOutput `
+    -Encoding UTF8
+
+$BackupLines = @(
+    Get-Content $BackupPath
+)
+
+if ($BackupLines.Count -lt 3) {
+    throw (
+        "Backup bevat niet de verwachte header + 2 records. " +
+        "Geen databasewijziging uitgevoerd."
+    )
+}
+
+Write-Host "Backup: $BackupPath" `
+    -ForegroundColor DarkGray
+
+Write-Host "BACKUP_OK" `
+    -ForegroundColor Green
+
+
+# ============================================================
+# 2. Transactionele, idempotente correctie
+# ============================================================
+
+$Sql = @'
+\pset pager off
+
+BEGIN;
+
+SET LOCAL statement_timeout = '15s';
+
+DO $$
+DECLARE
+    v_invalid integer := 0;
+    v_old integer := 0;
+    v_new integer := 0;
+    v_updated integer := 0;
+BEGIN
+
+    /*
+     * Verwacht contract:
+     *
+     * INFO_MAILBOX
+     *   oud  = rag_org_admin_takenpakket
+     *   nieuw = rag_org_info_mailbox
+     *
+     * KREDIETLIMIETEN
+     *   oud  = rag_org_admin_takenpakket
+     *   nieuw = rag_org_kredietlimieten
+     */
+
+    WITH expected (
+        taak_code,
+        old_doc_id,
+        new_doc_id
+    ) AS (
+        VALUES
+            (
+                'INFO_MAILBOX',
+                'rag_org_admin_takenpakket',
+                'rag_org_info_mailbox'
+            ),
+            (
+                'KREDIETLIMIETEN',
+                'rag_org_admin_takenpakket',
+                'rag_org_kredietlimieten'
+            )
+    )
+    SELECT
+        COUNT(*) FILTER (
+            WHERE
+                   t.taak_code IS NULL
+                OR t.actief IS DISTINCT FROM TRUE
+                OR d.doc_id IS NULL
+                OR d.actief IS DISTINCT FROM TRUE
+                OR d.taak_code IS DISTINCT FROM e.taak_code
+                OR t.rag_document_code NOT IN (
+                    e.old_doc_id,
+                    e.new_doc_id
+                )
+        ),
+        COUNT(*) FILTER (
+            WHERE t.rag_document_code = e.old_doc_id
+        ),
+        COUNT(*) FILTER (
+            WHERE t.rag_document_code = e.new_doc_id
+        )
+    INTO
+        v_invalid,
+        v_old,
+        v_new
+
+    FROM expected e
+
+    LEFT JOIN org_taken t
+      ON t.taak_code = e.taak_code
+
+    LEFT JOIN org_rag_documenten d
+      ON d.doc_id = e.new_doc_id;
+
+
+    IF v_invalid <> 0 THEN
+        RAISE EXCEPTION
+            'Precondition failed: % record(s) hebben onverwachte toestand.',
+            v_invalid;
+    END IF;
+
+
+    /*
+     * Volledig reeds gecorrigeerd:
+     * veilige idempotente rerun.
+     */
+    IF v_old = 0 AND v_new = 2 THEN
+        RAISE NOTICE
+            'ALREADY_CORRECTED: beide referenties staan al correct.';
+        RETURN;
+    END IF;
+
+
+    /*
+     * Gemengde toestand wordt bewust NIET automatisch opgelost.
+     */
+    IF NOT (
+        v_old = 2
+        AND v_new = 0
+    ) THEN
+        RAISE EXCEPTION
+            'Unexpected mixed state: old=%, new=%.',
+            v_old,
+            v_new;
+    END IF;
+
+
+    WITH expected (
+        taak_code,
+        old_doc_id,
+        new_doc_id
+    ) AS (
+        VALUES
+            (
+                'INFO_MAILBOX',
+                'rag_org_admin_takenpakket',
+                'rag_org_info_mailbox'
+            ),
+            (
+                'KREDIETLIMIETEN',
+                'rag_org_admin_takenpakket',
+                'rag_org_kredietlimieten'
+            )
+    )
+    UPDATE org_taken t
+    SET
+        rag_document_code = e.new_doc_id,
+        updated_at = CURRENT_TIMESTAMP
+
+    FROM expected e
+
+    WHERE t.taak_code = e.taak_code
+      AND t.rag_document_code = e.old_doc_id;
+
+
+    GET DIAGNOSTICS
+        v_updated = ROW_COUNT;
+
+
+    IF v_updated <> 2 THEN
+        RAISE EXCEPTION
+            'Expected exactly 2 updates, got %.',
+            v_updated;
+    END IF;
+
+
+    RAISE NOTICE
+        'CORRECTION_APPLIED: 2 records updated.';
+
+END
+$$;
+
+
+# ============================================================
+# 3. Read-after-write vóór COMMIT
+# ============================================================
+
+SELECT
+    t.taak_code,
+    t.rag_document_code,
+    d.doc_id AS resolved_doc_id,
+    d.taak_code AS resolved_doc_task,
+    d.actief AS resolved_doc_active,
+
+    (
+        t.rag_document_code = d.doc_id
+        AND d.taak_code = t.taak_code
+        AND d.actief = TRUE
+    ) AS reference_valid
+
+FROM org_taken t
+
+LEFT JOIN org_rag_documenten d
+  ON d.doc_id = t.rag_document_code
+
+WHERE t.taak_code IN (
+    'INFO_MAILBOX',
+    'KREDIETLIMIETEN'
+)
+
+ORDER BY t.taak_code;
+
+
+DO $$
+DECLARE
+    v_valid integer;
+BEGIN
+
+    SELECT COUNT(*)
+    INTO v_valid
+
+    FROM org_taken t
+
+    JOIN org_rag_documenten d
+      ON d.doc_id = t.rag_document_code
+     AND d.taak_code = t.taak_code
+     AND d.actief = TRUE
+
+    WHERE t.taak_code IN (
+        'INFO_MAILBOX',
+        'KREDIETLIMIETEN'
+    );
+
+    IF v_valid <> 2 THEN
+        RAISE EXCEPTION
+            'Read-after-write validation failed: %/2 valid.',
+            v_valid;
+    END IF;
+
+    RAISE NOTICE
+        'READ_AFTER_WRITE_OK: 2/2 references valid.';
+
+END
+$$;
+
+COMMIT;
+'@
+
+
+$Sql |
+    docker exec -i `
+        ai-platform-postgres-1 `
+        sh -lc 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        "ORG RAG correctie mislukt. " +
+        "Transactie is niet succesvol afgerond. " +
+        "Backup: $BackupPath"
+    )
+}
+
+Write-Host ""
+Write-Host "ORG_RAG_STALE_REFERENCES_V1_OK" `
+    -ForegroundColor Green

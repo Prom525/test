@@ -1,0 +1,674 @@
+param(
+    [string]$BackupDir = `
+        "C:\ai-platform\artifacts\phase_a_a1a_ast_v2_backup_20260826_090412"
+)
+
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A A1a STRUCTURAL AUDIT V1" -ForegroundColor Cyan
+Write-Host " READ ONLY - NO API - NO DB - NO WRITES" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$Root = "C:\ai-platform\api\app\orchestrator"
+
+$ModelsPath = Join-Path $Root "models.py"
+$UnderstandingPath = Join-Path $Root "understanding.py"
+$ClassifierPath = Join-Path $Root "query_classification.py"
+
+foreach ($Path in @(
+    $ModelsPath,
+    $UnderstandingPath,
+    $ClassifierPath,
+    (Join-Path $BackupDir "models.py"),
+    (Join-Path $BackupDir "understanding.py")
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Benodigd bestand niet gevonden: $Path"
+    }
+}
+
+$PythonCode = @'
+import ast
+import difflib
+import hashlib
+import pathlib
+import sys
+
+
+root = pathlib.Path(sys.argv[1])
+backup = pathlib.Path(sys.argv[2])
+
+models = root / "models.py"
+understanding = root / "understanding.py"
+classifier = root / "query_classification.py"
+
+old_models = backup / "models.py"
+old_understanding = backup / "understanding.py"
+old_classifier = backup / "query_classification.py"
+
+
+def read(path):
+    return path.read_text(encoding="utf-8-sig")
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def parse(path):
+    try:
+        return ast.parse(read(path))
+    except SyntaxError as exc:
+        raise RuntimeError(
+            f"{path.name}: syntax error line "
+            f"{exc.lineno}: {exc.msg}"
+        ) from exc
+
+
+def normalized_lines(path):
+    # Line endings bewust negeren:
+    # CRLF -> LF is geen functionele wijziging.
+    return read(path).splitlines()
+
+
+def audit_insert_only(old_path, new_path, allowed_nonblank):
+    old = normalized_lines(old_path)
+    new = normalized_lines(new_path)
+
+    matcher = difflib.SequenceMatcher(
+        a=old,
+        b=new,
+        autojunk=False,
+    )
+
+    inserted = []
+    destructive = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+
+        if tag == "equal":
+            continue
+
+        if tag == "insert":
+            inserted.extend(new[j1:j2])
+            continue
+
+        destructive.append({
+            "tag": tag,
+            "old": old[i1:i2],
+            "new": new[j1:j2],
+        })
+
+    if destructive:
+        print(f"DESTRUCTIVE_DIFF_{new_path.name}=TRUE")
+
+        for change in destructive:
+            print(
+                f"  {change['tag']}: "
+                f"{change['old']} -> {change['new']}"
+            )
+
+        raise RuntimeError(
+            f"{new_path.name}: bestaande regels zijn "
+            "verwijderd of gewijzigd."
+        )
+
+    unexpected = []
+
+    for line in inserted:
+        stripped = line.strip()
+
+        if not stripped:
+            continue
+
+        if stripped not in allowed_nonblank:
+            unexpected.append(stripped)
+
+    print(
+        f"{new_path.name.upper()}_INSERTED_LINES="
+        f"{len(inserted)}"
+    )
+
+    print(
+        f"{new_path.name.upper()}_DESTRUCTIVE_CHANGES=0"
+    )
+
+    if unexpected:
+        print(
+            f"{new_path.name.upper()}_UNEXPECTED_INSERTIONS="
+            f"{len(unexpected)}"
+        )
+
+        for line in unexpected:
+            print(f"  UNEXPECTED: {line}")
+
+        raise RuntimeError(
+            f"{new_path.name}: onverwachte toevoegingen."
+        )
+
+    print(
+        f"{new_path.name.upper()}_INSERT_ONLY_OK"
+    )
+
+
+# ============================================================
+# 1. Textual diff safety
+# ============================================================
+
+allowed_models = {
+    "class QueryClass(str, Enum):",
+    'BUSINESS = "business"',
+    'SYSTEM_META = "system_meta"',
+    'CONVERSATIONAL = "conversational"',
+    'UNKNOWN = "unknown"',
+    "# PROMATI_PHASE_A_QUERY_CLASS_SHADOW_A1A",
+    "query_class: QueryClass = QueryClass.UNKNOWN",
+}
+
+allowed_understanding = {
+    "from app.orchestrator.query_classification import classify_query",
+    "# PROMATI_PHASE_A_QUERY_CLASS_SHADOW_A1A",
+    "query_class = classify_query(normalized)",
+    "query_class=query_class,",
+}
+
+print("")
+print("=== INSERT-ONLY DIFF AUDIT ===")
+
+audit_insert_only(
+    old_models,
+    models,
+    allowed_models,
+)
+
+audit_insert_only(
+    old_understanding,
+    understanding,
+    allowed_understanding,
+)
+
+
+# ============================================================
+# 2. models.py AST contract
+# ============================================================
+
+print("")
+print("=== MODELS AST CONTRACT ===")
+
+models_tree = parse(models)
+
+query_classes = [
+    node
+    for node in models_tree.body
+    if isinstance(node, ast.ClassDef)
+    and node.name == "QueryClass"
+]
+
+if len(query_classes) != 1:
+    raise RuntimeError(
+        f"QueryClass count={len(query_classes)}, expected 1."
+    )
+
+query_class = query_classes[0]
+
+expected_members = {
+    "BUSINESS": "business",
+    "SYSTEM_META": "system_meta",
+    "CONVERSATIONAL": "conversational",
+    "UNKNOWN": "unknown",
+}
+
+actual_members = {}
+
+for node in query_class.body:
+
+    if not isinstance(node, ast.Assign):
+        continue
+
+    if len(node.targets) != 1:
+        continue
+
+    target = node.targets[0]
+
+    if (
+        isinstance(target, ast.Name)
+        and isinstance(node.value, ast.Constant)
+    ):
+        actual_members[target.id] = node.value.value
+
+
+if actual_members != expected_members:
+    raise RuntimeError(
+        "QueryClass members wijken af: "
+        f"{actual_members}"
+    )
+
+
+query_plans = [
+    node
+    for node in models_tree.body
+    if isinstance(node, ast.ClassDef)
+    and node.name == "QueryPlan"
+]
+
+if len(query_plans) != 1:
+    raise RuntimeError(
+        f"QueryPlan count={len(query_plans)}, expected 1."
+    )
+
+query_plan = query_plans[0]
+
+query_class_fields = []
+
+for node in query_plan.body:
+
+    if not isinstance(node, ast.AnnAssign):
+        continue
+
+    if (
+        isinstance(node.target, ast.Name)
+        and node.target.id == "query_class"
+    ):
+        query_class_fields.append(node)
+
+
+if len(query_class_fields) != 1:
+    raise RuntimeError(
+        "QueryPlan.query_class field count is niet 1."
+    )
+
+field = query_class_fields[0]
+
+default_ok = (
+    isinstance(field.value, ast.Attribute)
+    and field.value.attr == "UNKNOWN"
+    and isinstance(field.value.value, ast.Name)
+    and field.value.value.id == "QueryClass"
+)
+
+if not default_ok:
+    raise RuntimeError(
+        "QueryPlan.query_class default is niet "
+        "QueryClass.UNKNOWN."
+    )
+
+print("QUERY_CLASS_ENUM_CONTRACT_OK")
+print("QUERY_PLAN_QUERY_CLASS_DEFAULT_OK")
+
+
+# ============================================================
+# 3. understanding.py shadow-only proof
+# ============================================================
+
+print("")
+print("=== UNDERSTANDING SHADOW-ONLY AUDIT ===")
+
+understanding_tree = parse(understanding)
+
+imports = [
+    node
+    for node in understanding_tree.body
+    if isinstance(node, ast.ImportFrom)
+    and node.module
+        == "app.orchestrator.query_classification"
+]
+
+classifier_import_count = 0
+
+for node in imports:
+    classifier_import_count += sum(
+        1
+        for alias in node.names
+        if alias.name == "classify_query"
+    )
+
+if classifier_import_count != 1:
+    raise RuntimeError(
+        "classify_query import count is niet 1."
+    )
+
+
+functions = [
+    node
+    for node in understanding_tree.body
+    if isinstance(node, ast.FunctionDef)
+    and node.name == "understand_query"
+]
+
+if len(functions) != 1:
+    raise RuntimeError(
+        "understand_query count is niet 1."
+    )
+
+func = functions[0]
+
+
+classifier_calls = [
+    node
+    for node in ast.walk(func)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "classify_query"
+]
+
+if len(classifier_calls) != 1:
+    raise RuntimeError(
+        "classify_query call count is niet 1."
+    )
+
+
+query_class_stores = 0
+query_class_loads = 0
+
+for node in ast.walk(func):
+
+    if not isinstance(node, ast.Name):
+        continue
+
+    if node.id != "query_class":
+        continue
+
+    if isinstance(node.ctx, ast.Store):
+        query_class_stores += 1
+
+    if isinstance(node.ctx, ast.Load):
+        query_class_loads += 1
+
+
+# Shadow-only betekent:
+#
+# 1 Store:
+#   query_class = classify_query(...)
+#
+# 1 Load:
+#   query_class=query_class in QueryPlan(...)
+#
+# Elke extra Load zou betekenen dat routing/logica het
+# query_class-resultaat al gebruikt.
+if query_class_stores != 1:
+    raise RuntimeError(
+        f"query_class stores={query_class_stores}, expected 1."
+    )
+
+if query_class_loads != 1:
+    raise RuntimeError(
+        f"query_class loads={query_class_loads}, expected 1. "
+        "Mogelijke routing gate gedetecteerd."
+    )
+
+
+queryplan_calls = [
+    node
+    for node in ast.walk(func)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "QueryPlan"
+]
+
+if len(queryplan_calls) != 1:
+    raise RuntimeError(
+        "QueryPlan call count in understand_query is niet 1."
+    )
+
+query_class_keywords = [
+    kw
+    for kw in queryplan_calls[0].keywords
+    if kw.arg == "query_class"
+]
+
+if len(query_class_keywords) != 1:
+    raise RuntimeError(
+        "QueryPlan(query_class=...) count is niet 1."
+    )
+
+print("CLASSIFIER_IMPORT_COUNT=1")
+print("CLASSIFIER_CALL_COUNT=1")
+print("QUERY_CLASS_STORE_COUNT=1")
+print("QUERY_CLASS_LOAD_COUNT=1")
+print("QUERYPLAN_QUERY_CLASS_OUTPUT_COUNT=1")
+print("SHADOW_ONLY_WIRING_OK")
+
+
+# ============================================================
+# 4. classifier module safety
+# ============================================================
+
+print("")
+print("=== CLASSIFIER MODULE SAFETY ===")
+
+classifier_tree = parse(classifier)
+
+allowed_import_modules = {
+    "re",
+    "app.orchestrator.models",
+}
+
+actual_import_modules = set()
+
+for node in classifier_tree.body:
+
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            actual_import_modules.add(alias.name)
+
+    elif isinstance(node, ast.ImportFrom):
+        actual_import_modules.add(node.module)
+
+
+unexpected_imports = (
+    actual_import_modules
+    - allowed_import_modules
+)
+
+if unexpected_imports:
+    raise RuntimeError(
+        "Onverwachte classifier imports: "
+        f"{sorted(unexpected_imports)}"
+    )
+
+
+forbidden_names = {
+    "open",
+    "exec",
+    "eval",
+    "compile",
+    "__import__",
+}
+
+for node in ast.walk(classifier_tree):
+
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in forbidden_names
+    ):
+        raise RuntimeError(
+            "Verboden call in classifier: "
+            f"{node.func.id}"
+        )
+
+
+source_lower = read(classifier).casefold()
+
+for forbidden_text in (
+    "requests.",
+    "httpx.",
+    "subprocess.",
+    "psycopg",
+    "sqlalchemy",
+    "docker",
+    "openai",
+):
+    if forbidden_text in source_lower:
+        raise RuntimeError(
+            "Classifier bevat onverwachte dependency: "
+            f"{forbidden_text}"
+        )
+
+
+top_level_functions = {
+    node.name
+    for node in classifier_tree.body
+    if isinstance(node, ast.FunctionDef)
+}
+
+expected_functions = {
+    "_normalize",
+    "classify_query",
+}
+
+if top_level_functions != expected_functions:
+    raise RuntimeError(
+        "Onverwachte classifier functions: "
+        f"{sorted(top_level_functions)}"
+    )
+
+print(
+    "CLASSIFIER_IMPORTS="
+    + ",".join(sorted(actual_import_modules))
+)
+
+print("CLASSIFIER_NO_IO_OK")
+print("CLASSIFIER_NO_DB_OK")
+print("CLASSIFIER_NO_NETWORK_OK")
+print("CLASSIFIER_MODULE_SHADOW_SAFE")
+
+
+# ============================================================
+# 5. Hashes
+# ============================================================
+
+print("")
+print("=== FILE HASHES ===")
+
+print(f"OLD_MODELS_SHA256={sha(old_models)}")
+print(f"NEW_MODELS_SHA256={sha(models)}")
+
+print(
+    f"OLD_UNDERSTANDING_SHA256="
+    f"{sha(old_understanding)}"
+)
+
+print(
+    f"NEW_UNDERSTANDING_SHA256="
+    f"{sha(understanding)}"
+)
+
+if old_classifier.exists():
+    print(
+        f"OLD_CLASSIFIER_SHA256="
+        f"{sha(old_classifier)}"
+    )
+else:
+    print("OLD_CLASSIFIER_SHA256=NOT_PRESENT")
+
+print(
+    f"NEW_CLASSIFIER_SHA256="
+    f"{sha(classifier)}"
+)
+
+
+print("")
+print("A1A_PYTHON_STRUCTURAL_AUDIT_OK")
+'@
+
+
+$PythonCode |
+    python - `
+        $Root `
+        $BackupDir
+
+if ($LASTEXITCODE -ne 0) {
+    throw "A1a Python structural audit mislukt."
+}
+
+
+# ============================================================
+# Untouched-module timestamp audit
+#
+# Dit verandert niets. Het controleert alleen of deze modules
+# ná het maken van de A1a-backup zijn geschreven.
+# ============================================================
+
+Write-Host ""
+Write-Host "=== UNTOUCHED MODULE TIMESTAMP AUDIT ===" `
+    -ForegroundColor Yellow
+
+$BackupTime = (
+    Get-Item $BackupDir
+).CreationTimeUtc
+
+$UntouchedFiles = @(
+    "normalizer.py",
+    "planner.py",
+    "executor.py",
+    "research.py",
+    "research_runtime.py",
+    "research_agent.py",
+    "service.py",
+    "complexity.py"
+)
+
+$PostPatchWrites = @()
+
+foreach ($Name in $UntouchedFiles) {
+
+    $Path = Join-Path $Root $Name
+
+    if (-not (Test-Path $Path)) {
+
+        Write-Host "MISSING: $Name" `
+            -ForegroundColor Yellow
+
+        continue
+    }
+
+    $Item = Get-Item $Path
+
+    $TouchedAfterBackup = (
+        $Item.LastWriteTimeUtc -gt $BackupTime
+    )
+
+    Write-Host (
+        "{0,-22} after_A1a_backup={1}  lastwrite={2:o}" -f `
+            $Name,
+            $TouchedAfterBackup,
+            $Item.LastWriteTimeUtc
+    )
+
+    if ($TouchedAfterBackup) {
+        $PostPatchWrites += $Name
+    }
+}
+
+
+Write-Host ""
+
+if ($PostPatchWrites.Count -gt 0) {
+
+    Write-Host (
+        "UNTOUCHED_MODULE_TIMESTAMP_WARNINGS={0}" -f `
+            ($PostPatchWrites -join ",")
+    ) -ForegroundColor Yellow
+
+    throw (
+        "Een module buiten de A1a-scope heeft een write timestamp " +
+        "na de A1a-backup. Eerst beoordelen; nog niet rebuilden."
+    )
+}
+
+
+Write-Host "UNTOUCHED_MODULE_TIMESTAMP_AUDIT_OK" `
+    -ForegroundColor Green
+
+Write-Host ""
+Write-Host "NO_FILES_WRITTEN=TRUE"
+Write-Host "NO_API_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+Write-Host "NO_ROUTING_GATE_DETECTED=TRUE"
+Write-Host "PHASE_A_A1A_STRUCTURAL_AUDIT_OK" `
+    -ForegroundColor Green

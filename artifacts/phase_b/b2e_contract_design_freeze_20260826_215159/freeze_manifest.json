@@ -1,0 +1,68 @@
+﻿{
+    "schema_version":  "promati.phase_b2e.contract_design_freeze.v1",
+    "created_local":  "2026-08-26T21:51:59+02:00",
+    "freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b2e_contract_design_freeze_20260826_215159",
+    "review_result":  "ACCEPTED_FOR_SHADOW_ONLY",
+    "shadow_contract_design_ready":  true,
+    "production_contract_enforcement_ready":  false,
+    "production_enforcement_blocker_count":  6,
+    "phase_a_router_change_required":  false,
+    "canonical_design_script":  {
+                                    "filename":  "design_phase_b2e_typed_execution_contract_v1.ps1",
+                                    "sha256":  "0480A607F371505A531BC5C7A0324857A4F851965213B709159D18573640DEEB"
+                                },
+    "contract_spec":  {
+                          "filename":  "b2e_typed_execution_contract_v1.json",
+                          "sha256":  "5DE306324FB0B15163AB956C69A5220685D23C6BC68EF0583D3C92FAFA6CA2E6"
+                      },
+    "summary":  {
+                    "filename":  "b2e_contract_design_freeze_summary.txt",
+                    "sha256":  "B080D2A088BFF6138C41E24EE75A3FC33064A8E72C43A928AC39F37971C4C7A1"
+                },
+    "source_baseline":  [
+                            {
+                                "path":  "orchestrator\\executor.py",
+                                "sha256":  "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A"
+                            },
+                            {
+                                "path":  "orchestrator\\planner.py",
+                                "sha256":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68"
+                            },
+                            {
+                                "path":  "orchestrator\\service.py",
+                                "sha256":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761"
+                            },
+                            {
+                                "path":  "orchestrator\\research_agent.py",
+                                "sha256":  "672F029DDF1AA655CC11EB42ACAB23933918B2835B8D81B724FB9AF18A98BC0D"
+                            },
+                            {
+                                "path":  "routers\\hybrid_api.py",
+                                "sha256":  "2A5253EFCFC1EAA53DAD874F14D4AA71549E201A98D8BE8A384E7016FB0E657F"
+                            },
+                            {
+                                "path":  "routers\\analysis_api_v10.py",
+                                "sha256":  "6FAD131A4EE06375DCDBECE7018F426D08A2C761FE22C4BD8624A24B9085A6A1"
+                            },
+                            {
+                                "path":  "orchestrator\\models.py",
+                                "sha256":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E"
+                            },
+                            {
+                                "path":  "orchestrator\\understanding.py",
+                                "sha256":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78"
+                            }
+                        ],
+    "next_step_candidate":  "READ_ONLY_B3A_TYPES_REGISTRY_SHADOW_IMPLEMENTATION_PLAN",
+    "invariants":  [
+                       "NO_PHASE_A_ROUTER_CHANGE",
+                       "NO_QUERYPLAN_BEHAVIOR_CHANGE",
+                       "NO_ENDPOINT_CHANGE",
+                       "NO_SPECIALIST_BEHAVIOR_CHANGE",
+                       "NO_FALLBACK_BEHAVIOR_CHANGE",
+                       "NO_RETRY_BEHAVIOR_CHANGE",
+                       "NO_PRODUCTION_ENFORCEMENT",
+                       "NO_PHASE_C_EVIDENCE_CHANGE",
+                       "SHADOW_FIRST"
+                   ]
+}

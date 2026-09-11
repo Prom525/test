@@ -1,0 +1,54 @@
+﻿{
+    "baseline_version":  "phase_a_v0_1_corrected",
+    "source_baseline":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_20260826_083322",
+    "total_tests":  200,
+    "overall":  {
+                    "passed":  44,
+                    "failed":  156,
+                    "accuracy_pct":  22
+                },
+    "metrics":  {
+                    "query_class":  {
+                                        "scored":  0,
+                                        "status":  "NOT_AVAILABLE"
+                                    },
+                    "domain":  {
+                                   "scored":  200,
+                                   "passed":  100,
+                                   "failed":  100,
+                                   "accuracy_pct":  50
+                               },
+                    "intent":  {
+                                   "scored":  200,
+                                   "passed":  83,
+                                   "failed":  117,
+                                   "accuracy_pct":  41.5
+                               },
+                    "entities":  {
+                                     "scored":  200,
+                                     "passed":  112,
+                                     "failed":  88,
+                                     "accuracy_pct":  56
+                                 },
+                    "research":  {
+                                     "scored":  200,
+                                     "passed":  169,
+                                     "failed":  31,
+                                     "accuracy_pct":  84.5
+                                 },
+                    "clarification":  {
+                                          "scored":  200,
+                                          "passed":  110,
+                                          "failed":  90,
+                                          "accuracy_pct":  55
+                                      }
+                },
+    "entity_diagnostics":  {
+                               "expected_empty_entity_tests":  59,
+                               "unexpected_validated_band_code_tests":  6
+                           },
+    "output":  {
+                   "results":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_1_corrected_20260826_085640\\phase_a_baseline_v0_1_results.csv",
+                   "failures":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\baseline_v0_1_corrected_20260826_085640\\phase_a_baseline_v0_1_failures.csv"
+               }
+}

@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Promati – Minimal ChatDB UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f1220; --panel:#151935; --muted:#7981b0; --accent:#4fc3f7; --ok:#00c853; --warn:#ffab00; --err:#ff5252; --fg:#e9ecff;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.45}
+    header{padding:16px 20px;border-bottom:1px solid #262b55;background:linear-gradient(180deg,#131736,#0f1220)}
+    h1{font-size:18px;margin:0 0 6px}
+    .muted{color:var(--muted);font-size:13px}
+    main{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px}
+    @media (max-width: 900px){main{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid #262b55;border-radius:10px}
+    .card h2{margin:0;padding:12px 14px;border-bottom:1px solid #262b55;font-size:14px;color:#c8d2ff}
+    .card .content{padding:12px 14px}
+    label{display:block;font-size:12px;color:#b7c0ee;margin:10px 0 6px}
+    input, textarea, select{width:100%;background:#0e1127;color:#e9ecff;border:1px solid #2a3072;border-radius:8px;padding:10px;font-family:var(--sans)}
+    textarea{min-height:104px;resize:vertical}
+    button{background:#2540ff;border:0;color:white;border-radius:8px;padding:10px 12px;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center}
+    .row > *{flex:1}
+    .kpis{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#cbd3ff}
+    .kpis span{background:#101534;border:1px solid #2a3072;border-radius:6px;padding:6px 8px}
+    .logs{white-space:pre-wrap;font-family:var(--mono);font-size:12px;color:#c9d1ff;background:#0d1129;border-radius:8px;border:1px solid #2a3072;padding:10px;max-height:200px;overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{border-bottom:1px solid #2a3072;padding:8px 10px;vertical-align:top}
+    thead th{position:sticky;top:0;background:#12163a}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #2a3072;background:#0d1230;color:#bcd0ff;font-size:11px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Promati – Minimal ChatDB UI</h1>
+    <div class="muted">Stel vragen of voer directe SQL uit tegen <code>/chatdb/sql</code></div>
+  </header>
+
+  <main>
+    <!-- ============ CONFIG ============ -->
+    <section class="card">
+      <h2>Verbinding</h2>
+      <div class="content">
+        <label>API Host (TryCloudflare URL, zonder laatste /)
+          <input id="host" placeholder="https://…trycloudflare.com" />
+        </label>
+        <label>Bearer token (wordt lokaal opgeslagen)
+          <input id="token" placeholder="eyJhbGciOi…" />
+        </label>
+        <div class="row">
+          <button id="save">Opslaan</button>
+          <button id="ping" class="pill">Test /healthz</button>
+        </div>
+        <div class="kpis" id="kpis"></div>
+        <div class="logs" id="logcfg"></div>
+      </div>
+    </section>
+
+    <!-- ============ CHAT/SQL ============ -->
+    <section class="card" style="grid-column: span 1;">
+      <h2>Vraag (NL) ➜ SQL, of Directe SQL</h2>
+      <div class="content">
+        <label>Vraag in gewoon Nederlands (optioneel)
+          <textarea id="q" placeholder="Welke schraperconfiguratie voor 1800mm / 4.5 m/s bij haven bulk (kolen/ijzererts)?"></textarea>
+        </label>
+        <div class="row">
+          <button id="toSQL">Genereer voorbeeld‑SQL (uit prompt)</button>
+          <button id="clearQ" class="pill">Leeg vraag</button>
+        </div>
+        <label>SQL (SELECT/WITH). Geen trailing ;, LIMIT wordt zo nodig toegevoegd.
+          <textarea id="sql" placeholder="SELECT * FROM vw_products_flat_specs WHERE category='Schraper' LIMIT 20"></textarea>
+        </label>
+        <div class="row">
+          <select id="preset">
+            <option value="">— Snelle presets —</option>
+            <option value="packs">Packs + items (samengevoegd)</option>
+            <option value="scrapers">Schrapers met max_temp_c ≥ 100</option>
+            <option value="seals">Afdichtingen met thickness ≥ 22</option>
+            <option value="accounts">Accounts + segment + notes</option>
+          </select>
+          <button id="run">Voer SQL uit</button>
+          <button id="clearSQL" class="pill">Leeg SQL</button>
+        </div>
+        <div class="logs" id="logrun"></div>
+    </section>
+
+    <!-- ============ RESULT ============ -->
+    <section class="card" style="grid-column: 1 / -1;">
+      <h2>Resultaat</h2>
+      <div class="content" id="out">
+        <div class="muted">Nog geen resultaat…</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // --- helpers ---
+    const $ = (q) => document.querySelector(q);
+    const host = $('#host'), token = $('#token'), save = $('#save'), ping = $('#ping');
+    const kpis = $('#kpis'), logcfg = $('#logcfg'), logrun = $('#logrun');
+    const q = $('#q'), toSQL = $('#toSQL'), clearQ = $('#clearQ');
+    const sql = $('#sql'), run = $('#run'), clearSQL = $('#clearSQL'), preset = $('#preset');
+    const out = $('#out');
+
+    const cfgKey = 'promati.chat.cfg';
+    const getCfg = () => {
+      try { return JSON.parse(localStorage.getItem(cfgKey) || '{}'); } catch { return {}; }
+    };
+    const setCfg = (c) => localStorage.setItem(cfgKey, JSON.stringify(c));
+
+    function banner(msg, cls='') {
+      const span = document.createElement('span'); span.textContent = msg; if (cls) span.className = cls;
+      kpis.appendChild(span); setTimeout(()=> span.remove(), 5000);
+    }
+    function log(el, msg) {
+      const ts = new Date().toISOString().replace('T',' ').slice(0,19);
+      el.textContent = `[${ts}] ${msg}\n` + (el.textContent||'');
+    }
+    function tableFromRows(rows){
+      if (!rows || !rows.length) return `<div class="muted">0 rijen.</div>`;
+      const cols = Array.from(rows.reduce((s,o)=>{Object.keys(o).forEach(k=>s.add(k));return s}, new Set()));
+      const thead = `<thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(valueToStr(r[c]))}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      return `<table>${thead}${tbody}</table>`;
+    }
+    function valueToStr(v){
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'object') return JSON.stringify(v);
+      return String(v);
+    }
+    function escapeHtml(s){ return s.replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+
+    // --- config load ---
+    (function init(){
+      const c = getCfg();
+      if (c.host) host.value = c.host;
+      if (c.token) token.value = c.token;
+      // Suggest a default host if empty:
+      if (!c.host) host.placeholder = "https://mississippi-reached-initiatives-fantasy.trycloudflare.com";
+    })();
+
+    // --- save cfg ---
+    save.onclick = ()=>{
+      const c = { host: host.value.trim().replace(/\/+$/,''),
+                  token: token.value.trim() };
+      if (!c.host.startsWith('http')) { banner('Host moet met http(s) beginnen','warn'); return; }
+      setCfg(c); banner('Opgeslagen','ok'); log(logcfg, 'Config opgeslagen.');
+    };
+
+    // --- ping healthz ---
+    ping.onclick = async ()=>{
+      try{
+        const c = getCfg(); if(!c.host){ banner('Geen host','warn'); return; }
+        const r = await fetch(c.host + '/healthz', { method:'GET' });
+        const t = await r.text();
+        banner('healthz: ' + r.status + ' ' + (t || ''), r.ok?'ok':'err');
+        log(logcfg, 'healthz → ' + r.status + ' ' + t);
+      }catch(e){ banner('healthz error','err'); log(logcfg, 'healthz error: ' + e); }
+    };
+
+    // --- preset loader ---
+    preset.onchange = ()=>{
+      const v = preset.value;
+      if (v==='packs'){
+        sql.value = "SELECT pack, category, product, quantity, config\nFROM vw_packs_expanded\nORDER BY pack, category, product\nLIMIT 20";
+      } else if (v==='scrapers'){
+        sql.value = "SELECT product, variant_name, CAST(max_temp_c AS int) AS max_temp_c\nFROM vw_products_flat_specs\nWHERE category='Schraper' AND CAST(max_temp_c AS int) >= 100\nORDER BY product, variant_name\nLIMIT 20";
+      } else if (v==='seals'){
+        sql.value = "SELECT product, variant_name, CAST(thickness_mm AS int) AS thickness_mm, shore\nFROM vw_products_flat_specs\nWHERE category='Afdichting' AND CAST(thickness_mm AS int) >= 22\nORDER BY product, variant_name\nLIMIT 20";
+      } else if (v==='accounts'){
+        sql.value = "SELECT name, segment, location, note\nFROM vw_accounts_with_notes\nORDER BY name\nLIMIT 20";
+      }
+      preset.value = '';
+    };
+
+    // --- simple NL → SQL helper (heuristic, client-side only) ---
+    toSQL.onclick = ()=>{
+      const t = q.value.toLowerCase();
+      if (!t){ banner('Geen vraag','warn'); return; }
+      // Hele lichte heuristiek; voor échte NL→SQL raad ik je GPT Action te gebruiken.
+      if (t.includes('schraper') || t.includes('scraper')){
+        sql.value = "SELECT product, variant_name, max_speed_mps, profile, direction\nFROM vw_products_flat_specs\nWHERE category='Schraper'\nORDER BY product, variant_name\nLIMIT 30";
+      } else if (t.includes('afdichting') || t.includes('seal')){
+        sql.value = "SELECT product, variant_name, thickness_mm, shore\nFROM vw_products_flat_specs\nWHERE category='Afdichting'\nORDER BY product, variant_name\nLIMIT 30";
+      } else if (t.includes('pack')){
+        sql.value = "SELECT pack, product, quantity, config\nFROM vw_packs_expanded\nORDER BY pack, product\nLIMIT 30";
+      } else if (t.includes('account')){
+        sql.value = "SELECT name, segment, location, note\nFROM vw_accounts_with_notes\nORDER BY name\nLIMIT 30";
+      } else {
+        sql.value = "SELECT *\nFROM vw_products_flat_specs\nLIMIT 30";
+      }
+      banner('Voorbeeld‑SQL gegenereerd','ok');
+    };
+    clearQ.onclick = ()=>{ q.value=''; };
+    clearSQL.onclick = ()=>{ sql.value=''; out.innerHTML='<div class="muted">Nog geen resultaat…</div>'; logrun.textContent=''; };
+
+    // --- run SQL ---
+    run.onclick = async ()=>{
+      const c = getCfg();
+      if(!c.host || !c.token){ banner('Host of token ontbreekt','warn'); return; }
+      const s = sql.value.trim();
+      if(!s){ banner('Geen SQL opgegeven','warn'); return; }
+      const payload = { sql: s, max_rows: 500, timeout_ms: 8000 };
+      try{
+        log(logrun, 'POST ' + c.host + '/chatdb/sql');
+        const r = await fetch(c.host + '/chatdb/sql', {
+          method:'POST',
+          headers: { 'Authorization':'Bearer ' + c.token, 'Content-Type':'application/json; charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+        const j = await r.json().catch(()=> ({}));
+        if (!r.ok){ banner('SQL error','err'); log(logrun, 'ERROR ' + r.status + ': ' + JSON.stringify(j)); out.innerHTML = `<div class="err">Error ${r.status}</div><pre class="logs">${escapeHtml(JSON.stringify(j,null,2))}</pre>`; return; }
+        if (j.rows){
+          banner(`OK: ${j.rows.length} rijen`,'ok');
+          out.innerHTML = tableFromRows(j.rows);
+          log(logrun, `OK rows=${j.rows.length}`);
+        } else {
+          banner('Status: ' + (j.status||'ok'),'ok');
+          out.innerHTML = `<div class="ok">Status: ${escapeHtml(j.status||'ok')}</div>`;
+          log(logrun, 'OK status=' + (j.status||'ok'));
+        }
+      }catch(e){
+        banner('Request error','err'); log(logrun, 'Request error: ' + e);
+        out.innerHTML = `<div class="err">Request error</div><pre class="logs">${escapeHtml(String(e))}</pre>`;
+      }
+    };
+  </script>
+</body>
+</html>

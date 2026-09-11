@@ -126,6 +126,13 @@ class _ValidationSubmissionDetailPageState
                     note: 'Goedgekeurd vanuit Flutter app.',
                   ),
                 ),
+                onPromote: () => runAction(
+                  'Submission gepromoveerd naar inspectiedatabase.',
+                  () => widget.apiClient.promoteSubmission(
+                    submissionId: detail.submissionId,
+                    note: 'Gepromoveerd vanuit Flutter app.',
+                  ),
+                ),
                 onNeedsCorrection: () => runAction(
                   'Submission teruggezet naar correctie.',
                   () => widget.apiClient.needsCorrection(
@@ -184,6 +191,7 @@ class _ActionPanel extends StatelessWidget {
   final ValidationSubmissionDetail detail;
   final VoidCallback onStart;
   final VoidCallback onApprove;
+  final VoidCallback onPromote;
   final VoidCallback onNeedsCorrection;
 
   const _ActionPanel({
@@ -191,6 +199,7 @@ class _ActionPanel extends StatelessWidget {
     required this.detail,
     required this.onStart,
     required this.onApprove,
+    required this.onPromote,
     required this.onNeedsCorrection,
   });
 
@@ -216,6 +225,17 @@ class _ActionPanel extends StatelessWidget {
               onPressed: actionBusy || !canApprove ? null : onApprove,
               icon: const Icon(Icons.check),
               label: const Text('Goedkeuren'),
+            ),
+            if (detail.validationStatus == 'APPROVED')
+              FilledButton.icon(
+                onPressed: actionBusy ? null : onPromote,
+                icon: const Icon(Icons.publish),
+                label: const Text('Promoveren'),
+              ),
+            if (detail.validationStatus == 'PROMOTED_TO_CANONICAL_DB')
+              const Chip(
+                avatar: Icon(Icons.done_all),
+                label: Text('Gepromoveerd'),
             ),
             OutlinedButton.icon(
               onPressed: actionBusy ? null : onNeedsCorrection,

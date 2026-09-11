@@ -1,0 +1,695 @@
+import re
+from dataclasses import dataclass
+
+from app.orchestrator.models import (
+    DetectedEntity,
+    Domain,
+    QueryPlan,
+)
+from app.orchestrator.normalizer import normalize_question
+
+
+@dataclass(frozen=True)
+class FamilyPattern:
+    code: str
+    patterns: tuple[str, ...]
+
+
+PRODUCT_FAMILY_PATTERNS = (
+    FamilyPattern(
+        code="BB-U",
+        patterns=(
+            r"\bbelle\s+banne\s+u\b",
+            r"\bbb[\s-]*u\b",
+            r"\bbb[\s-]*u\s*\d{3,4}\b",
+            r"\bu(?:\s+\d{3,4})?\s+bb\s+schraper\b",
+            r"\bu(?:\s+\d{3,4})?\s+schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="BB-H",
+        patterns=(
+            r"\bbelle\s+banne\s+h\b",
+            r"\bbb[\s-]*h\b",
+            r"\bh(?:\s+\d{3,4})?\s+bb\s+schraper\b",
+            r"\bh(?:\s+\d{3,4})?\s+schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="BB-P",
+        patterns=(
+            r"\bbelle\s+banne\s+p\b",
+            r"\bbb[\s-]*p\b",
+            r"\bp(?:\s+\d{3,4})?\s+schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="BB-R",
+        patterns=(
+            r"\bbelle\s+banne\s+r\b",
+            r"\bbb[\s-]*r\b",
+            r"\br(?:\s+\d{3,4})?\s+schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="PROM-KF",
+        patterns=(
+            r"\bpromati\s+kf\b",
+            r"\bkf[\s-]*schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="PROM-KS",
+        patterns=(
+            r"\bpromati\s+ks\b",
+            r"\bks[\s-]*schraper\b",
+        ),
+    ),
+    FamilyPattern(
+        code="PROM-TPH-HD",
+        patterns=(
+            r"\btph[\s-]*hd\b",
+            r"\bpromati\s+tph[\s-]*hd\b",
+        ),
+    ),
+    FamilyPattern(
+        code="PROM-TPH-ND",
+        patterns=(
+            r"\btph[\s-]*nd\b",
+            r"\bpromati\s+tph[\s-]*nd\b",
+        ),
+    ),
+    FamilyPattern(
+        code="PROLOAD",
+        patterns=(
+            r"\bproload\b",
+            r"\bblu[\s-]*tec\s+proload\b",
+            r"\bblutec\s+proload\b",
+        ),
+    ),
+)
+
+
+PRODUCT_DOMAIN_TERMS = (
+    "schraper",
+    "bandschraper",
+    "belle banne",
+    "promati kf",
+    "promati ks",
+    "tph",
+    "proload",
+    "artikel",
+    "artikelen",
+    "voorraad",
+    "prijs",
+)
+
+INSPECTION_DOMAIN_TERMS = (
+    "inspectie",
+    "inspecties",
+    "inspectierapport",
+    "rapport",
+    "slijtage",
+    "meshoogte",
+    "trend",
+    "historie",
+    "tijdlijn",
+    "onderhoud",
+    "vervangen",
+    "vervanging",
+    "laatste meting",
+)
+
+BAND_CONTEXT_INSPECTION_TERMS = (
+    "hoe staat",
+    "ervoor",
+    "vorige keer",
+    "laatste keer",
+    "mis met",
+    "status",
+    "conditie",
+)
+
+
+def _entity(
+    name: str,
+    raw_value,
+    value,
+    confidence: float,
+    source: str,
+) -> DetectedEntity:
+    return DetectedEntity(
+        name=name,
+        raw_value=raw_value,
+        value=value,
+        confidence=confidence,
+        source=source,
+    )
+
+
+def detect_product_family(
+    question: str,
+) -> DetectedEntity | None:
+    q = question or ""
+
+    for family in PRODUCT_FAMILY_PATTERNS:
+        for pattern in family.patterns:
+            match = re.search(pattern, q, re.IGNORECASE)
+            if match:
+                return _entity(
+                    name="family_code",
+                    raw_value=match.group(0),
+                    value=family.code,
+                    confidence=0.96,
+                    source="family_pattern",
+                )
+
+    # Contextgevoelige fallback voor natuurlijke BB-U-vragen.
+    #
+    # Een losse notatie "U 1800" is op zichzelf te algemeen.
+    # We accepteren die alleen wanneer de vraag duidelijke
+    # product-/commerci?le context bevat.
+    bb_u_context_terms = (
+        "voorraad",
+        "op voorraad",
+        "beschikbaar",
+        "prijs",
+        "kost",
+        "kosten",
+        "voordelen",
+        "nadelen",
+        "voor- en nadelen",
+    )
+
+    if any(term in q.lower() for term in bb_u_context_terms):
+        match = re.search(
+            r"\bu(?:\s+voor)?\s+(\d{3,4})\b",
+            q,
+            re.IGNORECASE,
+        )
+
+        if match:
+            return _entity(
+                name="family_code",
+                raw_value=match.group(0),
+                value="BB-U",
+                confidence=0.90,
+                source="contextual_bb_u_pattern",
+            )
+
+    return None
+
+
+def detect_belt_width(
+    question: str,
+    family_code: str | None,
+) -> DetectedEntity | None:
+    q = question or ""
+
+    explicit_patterns = (
+        r"\bbandbreedte\s*(?:van\s*)?(\d{3,4})\b",
+        r"\bbb\s*(\d{3,4})\b",
+        r"\bb\s*=\s*(\d{3,4})\b",
+        r"\b(\d{3,4})\s*mm\s*(?:band|bandbreedte)\b",
+        r"\bvoor\s*(\d{3,4})\b",
+    )
+
+    for pattern in explicit_patterns:
+        match = re.search(pattern, q, re.IGNORECASE)
+        if not match:
+            continue
+
+        width = int(match.group(1))
+
+        if 300 <= width <= 3000:
+            return _entity(
+                name="belt_width_mm",
+                raw_value=match.group(1),
+                value=width,
+                confidence=0.98,
+                source="explicit_width_pattern",
+            )
+
+    # Voor Belle Banne-families is één los maatgetal meestal
+    # voldoende sterk om als bandbreedte te interpreteren.
+    #
+    # Dit doen we bewust NIET voor TPH, omdat daar een los getal
+    # ook een andere constructiemaat kan zijn.
+    loose_width_families = {
+        "BB-U",
+        "BB-H",
+        "BB-P",
+        "BB-R",
+    }
+
+    # Compacte BB-U-notaties zoals "BB U1800" bevatten geen
+    # woordgrens v??r het maatgetal en worden daarom niet door
+    # de generieke losse-getal-detectie gevonden.
+    if family_code == "BB-U":
+        match = re.search(
+            r"\bu\s*(\d{3,4})\b",
+            q,
+            re.IGNORECASE,
+        )
+
+        if match:
+            width = int(match.group(1))
+
+            if 300 <= width <= 3000:
+                return _entity(
+                    name="belt_width_mm",
+                    raw_value=match.group(1),
+                    value=width,
+                    confidence=0.94,
+                    source="bb_u_compact_width_pattern",
+                )
+
+    if family_code not in loose_width_families:
+        return None
+
+    candidates = []
+
+    for raw in re.findall(r"\b(\d{3,4})\b", q):
+        value = int(raw)
+
+        if 300 <= value <= 3000:
+            candidates.append(value)
+
+    candidates = list(dict.fromkeys(candidates))
+
+    if len(candidates) == 1:
+        return _entity(
+            name="belt_width_mm",
+            raw_value=str(candidates[0]),
+            value=candidates[0],
+            confidence=0.90,
+            source="family_context_width_inference",
+        )
+
+    return None
+
+
+def detect_band_code(
+    question: str,
+) -> DetectedEntity | None:
+    q = question or ""
+
+    # Expliciet "band B12" heeft de hoogste zekerheid.
+    match = re.search(
+        r"\bband\s+([a-z]{1,3}[\s-]?\d{1,3})\b",
+        q,
+        re.IGNORECASE,
+    )
+
+    if match:
+        value = re.sub(
+            r"[\s-]+",
+            "",
+            match.group(1),
+        ).upper()
+
+        return _entity(
+            name="band_code",
+            raw_value=match.group(1),
+            value=value,
+            confidence=0.96,
+            source="explicit_band_pattern",
+        )
+
+    # Daarna een voorzichtig standalone patroon, zoals B12.
+    matches = re.findall(
+        r"\b([a-z]{1,3}[\s-]?\d{1,3})\b",
+        q,
+        re.IGNORECASE,
+    )
+
+    for raw in matches:
+        value = re.sub(r"[\s-]+", "", raw).upper()
+
+        # Productnotaties zoals BB 1800 horen hier niet thuis.
+        if value.startswith("BB") and len(re.sub(r"\D", "", value)) >= 3:
+            continue
+
+        # Bekende product-/materiaalcodes mogen niet als
+        # standalone transportbandcode worden ge?nterpreteerd.
+        #
+        # Expliciete formuleringen zoals "band B12" zijn hierboven
+        # al afgehandeld en blijven dus altijd geldig.
+        if (
+            re.fullmatch(r"RVS(?:304|316)", value, re.IGNORECASE)
+            or value.upper() == "M3"
+        ):
+            continue
+
+        # In TPH-productcontext zijn HD/ND + maatnotaties geen
+        # transportbandcodes. Een expliciete formulering
+        # "band HD750" is hierboven al met hogere zekerheid verwerkt.
+        if (
+            re.search(r"\btph\b", q, re.IGNORECASE)
+            and re.fullmatch(
+                r"(?:HD|ND)\d{2,4}",
+                value,
+                re.IGNORECASE,
+            )
+        ):
+            continue
+
+        return _entity(
+            name="band_code",
+            raw_value=raw,
+            value=value,
+            confidence=0.82,
+            source="standalone_band_pattern",
+        )
+
+    return None
+
+
+def detect_line_code(
+    question: str,
+) -> DetectedEntity | None:
+    q = question or ""
+
+    # Bestaand expliciet patroon:
+    # "lijn MV2" / "line MV2".
+    match = re.search(
+        r"\b(?:lijn|line)\s+([a-z0-9_-]+)\b",
+        q,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return _entity(
+            name="lijn_code",
+            raw_value=match.group(1),
+            value=match.group(1).upper(),
+            confidence=0.82,
+            source="explicit_line_pattern",
+        )
+
+    # Natuurlijke assetcontext:
+    # "band R5 op MV2", "band R5 op GSL".
+    #
+    # Dit is uitsluitend een context-HINT.
+    # De asset resolver blijft de autoriteit die bepaalt
+    # of band, installatie en gebied werkelijk bij elkaar horen.
+    match = re.search(
+        r"\bop\s+([a-z][a-z0-9_-]{1,20})\b",
+        q,
+        re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    raw_value = match.group(1)
+    value = raw_value.upper()
+
+    # Alleen code-achtige waarden accepteren.
+    #
+    # Cijfers:
+    # MV1, MV2, HOO6, HOO7, BR1, E200, E300...
+    #
+    # Underscore:
+    # GROTE_KADE, KLEINE_KADE, STORT_O, STORT_W...
+    #
+    # Letter-only bekende installatie-/gebiedcodes:
+    # GSL, PEFA, SIFA, MENGERIJ, PELLET, SINTER.
+    looks_like_context_code = (
+        bool(re.search(r"\d", value))
+        or "_" in value
+        or value in {
+            "GSL",
+            "PEFA",
+            "SIFA",
+            "MENGERIJ",
+            "PELLET",
+            "SINTER",
+        }
+    )
+
+    if not looks_like_context_code:
+        return None
+
+    return _entity(
+        name="lijn_code",
+        raw_value=raw_value,
+        value=value,
+        confidence=0.90,
+        source="explicit_context_code_pattern",
+    )
+
+
+def _score_domain(
+    question: str,
+    family: DetectedEntity | None,
+    band: DetectedEntity | None,
+    line: DetectedEntity | None,
+) -> tuple[float, float]:
+    q = question or ""
+
+    product_score = 0.0
+    inspection_score = 0.0
+
+    if family:
+        product_score += 0.75
+
+    if any(term in q for term in PRODUCT_DOMAIN_TERMS):
+        product_score += 0.20
+
+    if any(term in q for term in INSPECTION_DOMAIN_TERMS):
+        inspection_score += 0.65
+
+    if band:
+        inspection_score += 0.20
+
+        # Een expliciete formulering "band <code>" is een sterke
+        # asset-intentie, ook zonder woorden als inspectie/slijtage.
+        #
+        # Productcontext krijgt bewust voorrang:
+        # "prijs van band X" wordt dus niet automatisch inspection.
+        #
+        # Een losse code zonder het woord "band" blijft eveneens
+        # conservatief via standalone_band_pattern.
+        #
+        # explicit_band_pattern routes to inspection
+        if (
+            band.source == "explicit_band_pattern"
+            and band.confidence >= 0.90
+            and family is None
+            and not any(
+                term in q
+                for term in PRODUCT_DOMAIN_TERMS
+            )
+        ):
+            inspection_score += 0.40
+
+        # Een betrouwbare bandcode plus natuurlijke statuscontext
+        # is voldoende om de vraag als inspectievraag te behandelen.
+        if (
+            band.confidence >= 0.80
+            and any(
+                term in q
+                for term in BAND_CONTEXT_INSPECTION_TERMS
+            )
+        ):
+            inspection_score += 0.45
+
+    if line:
+        inspection_score += 0.15
+
+    return (
+        min(product_score, 1.0),
+        min(inspection_score, 1.0),
+    )
+
+
+def detect_intent(
+    question: str,
+    primary_domain: Domain | None,
+) -> str:
+    q = question or ""
+
+    if primary_domain == Domain.PRODUCT:
+        if any(
+            term in q
+            for term in (
+                "voorraad",
+                "op voorraad",
+                "beschikbaar",
+            )
+        ):
+            return "inventory_lookup"
+
+        if any(
+            term in q
+            for term in (
+                "prijs",
+                "kost",
+                "kosten",
+            )
+        ):
+            return "price_lookup"
+
+        if any(
+            term in q
+            for term in (
+                "vergelijk",
+                "verschil",
+                "welke schraper",
+                "welke uitvoering",
+                "kiezen",
+                "keuze",
+            )
+        ):
+            return "product_selection"
+
+        if any(
+            term in q
+            for term in (
+                "voordelen",
+                "nadelen",
+                "voor- en nadelen",
+            )
+        ):
+            return "advantages_disadvantages"
+
+        return "product_lookup"
+
+    if primary_domain == Domain.INSPECTION:
+        if any(
+            term in q
+            for term in (
+                "trend",
+                "slijtage",
+                "ontwikkelt",
+                "ontwikkeling",
+                "historie",
+                "tijdlijn",
+                "verloop",
+                "lifecycle",
+            )
+        ):
+            return "inspection_trend"
+
+        if any(
+            term in q
+            for term in (
+                "laatste",
+                "meest recente",
+                "actuele",
+                "recentste",
+                "vorige keer",
+                "laatste keer",
+            )
+        ):
+            return "inspection_latest"
+
+        if any(
+            term in q
+            for term in (
+                "onderhoud",
+                "prioriteit",
+                "wat moet eerst",
+                "wat moet vervangen",
+            )
+        ):
+            return "maintenance_priority"
+
+        return "inspection_lookup"
+
+    return "unknown"
+
+
+def understand_query(question: str) -> QueryPlan:
+    normalized = normalize_question(question)
+
+    family = detect_product_family(normalized)
+
+    family_code = (
+        str(family.value)
+        if family is not None
+        else None
+    )
+
+    width = detect_belt_width(
+        normalized,
+        family_code,
+    )
+
+    band = detect_band_code(normalized)
+    line = detect_line_code(normalized)
+
+    product_score, inspection_score = _score_domain(
+        normalized,
+        family,
+        band,
+        line,
+    )
+
+    primary_domain: Domain | None = None
+    domains: list[Domain] = []
+
+    if product_score >= 0.55:
+        domains.append(Domain.PRODUCT)
+
+    if inspection_score >= 0.55:
+        domains.append(Domain.INSPECTION)
+
+    if product_score >= 0.55 or inspection_score >= 0.55:
+        if inspection_score > product_score:
+            primary_domain = Domain.INSPECTION
+        else:
+            primary_domain = Domain.PRODUCT
+
+    confidence = max(
+        product_score,
+        inspection_score,
+    )
+
+    entities: dict[str, DetectedEntity] = {}
+
+    if family:
+        entities["family_code"] = family
+
+    if width:
+        entities["belt_width_mm"] = width
+
+    if band:
+        entities["band_code"] = band
+
+    if line:
+        entities["lijn_code"] = line
+
+    intent = detect_intent(
+        normalized,
+        primary_domain,
+    )
+
+    clarification_required = (
+        primary_domain is None
+        or confidence < 0.55
+    )
+
+    clarification_question = None
+
+    if clarification_required:
+        clarification_question = (
+            "Kun je aangeven of je informatie zoekt over "
+            "een product, inspectie, technische vraag, RFQ of organisatie?"
+        )
+
+    return QueryPlan(
+        original_question=question,
+        normalized_question=normalized,
+        primary_domain=primary_domain,
+        domains=domains,
+        intent=intent,
+        entities=entities,
+        requested_information=[],
+        residual_terms=[],
+        confidence=confidence,
+        clarification_required=clarification_required,
+        clarification_question=clarification_question,
+        execution_steps=[],
+    )

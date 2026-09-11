@@ -1,0 +1,87 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Promati ChatDB API",
+    "version": "1.0.0",
+    "description": "Execute safe SQL (SELECT/WITH/CREATE VIEW allowed by validator) on the Promati internal knowledge graph."
+  },
+  "servers": [
+    { "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev" }
+  ],
+  "paths": {
+    "/chatdb/sql": {
+      "post": {
+        "operationId": "runSql",
+        "summary": "Run a safe SQL statement",
+        "description": "Allowed by server validator: SELECT, WITH, INSERT (into whitelisted v2 tables), CREATE VIEW/TABLE. Returns rows or {status:'ok'}. Do not include trailing semicolon.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sql": {
+                    "type": "string",
+                    "description": "SQL SELECT or WITH query"
+                  },
+                  "max_rows": {
+                    "type": "integer",
+                    "default": 500
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "default": 6000
+                  }
+                },
+                "required": ["sql"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SQL rows or status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "items": { "type": "object" }
+                        }
+                      },
+                      "required": ["rows"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or SQL error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

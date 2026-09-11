@@ -1,0 +1,17 @@
+﻿test_id,question,expected_query_class,expected_domain,expected_intent,expected_band_code,test_category
+REG_0001,Hoe werkt de orchestrator?,SYSTEM_META,,,,SYSTEM_META
+REG_0002,Hoeveel werk is fase A?,SYSTEM_META,,,,SYSTEM_META
+REG_0003,We hebben 200 testvragen voor de orchestrator.,SYSTEM_META,,,,SYSTEM_META
+REG_0010,RFQ is ????n van onze domeinen; hoe verbeteren we de router?,SYSTEM_META,,,,MENTION_NOT_INTENT
+REG_0011,ORG laten we voorlopig met rust; ik wil de orchestrator verbeteren.,SYSTEM_META,,,,MENTION_NOT_INTENT
+REG_0012,Product is hier alleen een voorbeeld van een domein.,SYSTEM_META,,,,MENTION_NOT_INTENT
+REG_0020,de 42 gevallen moeten nog bekeken worden,,,,,FALSE_BAND_CODE
+REG_0021,er zijn 0 fouten gevonden,,,,,FALSE_BAND_CODE
+REG_0022,ik werk hier al 5 maanden,,,,,FALSE_BAND_CODE
+REG_0023,die 9 vragen zijn lastig,,,,,FALSE_BAND_CODE
+REG_0024,gaf 0 resultaten,,,,,FALSE_BAND_CODE
+REG_0025,min 888 tekens,,,,,FALSE_BAND_CODE
+REG_0026,ORG 5 is alleen een voorbeeldnummer,SYSTEM_META,,,,FALSE_BAND_CODE
+REG_0030,Hoe staat band A319 ervoor?,BUSINESS,inspection,,A319,VALID_BAND_CODE
+REG_0031,Hoe staat A 319 ervoor?,BUSINESS,inspection,,A319,VALID_BAND_CODE
+REG_0032,Wat is de actuele meshoogte op A319?,BUSINESS,inspection,,A319,VALID_BAND_CODE

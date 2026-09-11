@@ -1,0 +1,14 @@
+﻿{
+    "total":  200,
+    "query_class_pass":  200,
+    "target_count":  20,
+    "target_changed":  20,
+    "target_contract_failures":  0,
+    "invariant_count":  180,
+    "invariant_failures":  0,
+    "conversational_count":  7,
+    "unknown_count":  3,
+    "pure_system_meta_count":  10,
+    "pre_snapshot":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\pre_a1b_plan_20260826_094458\\pre_a1b_plan_snapshot.json",
+    "post_snapshot":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\post_a1b_compare_20260826_103809\\post_a1b_plan_snapshot.json"
+}

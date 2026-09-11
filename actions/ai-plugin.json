@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Promati ChatDB",
+  "name_for_model": "promati_chatdb",
+  "description_for_human": "Zakelijke assistent voor Promati — haalt informatie direct uit de interne Promati-database via veilige SQL.",
+  "description_for_model": "Use this tool to answer ALL questions strictly using the Promati internal SQL database. Never use web search. Always call run_sql with SELECT/WITH queries when the user asks about products, packs, schrapers, afdichtingen, klanten, accounts, segmenten, processen, MT, KPI's.",
+  "auth": {
+    "type": "bearer",
+    "authorization_type": "Bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "<PUBLIC_API_URL>/plugin-openapi.json"
+  },
+  "logo_url": "https://www.promati.com/img/logo.png",
+  "contact_email": "info@promati.com",
+  "legal_info_url": "https://www.promati.com/de/"
+}

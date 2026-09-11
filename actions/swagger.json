@@ -1,0 +1,95 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Promati ChatDB API",
+    "version": "1.0.0",
+    "description": "Execute safe SQL against Promati's database via /chatdb/sql. The server-side validator allows only SELECT/WITH, and controlled CREATE (TABLE/VIEW) depending on configuration."
+  },
+  "servers": [
+    { "url": "https://mississippi-reached-initiatives-fantasy.trycloudflare.com" }
+  ],
+  "paths": {
+    "/chatdb/sql": {
+      "post": {
+        "operationId": "runSql",
+        "summary": "Run a safe SQL query",
+        "description": "Send a SQL string (SELECT/WITH or allowed CREATE/INSERT per server policy). The API adds a LIMIT if missing and enforces a statement timeout.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sql": {
+                    "type": "string",
+                    "description": "SQL string to execute. Prefer SELECT/WITH on these views: vw_accounts_full, vw_accounts_with_notes, vw_products_flat_specs, vw_packs_expanded_specs. Avoid trailing semicolon."
+                  },
+                  "max_rows": {
+                    "type": "integer",
+                    "description": "Max rows if query has no LIMIT.",
+                    "default": 500,
+                    "minimum": 1,
+                    "maximum": 5000
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "description": "Statement timeout per query.",
+                    "default": 6000,
+                    "minimum": 100,
+                    "maximum": 30000
+                  }
+                },
+                "required": ["sql"]
+              },
+              "example": {
+                "sql": "SELECT category, product, variant_name FROM vw_products_flat_specs ORDER BY category, product LIMIT 10",
+                "max_rows": 500,
+                "timeout_ms": 6000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows or status ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "items": { "type": "object", "additionalProperties": true }
+                        }
+                      },
+                      "required": ["rows"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": { "type": "string", "enum": ["ok"] }
+                      },
+                      "required": ["status"]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or SQL error (blocked keyword, table not whitelisted, or SQL error)."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+﻿PROMATI PHASE-B2E TYPED EXECUTION CONTRACT DESIGN V1
+====================================================
+
+Review result:
+ACCEPTED_FOR_SHADOW_ONLY
+
+Canonical design script SHA256:
+0480A607F371505A531BC5C7A0324857A4F851965213B709159D18573640DEEB
+
+Specialist contract count:
+6
+
+Production enforcement blockers:
+6
+
+Shadow contract design ready:
+TRUE
+
+Production contract enforcement ready:
+FALSE
+
+Core design:
+- Transport state is separate from semantic outcome.
+- legacy accepted remains unchanged during shadow mode.
+- Missing or unknown specialist status maps to UNKNOWN, not SUCCESS.
+- Timeout remains 30 seconds.
+- Retry count remains 0.
+- Fallback runtime behavior remains unresolved and unchanged.
+- Evidence/provenance are metadata placeholders only in Phase B.
+- Phase C remains owner of evidence assessment.
+
+Permitted next production scope:
+- ADD_TYPES
+- ADD_SPECIALIST_REGISTRY
+- ADD_TYPED_RESULT_SHADOW_DERIVATION
+- ADD_SHADOW_COMPARISON_TESTS
+
+Explicitly forbidden in next production step:
+- Phase-A routing changes
+- QueryPlan behavior changes
+- specialist endpoint changes
+- specialist behavior changes
+- result enforcement
+- fallback behavior changes
+- retry behavior changes
+- Phase-C evidence scoring
+- confidence redesign
+- adding RFQ direct planner capability
+- guessing/fixing analysis mode runtime behavior
+
+Production enforcement blockers:
+1. ANALYSIS_MODE_SCHEMA_DRIFT | PROVEN
+2. ANALYSIS_MODE_RUNTIME_EFFECT | UNKNOWN
+3. RFQ_DIRECT_PLANNER_ABSENCE_INTENTIONALITY | UNKNOWN
+4. ORG_DIAGNOSTICS_STATUS_TAXONOMY | PARTIAL
+5. RFQ_SUCCESS_STATUS_TAXONOMY | PARTIAL
+6. FALLBACK_RUNTIME_CONTRACT | UNKNOWN
+
+Next step:
+READ_ONLY_B3A_TYPES_REGISTRY_SHADOW_IMPLEMENTATION_PLAN

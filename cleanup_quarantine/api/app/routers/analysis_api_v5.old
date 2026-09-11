@@ -1,0 +1,892 @@
+from __future__ import annotations
+
+import os
+from typing import Optional, Literal
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+
+router = APIRouter(prefix="/analysis", tags=["analysis"])
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://postgres:SterkWachtwoord123@postgres:5432/promati",
+)
+
+engine: Engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+VALID_ORDER_COLUMNS = {
+    "impact_score",
+    "n_cases",
+    "n_banden",
+    "avg_delta_vervuiling",
+    "avg_delta_schade",
+    "avg_delta_scheefloop",
+}
+
+VALID_ORDER_DIR = {"asc", "desc"}
+
+
+def safe_order_by(order_by: str, order_dir: str) -> str:
+    order_by = order_by if order_by in VALID_ORDER_COLUMNS else "impact_score"
+    order_dir = order_dir.lower() if order_dir.lower() in VALID_ORDER_DIR else "desc"
+    return f"{order_by} {order_dir}"
+
+
+def fetch_all(sql: str, params: dict) -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def fetch_one(sql: str, params: dict) -> Optional[dict]:
+    with engine.connect() as conn:
+        row = conn.execute(text(sql), params).mappings().first()
+    return dict(row) if row else None
+
+
+class GPTQueryRequest(BaseModel):
+    vraag: str
+    lijn_code: Optional[str] = None
+    scraper_position: Optional[str] = None
+    min_abs_impact: float = 0.03
+    limit: int = 15
+
+
+@router.get("/health")
+def analysis_health() -> dict:
+    try:
+        row = fetch_one("SELECT 1 AS ok", {})
+        return {"status": "ok", "db": row}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/config/v7/advice")
+def get_config_v7_advice(
+    configuratie_type_v7: Optional[str] = Query(default=None),
+    scraper_channel: Optional[str] = Query(default=None),
+    advies_status: Optional[Literal["VERMIJDEN", "OPLETTEN", "ACCEPTABEL"]] = Query(default=None),
+    data_quality: Optional[Literal["OK", "TE_WEINIG_DATA"]] = Query(default=None),
+    confidence_level: Optional[Literal["HOOG", "MIDDEL", "LAAG"]] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    conditions = ["1=1"]
+    params: dict = {"limit": limit}
+
+    if configuratie_type_v7:
+        conditions.append("configuratie_type_v7 = :configuratie_type_v7")
+        params["configuratie_type_v7"] = configuratie_type_v7
+
+    if scraper_channel:
+        conditions.append("scraper_channel = :scraper_channel")
+        params["scraper_channel"] = scraper_channel
+
+    if advies_status:
+        conditions.append("advies_status = :advies_status")
+        params["advies_status"] = advies_status
+
+    if data_quality:
+        conditions.append("data_quality = :data_quality")
+        params["data_quality"] = data_quality
+
+    if confidence_level:
+        conditions.append("confidence_level = :confidence_level")
+        params["confidence_level"] = confidence_level
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            configuratie_type_v7,
+            scraper_channel,
+            scraper_type_norm,
+            n_banden,
+            avg_vervuiling,
+            avg_schade,
+            avg_scheefloop,
+            avg_slijtage,
+            advies_status,
+            confidence_level,
+            data_quality
+        FROM vw_analysis_config_advice_v7_final
+        WHERE {where_sql}
+        ORDER BY
+            CASE advies_status
+                WHEN 'VERMIJDEN' THEN 1
+                WHEN 'OPLETTEN' THEN 2
+                ELSE 3
+            END,
+            CASE confidence_level
+                WHEN 'HOOG' THEN 1
+                WHEN 'MIDDEL' THEN 2
+                ELSE 3
+            END,
+            avg_vervuiling DESC,
+            avg_schade DESC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/config/v7/best")
+def get_config_v7_best(
+    data_quality: Optional[Literal["OK", "TE_WEINIG_DATA"]] = Query(default="OK"),
+    limit: int = Query(default=25, ge=1, le=200),
+):
+    conditions = ["advies_status = 'ACCEPTABEL'"]
+    params: dict = {"limit": limit}
+
+    if data_quality:
+        conditions.append("data_quality = :data_quality")
+        params["data_quality"] = data_quality
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            configuratie_type_v7,
+            scraper_channel,
+            scraper_type_norm,
+            n_banden,
+            avg_vervuiling,
+            avg_schade,
+            avg_scheefloop,
+            avg_slijtage,
+            advies_status,
+            confidence_level,
+            data_quality
+        FROM vw_analysis_config_advice_v7_final
+        WHERE {where_sql}
+        ORDER BY
+            CASE confidence_level
+                WHEN 'HOOG' THEN 1
+                WHEN 'MIDDEL' THEN 2
+                ELSE 3
+            END,
+            avg_vervuiling ASC,
+            avg_schade ASC,
+            avg_scheefloop ASC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/config/v7/worst")
+def get_config_v7_worst(
+    data_quality: Optional[Literal["OK", "TE_WEINIG_DATA"]] = Query(default="OK"),
+    limit: int = Query(default=25, ge=1, le=200),
+):
+    conditions = ["advies_status IN ('VERMIJDEN', 'OPLETTEN')"]
+    params: dict = {"limit": limit}
+
+    if data_quality:
+        conditions.append("data_quality = :data_quality")
+        params["data_quality"] = data_quality
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            configuratie_type_v7,
+            scraper_channel,
+            scraper_type_norm,
+            n_banden,
+            avg_vervuiling,
+            avg_schade,
+            avg_scheefloop,
+            avg_slijtage,
+            advies_status,
+            confidence_level,
+            data_quality
+        FROM vw_analysis_config_advice_v7_final
+        WHERE {where_sql}
+        ORDER BY
+            CASE advies_status
+                WHEN 'VERMIJDEN' THEN 1
+                WHEN 'OPLETTEN' THEN 2
+                ELSE 3
+            END,
+            CASE confidence_level
+                WHEN 'HOOG' THEN 1
+                WHEN 'MIDDEL' THEN 2
+                ELSE 3
+            END,
+            avg_vervuiling DESC,
+            avg_schade DESC,
+            avg_scheefloop DESC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/config/v7/report/{configuratie_type_v7}")
+def get_config_v7_report(
+    configuratie_type_v7: str,
+    top_n: int = Query(default=10, ge=1, le=50),
+):
+    advice_sql = """
+        SELECT
+            configuratie_type_v7,
+            scraper_channel,
+            scraper_type_norm,
+            n_banden,
+            avg_vervuiling,
+            avg_schade,
+            avg_scheefloop,
+            avg_slijtage,
+            advies_status,
+            confidence_level,
+            data_quality
+        FROM vw_analysis_config_advice_v7_final
+        WHERE configuratie_type_v7 = :configuratie_type_v7
+        ORDER BY
+            CASE advies_status
+                WHEN 'VERMIJDEN' THEN 1
+                WHEN 'OPLETTEN' THEN 2
+                ELSE 3
+            END,
+            CASE confidence_level
+                WHEN 'HOOG' THEN 1
+                WHEN 'MIDDEL' THEN 2
+                ELSE 3
+            END,
+            avg_vervuiling DESC,
+            avg_schade DESC
+        LIMIT :top_n
+    """
+
+    advice_rows = fetch_all(advice_sql, {"configuratie_type_v7": configuratie_type_v7, "top_n": top_n})
+
+    summary_lines: list[str] = []
+
+    avoid_rows = [r for r in advice_rows if r.get("advies_status") == "VERMIJDEN"]
+    alert_rows = [r for r in advice_rows if r.get("advies_status") == "OPLETTEN"]
+    best_rows = [r for r in advice_rows if r.get("advies_status") == "ACCEPTABEL"]
+
+    if avoid_rows:
+        top = avoid_rows[0]
+        summary_lines.append(
+            f"Te vermijden binnen {configuratie_type_v7}: "
+            f"{top['scraper_type_norm']} op {top['scraper_channel']} "
+            f"(vervuiling {top['avg_vervuiling']}, schade {top['avg_schade']}, confidence {top['confidence_level']})."
+        )
+
+    if alert_rows:
+        top = alert_rows[0]
+        summary_lines.append(
+            f"Extra aandacht binnen {configuratie_type_v7}: "
+            f"{top['scraper_type_norm']} op {top['scraper_channel']} "
+            f"(vervuiling {top['avg_vervuiling']}, schade {top['avg_schade']}, confidence {top['confidence_level']})."
+        )
+
+    if best_rows:
+        top = sorted(
+            best_rows,
+            key=lambda r: (
+                0 if r.get("confidence_level") == "HOOG" else 1 if r.get("confidence_level") == "MIDDEL" else 2,
+                r.get("avg_vervuiling", 999),
+                r.get("avg_schade", 999),
+                r.get("avg_scheefloop", 999),
+            ),
+        )[0]
+        summary_lines.append(
+            f"Beste kandidaat binnen {configuratie_type_v7}: "
+            f"{top['scraper_type_norm']} op {top['scraper_channel']} "
+            f"(vervuiling {top['avg_vervuiling']}, schade {top['avg_schade']}, confidence {top['confidence_level']})."
+        )
+
+    if not summary_lines:
+        summary_lines.append(
+            f"Voor configuratie {configuratie_type_v7} is nog geen duidelijke v7-samenvatting beschikbaar."
+        )
+
+    return {
+        "configuratie_type_v7": configuratie_type_v7,
+        "summary": " ".join(summary_lines),
+        "advice": advice_rows,
+        "note": (
+            "Gebruik v7-configuratierapporten als beslissingsondersteuning. "
+            "Combineer advies_status altijd met confidence_level en data_quality."
+        ),
+    }
+
+
+@router.get("/config/v8/advice")
+def get_config_v8_advice(
+    configuratie_type_v8: Optional[str] = Query(default=None),
+    scraper_position: Optional[Literal["PRIMARY", "SECONDARY", "TERTIARY"]] = Query(default=None),
+    advies_status: Optional[Literal["VERMIJDEN", "OPLETTEN", "ACCEPTABEL"]] = Query(default=None),
+    data_quality: Optional[Literal["OK", "TE_WEINIG_DATA"]] = Query(default=None),
+    confidence_level: Optional[Literal["HOOG", "MIDDEL", "LAAG"]] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    conditions = ["1=1"]
+    params: dict = {"limit": limit}
+
+    if configuratie_type_v8:
+        conditions.append("configuratie_type_v8 = :configuratie_type_v8")
+        params["configuratie_type_v8"] = configuratie_type_v8
+
+    if scraper_position:
+        conditions.append("scraper_position = :scraper_position")
+        params["scraper_position"] = scraper_position
+
+    if advies_status:
+        conditions.append("advies_status = :advies_status")
+        params["advies_status"] = advies_status
+
+    if data_quality:
+        conditions.append("data_quality = :data_quality")
+        params["data_quality"] = data_quality
+
+    if confidence_level:
+        conditions.append("confidence_level = :confidence_level")
+        params["confidence_level"] = confidence_level
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            configuratie_type_v8,
+            scraper_position,
+            scraper_type_norm,
+            n_banden,
+            avg_vervuiling,
+            avg_schade,
+            avg_scheefloop,
+            avg_slijtage,
+            advies_status,
+            confidence_level,
+            data_quality
+        FROM vw_analysis_config_advice_v8_final
+        WHERE {where_sql}
+        ORDER BY
+            CASE advies_status
+                WHEN 'VERMIJDEN' THEN 1
+                WHEN 'OPLETTEN' THEN 2
+                ELSE 3
+            END,
+            CASE confidence_level
+                WHEN 'HOOG' THEN 1
+                WHEN 'MIDDEL' THEN 2
+                ELSE 3
+            END,
+            avg_vervuiling DESC,
+            avg_schade DESC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/band/current/{band_code}")
+def get_band_current(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            scraper_position,
+            scraper_type_norm,
+            mes_num,
+            opmerking_raw,
+            activity_score
+        FROM vw_scraper_position_rank_v7
+        WHERE {where_sql}
+        ORDER BY
+            CASE scraper_position
+                WHEN 'PRIMARY' THEN 1
+                WHEN 'SECONDARY' THEN 2
+                WHEN 'TERTIARY' THEN 3
+                ELSE 9
+            END
+    """
+    rows = fetch_all(sql, params)
+
+    config_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            configuratie_type_v8,
+            n_total_scrapers,
+            n_primary,
+            n_secondary,
+            n_tertiary
+        FROM vw_scraper_configuration_v8
+        WHERE {where_sql}
+    """
+    config = fetch_one(config_sql, params)
+
+    return {
+        "band_code": band_code,
+        "config": config,
+        "current_state": rows,
+    }
+
+
+@router.get("/band/history/{band_code}")
+def get_band_history(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code, "limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            band_locatie,
+            any_scraper_type,
+            scraper_types_on_date,
+            max_mes_num,
+            min_mes_num,
+            n_mesmetingen,
+            vervuiling_text_hits,
+            scheefloop_text_hits,
+            schade_text_hits,
+            opmerkingen,
+            max_activity_score,
+            n_actieve_regels
+        FROM vw_band_history_compact_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/band/trend/{band_code}")
+def get_band_trend(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    trend_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            start_date,
+            end_date,
+            n_meetmomenten,
+            start_vervuiling_text,
+            end_vervuiling_text,
+            start_meshoogte,
+            end_meshoogte
+        FROM vw_band_trend_v1
+        WHERE {where_sql}
+    """
+    trend = fetch_one(trend_sql, params)
+
+    history_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            scraper_types_on_date,
+            max_mes_num,
+            min_mes_num,
+            vervuiling_text_hits,
+            scheefloop_text_hits,
+            schade_text_hits,
+            opmerkingen
+        FROM vw_band_history_compact_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC
+        LIMIT 50
+    """
+    rows = fetch_all(history_sql, params)
+
+    summary = "Onvoldoende trenddata beschikbaar."
+    if trend:
+        n_meetmomenten = trend.get("n_meetmomenten")
+        s_v = trend.get("start_vervuiling_text")
+        e_v = trend.get("end_vervuiling_text")
+        s_m = trend.get("start_meshoogte")
+        e_m = trend.get("end_meshoogte")
+
+        trend_parts = [f"{band_code} heeft {n_meetmomenten} meetmomenten."]
+        if s_v is not None and e_v is not None:
+            if e_v > s_v:
+                trend_parts.append("Vervuilingssignalen nemen toe.")
+            elif e_v < s_v:
+                trend_parts.append("Vervuilingssignalen nemen af.")
+            else:
+                trend_parts.append("Vervuilingssignalen zijn stabiel.")
+        if s_m is not None and e_m is not None:
+            if e_m < s_m:
+                trend_parts.append("Meshoogte lijkt af te nemen.")
+            elif e_m > s_m:
+                trend_parts.append("Meshoogte lijkt toe te nemen.")
+            else:
+                trend_parts.append("Meshoogte lijkt stabiel.")
+        summary = " ".join(trend_parts)
+
+    return {
+        "band_code": band_code,
+        "trend": trend,
+        "summary": summary,
+        "recent_history": rows,
+    }
+
+
+@router.get("/band/resets/{band_code}")
+def get_band_resets(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code, "limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            inspection_key,
+            row_nr,
+            scraper_type_norm,
+            mes_num,
+            prev_mes_num,
+            opmerking_raw,
+            activity_score,
+            has_activity,
+            flag_new_band_text,
+            flag_replacement_text,
+            flag_mes_jump_up,
+            reset_event_type
+        FROM vw_band_reset_events_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC, row_nr
+        LIMIT :limit
+    """
+
+    summary_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            COUNT(*) AS n_reset_events,
+            COUNT(*) FILTER (WHERE reset_event_type = 'BAND_RESET') AS n_band_resets,
+            COUNT(*) FILTER (WHERE reset_event_type = 'MES_RESET') AS n_mes_resets,
+            COUNT(*) FILTER (WHERE reset_event_type = 'VERVANG_EVENT') AS n_vervang_events,
+            MAX(effective_date) AS laatste_event_datum,
+            MAX(effective_date) FILTER (WHERE reset_event_type = 'BAND_RESET') AS laatste_band_reset_datum
+        FROM vw_band_reset_events_v1
+        WHERE {where_sql}
+        GROUP BY lijn_code, band_code
+    """
+    summary = fetch_one(summary_sql, params)
+
+    return {
+        "band_code": band_code,
+        "summary": summary,
+        "reset_events": fetch_all(sql, params),
+    }
+
+
+@router.get("/band/history-v2/{band_code}")
+def get_band_history_v2(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code, "limit": limit}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    sql = f"""
+        SELECT
+            h.lijn_code,
+            h.band_code,
+            h.effective_date,
+            h.band_locatie,
+            h.scraper_types_on_date AS observed_scraper_types_on_date,
+            a.active_scraper_types_on_date,
+            h.max_mes_num,
+            h.min_mes_num,
+            h.n_mesmetingen,
+            a.active_max_mes_num,
+            a.active_min_mes_num,
+            a.active_n_mesmetingen,
+            h.opmerkingen,
+            a.active_opmerkingen,
+            h.max_activity_score,
+            a.active_max_activity_score
+        FROM vw_band_history_compact_v1 h
+        LEFT JOIN vw_band_history_active_compact_v1 a
+          ON a.lijn_code = h.lijn_code
+         AND a.band_code = h.band_code
+         AND a.effective_date = h.effective_date
+        WHERE {where_sql}
+        ORDER BY h.effective_date DESC
+        LIMIT :limit
+    """
+
+    return fetch_all(sql, params)
+
+
+@router.get("/band/trend-v3/{band_code}")
+def get_band_trend_v3(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    trend_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            segment_id,
+            start_date,
+            end_date,
+            n_meetmomenten_segment,
+            start_meshoogte,
+            end_meshoogte,
+            latest_active_scraper_types,
+            latest_active_opmerkingen
+        FROM vw_band_trend_v3
+        WHERE {where_sql}
+    """
+    trend = fetch_one(trend_sql, params)
+
+    history_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            active_scraper_types_on_date,
+            active_max_mes_num,
+            active_min_mes_num,
+            active_n_mesmetingen,
+            active_opmerkingen
+        FROM vw_band_history_active_compact_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC
+        LIMIT 50
+    """
+    rows = fetch_all(history_sql, params)
+
+    reset_sql = f"""
+        SELECT
+            COUNT(*) AS n_reset_events,
+            COUNT(*) FILTER (WHERE reset_event_type = 'BAND_RESET') AS n_band_resets,
+            MAX(effective_date) AS laatste_event_datum,
+            MAX(effective_date) FILTER (WHERE reset_event_type = 'BAND_RESET') AS laatste_band_reset_datum
+        FROM vw_band_reset_events_v1
+        WHERE {where_sql}
+    """
+    reset_summary = fetch_one(reset_sql, params)
+
+    summary = "Onvoldoende trenddata beschikbaar."
+    if trend:
+        s_m = trend.get("start_meshoogte")
+        e_m = trend.get("end_meshoogte")
+        n_seg = trend.get("n_meetmomenten_segment")
+        parts = [f"{band_code} heeft {n_seg} meetmomenten in het actuele lifecycle-segment."]
+
+        if s_m is not None and e_m is not None:
+            if e_m < s_m:
+                parts.append("De actieve meshoogte lijkt af te nemen binnen dit segment.")
+            elif e_m > s_m:
+                parts.append("De actieve meshoogte stijgt of is recent gereset binnen dit segment.")
+            else:
+                parts.append("De actieve meshoogte is stabiel binnen dit segment.")
+
+        latest_types = trend.get("latest_active_scraper_types")
+        if latest_types:
+            parts.append(f"Laatste actieve configuratie: {latest_types}.")
+
+        if reset_summary:
+            n_band_resets = reset_summary.get("n_band_resets")
+            if n_band_resets:
+                parts.append(f"Aantal echte band-resets: {n_band_resets}.")
+
+        summary = " ".join(parts)
+
+    return {
+        "band_code": band_code,
+        "trend": trend,
+        "reset_summary": reset_summary,
+        "summary": summary,
+        "recent_active_history": rows,
+    }
+
+
+@router.get("/band/report-v3/{band_code}")
+def get_band_report_v3(
+    band_code: str,
+    lijn_code: Optional[str] = Query(default=None),
+):
+    conditions = ["band_code = :band_code"]
+    params: dict = {"band_code": band_code}
+
+    if lijn_code:
+        conditions.append("lijn_code = :lijn_code")
+        params["lijn_code"] = lijn_code
+
+    where_sql = " AND ".join(conditions)
+
+    report_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            segment_id,
+            start_date,
+            end_date,
+            n_meetmomenten_segment,
+            start_meshoogte,
+            end_meshoogte,
+            latest_active_scraper_types,
+            latest_active_opmerkingen,
+            n_reset_events,
+            n_band_resets,
+            laatste_event_datum,
+            laatste_band_reset_datum,
+            mes_trend_label
+        FROM vw_band_history_report_v3
+        WHERE {where_sql}
+    """
+    report = fetch_one(report_sql, params)
+
+    current_sql = f"""
+        SELECT
+            lijn_code,
+            band_code,
+            effective_date,
+            scraper_position,
+            scraper_type_norm,
+            mes_num,
+            opmerking_raw,
+            activity_score
+        FROM vw_scraper_position_rank_v7
+        WHERE {where_sql}
+        ORDER BY
+            CASE scraper_position
+                WHEN 'PRIMARY' THEN 1
+                WHEN 'SECONDARY' THEN 2
+                WHEN 'TERTIARY' THEN 3
+                ELSE 9
+            END
+    """
+    current_state = fetch_all(current_sql, params)
+
+    resets_sql = f"""
+        SELECT
+            effective_date,
+            scraper_type_norm,
+            mes_num,
+            prev_mes_num,
+            opmerking_raw,
+            reset_event_type
+        FROM vw_band_reset_events_v1
+        WHERE {where_sql}
+        ORDER BY effective_date DESC, row_nr
+        LIMIT 20
+    """
+    recent_resets = fetch_all(resets_sql, params)
+
+    summary = "Geen rapportdata beschikbaar."
+    if report:
+        parts = [
+            f"Band {band_code} loopt in het actuele segment van {report['start_date']} tot {report['end_date']}.",
+            f"Trendlabel: {report['mes_trend_label']}.",
+        ]
+        latest_types = report.get("latest_active_scraper_types")
+        if latest_types:
+            parts.append(f"Laatste actieve types: {latest_types}.")
+        if report.get("n_band_resets") is not None:
+            parts.append(f"Echte band-resets: {report['n_band_resets']}.")
+        summary = " ".join(parts)
+
+    return {
+        "band_code": band_code,
+        "report": report,
+        "current_state": current_state,
+        "recent_resets": recent_resets,
+        "summary": summary,
+    }
+
+
+@router.get("/sublocation/{sublocatie_code}/history")
+def get_sublocation_history(
+    sublocatie_code: str,
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    sql = """
+        SELECT
+            lijn_code,
+            band_code,
+            sublocatie_code,
+            sublocatie_naam,
+            procesdeel,
+            effective_date,
+            scraper_channel,
+            scraper_type_norm,
+            mes_num,
+            status_norm,
+            vervuiling_hits,
+            bandschade_hits,
+            scheefloop_hits,
+            opmerking_raw,
+            laatste_word_opmerking
+        FROM vw_band_history_daily_v1
+        WHERE sublocatie_code = :sublocatie_code
+        ORDER BY band_code, effective_date DESC, scraper_channel
+        LIMIT :limit
+    """
+    return fetch_all(sql, {"sublocatie_code": sublocatie_code, "limit": limit})

@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Promati Analysis Assistant",
+  "name_for_model": "promati_analysis",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev/openapi.json",
+    "is_user_authenticated": true
+  },
+  "custom_headers": {
+    "ngrok-skip-browser-warning": "true",
+    "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJLakduVVFMTUpjX3VLSEQwWEFzdDhxRHRHUkxDVWRBWG01bTBIVW9ZSElFIn0.eyJleHAiOjE3NzE1NzEyMDUsImlhdCI6MTc3MTU3MDkwNSwianRpIjoiMjZhNjA0MDgtYTlkMC00YzRhLTk4MGMtODFkNDEzMmRiOTA4IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9wcm9tYXRpIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6Ijc3MWRiMjE1LTAwNGYtNDE0My04Y2E0LWFlY2RiMWRmZjFkMSIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFwaSIsInNpZCI6IjQ3MDg1MzBlLTNiNjktNGRjMi1iYTZiLWQ4N2YyODA1MWRhMCIsImFjciI6IjEiLCJhbGxvd2VkLW9yaWdpbnMiOlsiKiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLXByb21hdGkiLCJ1bWFfYXV0aG9yaXphdGlvbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiSm9obiBLb2VuZGVycyIsInByZWZlcnJlZF91c2VybmFtZSI6ImpvaG4iLCJnaXZlbl9uYW1lIjoiSm9obiIsImZhbWlseV9uYW1lIjoiS29lbmRlcnMiLCJlbWFpbCI6ImpvaG5AcHJvbWF0aS5jb20ifQ.ftO6YotpFzSCDefIrnI2ZA-fdkDcFBnPCXlYr9RSgwMpXN9M7To8lplk_JI2PhQXp0DjnpyLYyr-caqxr-JsogaKLGsZ7PA49geCq89ibeB_g99akdgCKARF0EQL_-ITebEOxCFF0TyAHczwpsS8RT2Nl8mgkaXPXCKDft3AO4z1PccRO-Qp7hBrxbE6pjDIetWWsSswyTw-Dv0QdulaYvfM5I9pqdC0MMlxG-LHs6bja-Gx867cKBRFiYc5uXbPEvIfzR71W5qv1N2zVHx42kaXktIuMdqcPW8JMww-tgYU9MxUcf2LAK5swLU-IENwQE4qWxMFBnInEtF3tZZp5Q"
+  }
+}

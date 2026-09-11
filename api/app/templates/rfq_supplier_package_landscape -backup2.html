@@ -1,0 +1,487 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 5mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 9.2px;
+      color: #001f4e;
+      margin: 0;
+      line-height: 1.15;
+    }
+
+    .page {
+      width: 287mm;
+      height: 200mm;
+      overflow: hidden;
+    }
+
+    .header {
+      height: 20mm;
+      display: grid;
+      grid-template-columns: 68mm 1fr 58mm;
+      border: 1px solid #0b3f86;
+      margin-bottom: 2.5mm;
+    }
+
+    .logo {
+      padding: 4mm 3mm 2mm 4mm;
+      font-size: 28px;
+      font-weight: 800;
+      color: #0b3f86;
+      line-height: 0.85;
+    }
+
+    .logo small {
+      display: block;
+      margin-top: 5px;
+      font-size: 8px;
+      letter-spacing: 3px;
+      color: #111;
+    }
+
+    .title {
+      text-align: center;
+      padding-top: 4mm;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: .3px;
+    }
+
+    .subtitle {
+      margin-top: 3px;
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .status {
+      border-left: 1px solid #0b3f86;
+      padding: 3mm;
+      font-size: 10px;
+      display: grid;
+      grid-template-columns: 22mm 1fr;
+      row-gap: 2.2mm;
+      align-content: center;
+    }
+
+    .status strong {
+      font-weight: 800;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 73mm 1fr 62mm;
+      gap: 2mm;
+      height: 168mm;
+    }
+
+    .left-col,
+    .middle-col,
+    .right-col {
+      min-width: 0;
+    }
+
+    .card {
+      border: 1px solid #7aa3d4;
+      margin-bottom: 2mm;
+      overflow: hidden;
+    }
+
+    .card h3 {
+      margin: 0;
+      padding: 1.7mm 2mm;
+      background: #eef5fb;
+      border-bottom: 1px solid #7aa3d4;
+      font-size: 10px;
+      line-height: 1;
+      text-transform: uppercase;
+      color: #003b73;
+      font-weight: 800;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    td {
+      border-bottom: 1px solid #d6e2ef;
+      padding: 1.45mm 2mm;
+      vertical-align: top;
+    }
+
+    td:first-child {
+      width: 43%;
+      font-weight: 800;
+    }
+
+    .rfq-card {
+      height: 58mm;
+    }
+
+    .spec-card {
+      height: 108mm;
+    }
+
+    .drawing-card {
+      height: 103mm;
+    }
+
+    .schema {
+      height: 95mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2mm 3mm 1mm 3mm;
+    }
+
+    .schema svg {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr 1fr;
+      gap: 2mm;
+      height: 63mm;
+    }
+
+    .bottom-row .card {
+      height: 100%;
+      margin-bottom: 0;
+    }
+
+    .bottom-row td {
+      padding: 1.5mm 2mm;
+    }
+
+    .right-col .card {
+      margin-bottom: 2mm;
+    }
+
+    .supplier-request {
+      height: 50mm;
+    }
+
+    .supplier-questions {
+      height: 72mm;
+    }
+
+    .supplier-docs {
+      height: 56mm;
+    }
+
+    .internal-request {
+      height: 60mm;
+    }
+
+    .internal-review {
+      height: 82mm;
+    }
+
+    .internal-confirm {
+      height: 24mm;
+    }
+
+    .line-block {
+      padding: 2mm;
+    }
+
+    .line-label {
+      margin-bottom: 1mm;
+      font-weight: 800;
+    }
+
+    .line {
+      border-bottom: 1px solid #9bb7d4;
+      height: 7mm;
+      margin-bottom: 2mm;
+    }
+
+    .line-small {
+      border-bottom: 1px solid #9bb7d4;
+      height: 6mm;
+      margin-bottom: 1.8mm;
+    }
+
+    .checkbox-row {
+      padding: 1.2mm 2mm;
+      font-size: 9.5px;
+    }
+
+    .checkbox {
+      display: inline-block;
+      width: 3mm;
+      height: 3mm;
+      border: 1px solid #0b3f86;
+      margin-right: 1.5mm;
+      vertical-align: -0.5mm;
+    }
+
+    .note-text {
+      padding: 2mm;
+      font-size: 9.5px;
+      line-height: 1.35;
+    }
+
+    .question-list {
+      margin: 0;
+      padding: 2mm 3mm 2mm 6mm;
+      font-size: 9.4px;
+      line-height: 1.35;
+    }
+
+    .question-list li {
+      margin-bottom: 1.8mm;
+    }
+
+    .small-note {
+      padding: 2mm;
+      font-size: 8.8px;
+      line-height: 1.35;
+      color: #003b73;
+    }
+
+    .footer {
+      height: 9mm;
+      border: 1px solid #7aa3d4;
+      margin-top: 2mm;
+      display: grid;
+      grid-template-columns: 1fr 1fr 35mm;
+      gap: 2mm;
+      align-items: center;
+      padding: 1.5mm 3mm;
+      font-size: 8.5px;
+    }
+
+    .internal-warning {
+      color: #b00020;
+      font-weight: 800;
+    }
+  </style>
+</head>
+
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="logo">
+      Promati
+      <small>DRIVEN BY PERFORMANCE</small>
+    </div>
+
+    <div class="title">
+      TROMMEL SPECIFICATIEBLAD &amp; AANVRAAG
+      <div class="subtitle">
+        {% if view_mode == "internal" %}
+          Interne engineering beoordeling
+        {% else %}
+          Voor leveranciersofferte
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="status">
+      <strong>Status:</strong>
+      <span>READY</span>
+
+      <strong>Datum:</strong>
+      <span>{{ today }}</span>
+
+      <strong>Document:</strong>
+      <span>
+        {% if view_mode == "internal" %}
+          Internal RFQ
+        {% else %}
+          Supplier RFQ
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <div class="main-grid">
+
+    <div class="left-col">
+      <div class="card rfq-card">
+        <h3>1. RFQ gegevens</h3>
+        <table>
+          <tr><td>RFQ ID</td><td>{{ rfq_id }}</td></tr>
+          <tr><td>Positie</td><td>{{ pos_nr }}</td></tr>
+          <tr><td>Producttype</td><td>{{ product_type }}</td></tr>
+          <tr><td>Aantal</td><td>{{ quantity }}</td></tr>
+          <tr><td>Tekening</td><td>{{ drawing_number }}</td></tr>
+          <tr><td>Model</td><td>{{ model_number }}</td></tr>
+          <tr><td>Omschrijving</td><td>{{ description }}</td></tr>
+          <tr><td>Odoo referentie</td><td>{{ odoo_reference }}</td></tr>
+        </table>
+      </div>
+
+      <div class="card spec-card">
+        <h3>2. Technische specificaties</h3>
+        <table>
+          <tr><td>Trommeltype</td><td>{{ trommel_type }}</td></tr>
+          <tr><td>Diameter DE</td><td>{{ diameter_mm }} mm</td></tr>
+          <tr><td>Mantellengte L</td><td>{{ mantel_lengte_mm }} mm</td></tr>
+          <tr><td>Asdiameter D1</td><td>{{ shaft_diameter_mm }} mm</td></tr>
+          <tr><td>Lagerhuis</td><td>{{ bearing_housing_qty }}x {{ bearing_housing }}</td></tr>
+          <tr><td>Lagering</td><td>{{ bearing_qty }}x {{ bearing }}</td></tr>
+          <tr><td>Klembus</td><td>{{ adapter_qty }}x {{ adapter }}</td></tr>
+          <tr><td>Afdichting</td><td>{{ seal_qty }}x {{ seal }}</td></tr>
+          <tr><td>FRB ring</td><td>{{ frb_ring_qty }}x {{ frb_ring }}</td></tr>
+          <tr><td>Lagging type</td><td>{{ lagging_type }}</td></tr>
+          <tr><td>Lagging dikte</td><td>{{ lagging_dikte_mm }} mm</td></tr>
+          <tr><td>Balancering</td><td>{{ balancering }}</td></tr>
+          <tr><td>TIR</td><td>{{ tir_mm }} mm</td></tr>
+          <tr><td>Materiaal mantel</td><td>{{ materiaal_mantel }}</td></tr>
+          <tr><td>Materiaal as</td><td>{{ materiaal_as }}</td></tr>
+          <tr><td>FAT vereist</td><td>{{ fat_required }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="middle-col">
+      <div class="card drawing-card">
+        <h3>3. Technische schematische opbouw</h3>
+        <div class="schema">
+          {{ drum_schema_svg | safe }}
+        </div>
+      </div>
+
+      <div class="bottom-row">
+        <div class="card">
+          <h3>4. Normen</h3>
+          <table>
+            <tr><td>Tolerantie</td><td>{{ tolerance_class }}</td></tr>
+            <tr><td>Balancering</td><td>{{ balancing_norm }}</td></tr>
+            <tr><td>Algemeen</td><td>{{ general_tolerance }}</td></tr>
+            <tr><td>Ruwheid</td><td>{{ surface_roughness }}</td></tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>5. Passingen</h3>
+          <table>
+            <tr><td>Aspassing</td><td>{{ shaft_fit }}</td></tr>
+            <tr><td>Lagerpassing</td><td>{{ bearing_fit }}</td></tr>
+            <tr><td>Klembus montage</td><td>{{ adapter_mounting }}</td></tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>6. Opmerkingen</h3>
+          <div class="note-text">{{ supplier_notes }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-col">
+      {% if view_mode == "internal" %}
+        <div class="card internal-request">
+          <h3>7. Interne beoordeling — niet naar leverancier</h3>
+          <table>
+            <tr><td>Route</td><td>{{ selected_route }}</td></tr>
+            <tr><td>Klanttype</td><td>{{ customer_type }}</td></tr>
+            <tr><td>Confidence</td><td>{{ confidence_score }}%</td></tr>
+            <tr><td>Functie</td><td>{{ function_type }}</td></tr>
+            <tr><td>Duty class</td><td>{{ duty_class }}</td></tr>
+            <tr><td>Lagging class</td><td>{{ lagging_class }}</td></tr>
+          </table>
+        </div>
+
+        <div class="card internal-review">
+          <h3>8. Engineering review</h3>
+          <div class="note-text">
+            <strong>Ontbrekende velden</strong><br>
+            {{ missing_fields }}<br><br>
+            <strong>Advies</strong><br>
+            Controleer ontbrekende technische specificaties vóór vrijgave.
+            Supplier PDF pas gebruiken na engineering akkoord.
+          </div>
+        </div>
+
+        <div class="card internal-confirm">
+          <h3>9. Interne vrijgave</h3>
+          <div class="checkbox-row"><span class="checkbox"></span>Engineering akkoord</div>
+          <div class="checkbox-row"><span class="checkbox"></span>Commercieel akkoord</div>
+          <div class="checkbox-row"><span class="checkbox"></span>Supplier package vrijgegeven</div>
+        </div>
+      {% else %}
+        <div class="card supplier-request">
+          <h3>7. Aanvraag bij leverancier</h3>
+          <div class="line-block">
+            <div class="line-label">Leverancier</div><div class="line"></div>
+            <div class="line-label">Contactpersoon</div><div class="line"></div>
+            <div class="line-label">Datum aanvraag</div><div class="line"></div>
+            <div class="line-label">Gewenste leverdatum</div><div class="line"></div>
+          </div>
+        </div>
+
+        <div class="card supplier-questions">
+          <h3>8. Te bevestigen door leverancier</h3>
+
+          {% if supplier_questions %}
+            <ol class="question-list">
+              {% for question in supplier_questions %}
+                <li>{{ question }}</li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <div class="note-text">
+              Bevestig dat de aangeboden trommel volledig voldoet aan de opgegeven
+              technische specificaties, normen, toleranties en documentatie-eisen.
+            </div>
+          {% endif %}
+
+          <div class="small-note">
+            Eventuele afwijkingen moeten expliciet in de offerte worden vermeld.
+            Niet-bevestigde afwijkingen worden als niet geaccepteerd beschouwd.
+          </div>
+        </div>
+
+        <div class="card supplier-docs">
+          <h3>9. Offerte &amp; documentatie</h3>
+          <div class="line-block">
+            <div class="line-label">Prijs EUR</div><div class="line-small"></div>
+            <div class="line-label">Levertijd</div><div class="line-small"></div>
+            <div class="line-label">Afwijkingen / alternatief voorstel</div>
+            <div class="line-small"></div>
+            <div class="line-small"></div>
+            <div class="line-label">Mee te leveren documentatie</div>
+          </div>
+
+          <div class="checkbox-row"><span class="checkbox"></span>Materiaalcertificaten indien gevraagd</div>
+          <div class="checkbox-row"><span class="checkbox"></span>Meetrapport / inspectierapport indien gevraagd</div>
+          <div class="checkbox-row"><span class="checkbox"></span>Balanceerrapport indien gevraagd</div>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div class="footer">
+    {% if view_mode == "internal" %}
+      <div class="internal-warning">INTERNE VERSIE — bevat engineering- en commerciële beoordeling.</div>
+      <div>Niet delen met leverancier of klant.</div>
+    {% else %}
+      <div>Dit document bevat uitsluitend technische aanvraaginformatie voor leveranciersofferte.</div>
+      <div>Communicatie uitsluitend via Odoo referentie.</div>
+    {% endif %}
+    <div>© Promati BV</div>
+  </div>
+
+</div>
+</body>
+</html>

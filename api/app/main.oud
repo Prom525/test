@@ -1,0 +1,91 @@
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Database
+from .db import Base, engine
+
+# Routers (alleen wat zeker bestaat / gebruikt wordt)
+from .routers import (
+    health,
+    machines,
+    inspecties,
+    files,
+    rag,
+    berekeningen,
+    plugin_proxy,         # plugin facade voor ChatGPT Actions
+)
+
+# Deze bestaan in jouw project (zie eerdere main.py), maar als je /chatdb/sql NIET meer wilt tonen
+# in OpenAPI, laat ze uitgeschakeld (niet importeren + niet includen).
+# from .routers import chatdb
+# from .routers import chatdb_schema
+
+# Extra routers
+from .routers import calendar_line_mapping
+from .routers import lijn_mapping
+
+
+# --------------------------
+# Maak FastAPI instance
+# --------------------------
+app = FastAPI(
+    title="Promati – Lokaal AI Platform API",
+    version="1.0.0",
+    servers=[{"url": "https://uninveighing-nguyet-hilly.ngrok-free.dev"}],
+)
+
+# --------------------------
+# Mount .well-known (plugin manifest + openapi)
+# --------------------------
+# Zorg dat deze map bestaat:
+# C:\ai-platform\api\app\static\.well-known\
+#
+# Met:
+#   ai-plugin.json
+#   promati-openapi.yaml
+wellknown_dir = os.path.join(
+    os.path.dirname(__file__),
+    "static",
+    ".well-known",
+)
+
+if os.path.isdir(wellknown_dir):
+    app.mount(
+        "/.well-known",
+        StaticFiles(directory=wellknown_dir),
+        name="wellknown",
+    )
+else:
+    print("WAARSCHUWING: .well-known directory bestaat niet:", wellknown_dir)
+
+# --------------------------
+# Database tabellen
+# --------------------------
+Base.metadata.create_all(bind=engine)
+
+# --------------------------
+# Public routes
+# --------------------------
+app.include_router(health.router)
+
+# --------------------------
+# API routes
+# --------------------------
+app.include_router(machines.router)
+app.include_router(inspecties.router)
+app.include_router(files.router)
+app.include_router(rag.router)
+app.include_router(berekeningen.router)
+
+# Als je /chatdb/* uit OpenAPI wilt hebben: laat dit uit.
+# app.include_router(chatdb.router)
+# app.include_router(chatdb_schema.router)
+
+app.include_router(calendar_line_mapping.router)
+app.include_router(lijn_mapping.router)
+
+# --------------------------
+# Plugin facade (voor ChatGPT Actions)
+# --------------------------
+app.include_router(plugin_proxy.router)

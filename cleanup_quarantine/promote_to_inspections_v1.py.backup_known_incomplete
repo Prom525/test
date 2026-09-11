@@ -1,0 +1,745 @@
+#!/usr/bin/env python3
+"""
+promote_to_inspections_v1.py
+
+Bouwt sb_inspections_v0 op vanuit sb_stg_inspecties_raw.
+
+Belangrijkste logica:
+- source_file + sheet vormen samen een tabblad
+- sheetnamen zoals "week 21" zijn alleen labels
+- de ECHTE inspectiedatum komt uit de Datum-rij in het tabblad zelf
+- meerdere "week 21" tabs in hetzelfde bestand zijn toegestaan,
+  zolang de datum in de header verschilt
+"""
+
+import logging
+import os
+import re
+import argparse
+from datetime import datetime, date
+from pathlib import PureWindowsPath
+
+from sqlalchemy import create_engine, text
+from datetime import datetime, date, timedelta
+
+DB_URL = os.environ.get(
+    "DB_URL",
+    "postgresql://postgres:SterkWachtwoord123@127.0.0.1:15432/promati",
+)
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger("promote_to_inspections_v1")
+
+RE_SHEET_DATE = re.compile(
+    r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{2,4})\s*$"
+)
+
+# 05 & 06-03-24 / 11&13-09-18
+RE_SHEET_DATE_RANGE = re.compile(
+    r"^\s*(\d{1,2})\s*[&+]\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{2,4})\s*$"
+)
+
+# 19-01 & 20-01-26 / 30-06 & 03-07-25
+RE_SHEET_DATE_RANGE_FULL = re.compile(
+    r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*[&+]\s*"
+    r"\d{1,2}\s*-\s*\d{1,2}\s*-\s*(\d{2,4})\s*$"
+)
+RE_WEEK_ANY = re.compile(r"^\s*week\s*\d+\s*$", re.I)
+RE_WEEK_EXTRACT = re.compile(r"(?i)\bweek\b\W*0*(\d{1,2})\b")
+RE_YEAR_ONLY = re.compile(r"^\s*((?:19|20)\d{2})\s*$")
+
+DATE_FORMATS = (
+    "%d-%m-%Y",
+    "%d-%m-%y",
+    "%Y-%m-%d",
+    "%d/%m/%Y",
+    "%d/%m/%y",
+    "%d.%m.%Y",
+    "%d.%m.%y",
+)
+
+ROOT_PATH = r"C:\Users\John Koenders\Baucotech\Logbooks - Documenten\Onderhouds Logboeken - Rapport Entretiens\NL\TATA steel"
+
+HARD_MIN_VALID_DATE = date(1998, 1, 1)
+HARD_MAX_VALID_DATE = date.today() + timedelta(days=31)
+
+DUTCH_MONTHS = {
+    "jan": 1,
+    "januari": 1,
+    "feb": 2,
+    "februari": 2,
+    "mrt": 3,
+    "maart": 3,
+    "apr": 4,
+    "april": 4,
+    "mei": 5,
+    "jun": 6,
+    "juni": 6,
+    "jul": 7,
+    "juli": 7,
+    "aug": 8,
+    "augustus": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "okt": 10,
+    "oktober": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+RE_DUTCH_DATE = re.compile(
+    r"(?i)\b(\d{1,2})\s*[-/.\s]\s*"
+    r"(jan(?:uari)?|feb(?:ruari)?|mrt|maart|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|"
+    r"aug(?:ustus)?|sep(?:t(?:ember)?)?|okt(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    r"\s*[-/.\s]\s*(\d{2,4})\b"
+)
+
+
+def is_reasonable_inspection_date(d: date | None) -> bool:
+    return d is not None and HARD_MIN_VALID_DATE <= d <= HARD_MAX_VALID_DATE
+
+
+def normalize_two_digit_year(y: int) -> int:
+    if y < 100:
+        return 2000 + y if y <= 79 else 1900 + y
+    return y
+
+
+def build_valid_date(y: int, m: int, d: int) -> date | None:
+    try:
+        dt = date(y, m, d)
+    except ValueError:
+        return None
+    return dt if is_reasonable_inspection_date(dt) else None
+
+
+def parse_sheet_date(sheet: str) -> date | None:
+    s = (sheet or "").strip()
+
+    # 19-01 & 20-01-26 / 30-06 & 03-07-25
+    # Eerste kalenderdatum is leidend.
+    m = RE_SHEET_DATE_RANGE_FULL.match(s)
+    if m:
+        d = int(m.group(1))
+        mth = int(m.group(2))
+        y = normalize_two_digit_year(int(m.group(3)))
+        return build_valid_date(y, mth, d)
+
+    # 05 & 06-03-24 / 11&13-09-18
+    m = RE_SHEET_DATE_RANGE.match(s)
+    if m:
+        d = int(m.group(1))
+        mth = int(m.group(3))
+        y = normalize_two_digit_year(int(m.group(4)))
+        return build_valid_date(y, mth, d)
+
+    # 18-12-12 / 18 -12-12 / 13-4-99
+    m = RE_SHEET_DATE.match(s)
+    if not m:
+        return None
+
+    d = int(m.group(1))
+    mth = int(m.group(2))
+    y = normalize_two_digit_year(int(m.group(3)))
+
+    return build_valid_date(y, mth, d)
+
+
+def parse_year_only_sheet(sheet: str) -> date | None:
+    m = RE_YEAR_ONLY.match(sheet or "")
+    if not m:
+        return None
+    y = int(m.group(1))
+    return build_valid_date(y, 1, 1)
+
+
+def sheet_kind(sheet: str) -> str:
+    if parse_sheet_date(sheet):
+        return "date"
+    if RE_WEEK_ANY.match(sheet or "") or RE_WEEK_EXTRACT.search(sheet or ""):
+        return "week"
+    if parse_year_only_sheet(sheet):
+        return "year"
+    return "other"
+
+
+def normalize_sheet(sheet: str) -> str:
+    s = (sheet or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    m = RE_WEEK_EXTRACT.search(s)
+    if m:
+        return f"week {int(m.group(1))}"
+    return s
+
+KNOWN_AUXILIARY_SHEETS = {
+    ("afgraaflijn mv2.xls", "week 21 (2)"),
+    ("kleine kade lijn.xls", "week 31 (2)"),
+    ("opwerplijn mengerij.xls", "week 15 (2)"),
+    ("sinterlijn.xlsx", "week 49 (2)"),
+    ("pefa oud.xls", "12-12-07(2)"),
+
+    ("hoogoven 6.xls", "opm. 1"),
+    ("hoogoven 6.xls", "opm. 2"),
+    ("hoogoven 7..xls", "basis"),
+    ("veilheids film hoo 6 & 7 datum.xls", "blad1"),
+    ("pefa oud.xls", "basis"),
+}
+
+
+def is_known_auxiliary_sheet(source_file: str, sheet: str) -> bool:
+    filename = PureWindowsPath(source_file or "").name.strip().lower()
+
+    sheet_label = re.sub(
+        r"\s+",
+        " ",
+        (sheet or "").strip(),
+    ).lower()
+
+    return (filename, sheet_label) in KNOWN_AUXILIARY_SHEETS
+
+INSPECTION_DATE_OVERRIDES = {
+    # Grote Kade week26 bevat in Excel de ongeldige datum 31-06-11.
+    # Op basis van weeknummer en omliggende inspecties is 2011-06-30
+    # de expliciet vastgelegde correctie.
+    ("grote kade lijn.xls", "week26"): date(2011, 6, 30),
+}
+
+
+def get_inspection_date_override(
+    source_file: str,
+    sheet: str,
+) -> date | None:
+    filename = PureWindowsPath(
+        source_file or ""
+    ).name.strip().lower()
+
+    sheet_label = re.sub(
+        r"\s+",
+        " ",
+        (sheet or "").strip(),
+    ).lower()
+
+    return INSPECTION_DATE_OVERRIDES.get(
+        (filename, sheet_label)
+    )
+
+def parse_dutch_date_string(raw: str) -> date | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+
+    m = RE_DUTCH_DATE.search(raw)
+    if not m:
+        return None
+
+    d = int(m.group(1))
+    month_raw = m.group(2).lower()
+    y = normalize_two_digit_year(int(m.group(3)))
+
+    month_num = DUTCH_MONTHS.get(month_raw) or DUTCH_MONTHS.get(month_raw[:3])
+    if month_num is None:
+        return None
+
+    return build_valid_date(y, month_num, d)
+
+
+def parse_date_string(raw: str) -> date | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+
+    # Excel-typo zoals 31_05-13.
+    raw = re.sub(r"(?<=\d)_(?=\d)", "-", raw)
+
+    # 1. ISO datetime eerst
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            dt = datetime.strptime(raw, fmt).date()
+            return dt if is_reasonable_inspection_date(dt) else None
+        except ValueError:
+            pass
+
+    # 2. ISO date direct
+    try:
+        dt = datetime.strptime(raw, "%Y-%m-%d").date()
+        return dt if is_reasonable_inspection_date(dt) else None
+    except ValueError:
+        pass
+
+    # 3. Nederlandse datum met maandnaam
+    dt = parse_dutch_date_string(raw)
+    if dt:
+        return dt
+
+    # 4. overige bekende formaten
+    for fmt in ("%d-%m-%Y", "%d-%m-%y", "%d/%m/%Y", "%d/%m/%y", "%d.%m.%Y", "%d.%m.%y"):
+        try:
+            dt = datetime.strptime(raw, fmt).date()
+            return dt if is_reasonable_inspection_date(dt) else None
+        except ValueError:
+            pass
+
+    # 5. fragmenten
+    iso_fragment = re.search(r"\b(\d{4}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}:\d{2})?\b", raw)
+    if iso_fragment:
+        frag = iso_fragment.group(1)
+        try:
+            dt = datetime.strptime(frag, "%Y-%m-%d").date()
+            return dt if is_reasonable_inspection_date(dt) else None
+        except ValueError:
+            pass
+
+    numeric_fragment = re.search(r"\b(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b", raw)
+    if numeric_fragment:
+        frag = numeric_fragment.group(1)
+        for fmt in ("%d-%m-%Y", "%d-%m-%y", "%d/%m/%Y", "%d/%m/%y", "%d.%m.%Y", "%d.%m.%y"):
+            try:
+                dt = datetime.strptime(frag, fmt).date()
+                return dt if is_reasonable_inspection_date(dt) else None
+            except ValueError:
+                pass
+
+    dutch_fragment = RE_DUTCH_DATE.search(raw)
+    if dutch_fragment:
+        return parse_dutch_date_string(dutch_fragment.group(0))
+
+    return None
+
+
+def parse_any_date_value(raw) -> tuple[date | None, str | None]:
+    s = "" if raw is None else str(raw).strip()
+    if not s:
+        return None, None
+
+    d = parse_date_string(s)
+    if d:
+        return d, s
+
+    return None, None
+
+
+def is_target_excel_source(source_file: str) -> bool:
+    if not source_file:
+        return False
+
+    sf = source_file.lower()
+    if ROOT_PATH.lower() not in sf:
+        return False
+    if not sf.endswith((".xls", ".xlsx", ".xlsm", ".xlsb")):
+        return False
+    if os.path.basename(sf) == "totaal.xlsx":
+        return False
+
+    parts = [p.lower() for p in PureWindowsPath(source_file).parts]
+    return any(part.startswith("lijsten") for part in parts)
+
+
+def infer_lijn_code_from_source(source_file: str) -> str:
+    sf = (source_file or "").upper()
+
+    mappings = [
+        ("KOLENOPSLAG 2", "KOLEN2"),
+        ("KOOKSLIJN KOFA1", "KOFA1"),
+        ("KOFA 1", "KOFA1"),
+        ("KOFA1", "KOFA1"),
+        ("KOOKSLIJN KOFA2", "KOFA2"),
+        ("KOFA 2", "KOFA2"),
+        ("KOFA2", "KOFA2"),
+        ("AFGRAAFLIJN MV1", "MV1"),
+        ("OPWERPLIJN MV1", "MV1"),
+        ("MENGVELD 1", "MV1"),
+        ("MV1", "MV1"),
+        ("AFGRAAFLIJN MV2", "MV2"),
+        ("OPWERPLIJN MV2", "MV2"),
+        ("MENGVELD 2", "MV2"),
+        ("MV2", "MV2"),
+        ("EO-1", "EO1"),
+        ("EO 1", "EO1"),
+        ("EO1", "EO1"),
+        ("E200", "EO1"),
+        ("E300", "EO1"),
+        ("PEFA", "PEFA"),
+        ("SIFA", "SIFA"),
+        ("HOO6", "HOO6"),
+        ("HOO 6", "HOO6"),
+        ("HOO7", "HOO7"),
+        ("HOO 7", "HOO7"),
+        ("GSL", "GSL"),
+    ]
+
+    for needle, code in mappings:
+        if needle in sf:
+            return code
+    return "UNKNOWN"
+
+
+def ensure_schema(conn) -> None:
+    conn.execute(text("""
+      create table if not exists sb_inspections_v0 (
+        id bigserial primary key,
+        inspection_key text unique,
+        customer_code text,
+        site_code text,
+        lijn_code text not null,
+        source_file text not null,
+        sheet text not null,
+        sheet_norm text,
+        sheet_kind text,
+        inspected_on date,
+        inspected_on_source text,
+        performed_by text,
+        title text,
+        row_count int,
+        created_at timestamptz default now()
+      )
+    """))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists customer_code text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists site_code text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists sheet_norm text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists sheet_kind text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists inspected_on_source text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists performed_by text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists title text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists row_count int"))
+
+
+def main(mode: str = "incremental") -> None:
+    engine = create_engine(DB_URL)
+
+    if mode == "full-rebuild":
+        q_groups = text("""
+          select customer_code, site_code, source_file, sheet, count(*) as row_count
+          from sb_stg_inspecties_raw
+          where customer_code is not null
+            and site_code is not null
+            and source_file is not null
+            and sheet is not null
+          group by customer_code, site_code, source_file, sheet
+          order by customer_code, site_code, source_file, sheet
+        """)
+    else:
+        q_groups = text("""
+          select
+              r.customer_code,
+              r.site_code,
+              r.source_file,
+              r.sheet,
+              count(*) as row_count
+          from sb_stg_inspecties_raw r
+          join vw_changed_inspection_sheets_todo_v1 c
+            on c.customer_code = r.customer_code
+           and c.site_code = r.site_code
+           and c.source_file = r.source_file
+           and c.sheet = r.sheet
+          where r.customer_code is not null
+            and r.site_code is not null
+            and r.source_file is not null
+            and r.sheet is not null
+          group by r.customer_code, r.site_code, r.source_file, r.sheet
+          order by r.customer_code, r.site_code, r.source_file, r.sheet
+        """)
+
+    q_header_scan = text("""
+      select
+        row_nr,
+        trim(coalesce(data->'row'->>'Unnamed: 0','')) as u0,
+        trim(coalesce(data->'row'->>'Unnamed: 1','')) as u1,
+        trim(coalesce(data->'row'->>'Unnamed: 2','')) as u2,
+        trim(coalesce(data->'row'->>'Unnamed: 3','')) as u3,
+        trim(coalesce(data->'row'->>'Unnamed: 4','')) as u4
+      from sb_stg_inspecties_raw
+      where customer_code = :customer_code
+        and site_code = :site_code
+        and source_file = :source_file
+        and sheet = :sheet
+        and row_nr between 0 and 15
+      order by row_nr
+    """)
+
+    q_performed_by = text("""
+      select trim(coalesce(data->'row'->>'Unnamed: 3','')) as v
+      from sb_stg_inspecties_raw
+      where customer_code = :customer_code
+        and site_code = :site_code
+        and source_file = :source_file
+        and sheet = :sheet
+        and lower(trim(coalesce(data->'row'->>'Unnamed: 0',''))) like 'uitgevoerd door%'
+      order by row_nr
+      limit 1
+    """)
+
+    q_title = text("""
+      select trim(coalesce(data->'row'->>'Unnamed: 0','')) as v
+      from sb_stg_inspecties_raw
+      where customer_code = :customer_code
+        and site_code = :site_code
+        and source_file = :source_file
+        and sheet = :sheet
+        and row_nr = 5
+        and coalesce(data->'row'->>'Unnamed: 0','') <> ''
+      limit 1
+    """)
+
+    upsert = text("""
+      insert into sb_inspections_v0
+        (
+          inspection_key,
+          customer_code,
+          site_code,
+          lijn_code,
+          source_file,
+          sheet,
+          sheet_norm,
+          sheet_kind,
+          inspected_on,
+          inspected_on_source,
+          performed_by,
+          title,
+          row_count
+        )
+      values
+        (
+          :inspection_key,
+          :customer_code,
+          :site_code,
+          :lijn_code,
+          :source_file,
+          :sheet,
+          :sheet_norm,
+          :sheet_kind,
+          :inspected_on,
+          :inspected_on_source,
+          :performed_by,
+          :title,
+          :row_count
+        )
+      on conflict (inspection_key) do update
+        set customer_code = excluded.customer_code,
+            site_code = excluded.site_code,
+            lijn_code = excluded.lijn_code,
+            sheet_norm = excluded.sheet_norm,
+            sheet_kind = excluded.sheet_kind,
+            inspected_on = excluded.inspected_on,
+            inspected_on_source = excluded.inspected_on_source,
+            performed_by = excluded.performed_by,
+            title = excluded.title,
+            row_count = excluded.row_count
+    """)
+
+    total = 0
+    no_date = 0
+    skipped_non_target = 0
+    skipped_auxiliary = 0
+    invalid_date_rejections = 0
+
+    with engine.begin() as conn:
+        ensure_schema(conn)
+
+        if mode == "full-rebuild":
+            logger.info("FULL REBUILD: sb_inspections_v0 volledig opnieuw opbouwen ...")
+            conn.execute(text("TRUNCATE TABLE sb_inspections_v0 RESTART IDENTITY CASCADE"))
+
+        groups = conn.execute(q_groups).fetchall()
+        logger.info("groups: %s", len(groups))
+
+        if mode == "incremental" and not groups:
+            logger.info("INCREMENTAL: geen changed sheets gevonden. Niets te doen.")
+            return
+
+        for customer_code, site_code, source_file, sheet, row_count in groups:
+            if is_known_auxiliary_sheet(source_file, sheet):
+                skipped_auxiliary += 1
+                continue
+
+            if not is_target_excel_source(source_file):
+                skipped_non_target += 1
+                continue
+
+            lijn_code = infer_lijn_code_from_source(source_file)
+            sk = sheet_kind(sheet)
+            sn = normalize_sheet(sheet)
+
+            inspected: date | None = None
+            source: str | None = None
+
+            logger.info(
+                "Parsing customer=%s | site=%s | file=%s | sheet=%s",
+                customer_code,
+                site_code,
+                source_file,
+                sheet,
+            )
+
+            override_dt = get_inspection_date_override(
+                source_file,
+                sheet,
+            )
+
+            if override_dt:
+                inspected = override_dt
+                source = "explicit_override"
+
+            if not inspected:
+                sheet_dt = parse_sheet_date(sheet)
+
+                if sheet_dt:
+                    inspected = sheet_dt
+                    source = "sheet"
+
+            if not inspected:
+                header_rows = conn.execute(
+                    q_header_scan,
+                      {
+                        "customer_code": customer_code,
+                        "site_code": site_code,
+                        "source_file": source_file,
+                        "sheet": sheet,
+                    },
+                ).fetchall()
+
+                for r in header_rows:
+                    row_values = [
+                        str(r.u0 or "").strip(),
+                        str(r.u1 or "").strip(),
+                        str(r.u2 or "").strip(),
+                        str(r.u3 or "").strip(),
+                        str(r.u4 or "").strip(),
+                    ]
+
+                    row_lower = " ".join(v.lower() for v in row_values if v)
+                    if "datum" not in row_lower:
+                        continue
+
+                    for idx in range(len(row_values) - 1, -1, -1):
+                        raw_val = row_values[idx]
+                        d = parse_dutch_date_string(raw_val)
+                        if d:
+                            inspected = d
+                            source = f"header_dutch_field_r{int(r.row_nr)}_c{idx}"
+                            break
+                    if inspected:
+                        break
+
+                    for idx in range(len(row_values) - 1, -1, -1):
+                        raw_val = row_values[idx]
+                        d = parse_date_string(raw_val)
+                        if d:
+                            inspected = d
+                            source = f"header_field_r{int(r.row_nr)}_c{idx}"
+                            break
+                    if inspected:
+                        break
+
+                    combined = " ".join(v for v in row_values if v).strip()
+
+                    d = parse_dutch_date_string(combined)
+                    if d:
+                        inspected = d
+                        source = f"header_dutch_row_r{int(r.row_nr)}"
+                        break
+
+                    d = parse_date_string(combined)
+                    if d:
+                        inspected = d
+                        source = f"header_row_r{int(r.row_nr)}"
+                        break
+
+            if not inspected:
+                year_dt = parse_year_only_sheet(sheet)
+                if year_dt:
+                    inspected = year_dt
+                    source = "sheet_year_only"
+
+            if inspected and not is_reasonable_inspection_date(inspected):
+                inspected = None
+                source = None
+                invalid_date_rejections += 1
+
+            if not inspected:
+                no_date += 1
+                logger.warning(
+                    "SKIP GEEN DATUM: customer=%s | site=%s | file=%s | sheet=%s | kind=%s",
+                    customer_code,
+                    site_code,
+                    source_file,
+                    sheet,
+                    sk,
+                )
+                continue
+
+            performed = conn.execute(
+                q_performed_by,
+                {
+                    "customer_code": customer_code,
+                    "site_code": site_code,
+                    "source_file": source_file,
+                    "sheet": sheet,
+                },
+            ).scalar()
+            performed = (performed or "").strip() or None
+
+            title = conn.execute(
+                q_title,
+                {
+                    "customer_code": customer_code,
+                    "site_code": site_code,
+                    "source_file": source_file,
+                    "sheet": sheet,
+                },
+            ).scalar()
+            title = (title or "").strip() or None
+
+            inspection_key = (
+                f"{customer_code}|{site_code}|{source_file}|{sn}|{inspected.isoformat()}"
+            )
+            logger.info(
+                "Datum gevonden: file=%s | sheet=%s | inspected_on=%s | source=%s",
+                source_file, sheet, inspected.isoformat(), source
+            )
+
+            conn.execute(
+                upsert,
+                {
+                    "inspection_key": inspection_key,
+                    "customer_code": customer_code,
+                    "site_code": site_code,
+                    "lijn_code": lijn_code,
+                    "source_file": source_file,
+                    "sheet": sheet,
+                    "sheet_norm": sn,
+                    "sheet_kind": sk,
+                    "inspected_on": inspected,
+                    "inspected_on_source": source,
+                    "performed_by": performed,
+                    "title": title,
+                    "row_count": int(row_count),
+                },
+            )
+
+            total += 1
+            if total % 250 == 0:
+                logger.info("processed %s", total)
+
+    logger.info("DONE inspections upserted: %s", total)
+    logger.info("DONE inspections without date: %s", no_date)
+    logger.info("DONE skipped auxiliary sheets: %s", skipped_auxiliary)
+    logger.info("DONE skipped non-target sheets: %s", skipped_non_target)
+    logger.info("DONE invalid date rejections: %s", invalid_date_rejections)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Promote Excel inspection headers naar sb_inspections_v0"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["incremental", "full-rebuild"],
+        default="incremental",
+        help="incremental = alleen changed sheets; full-rebuild = volledige herbouw",
+    )
+    args = parser.parse_args()
+
+    main(mode=args.mode)

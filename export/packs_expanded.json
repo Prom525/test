@@ -1,0 +1,131 @@
+﻿[
+    {
+        "pack":  "Port Clean Conveyor Pack",
+        "segment":  "Haven \u0026 Drybulk",
+        "category":  "Afdichting",
+        "product":  "Duo-Seal",
+        "quantity":  1,
+        "config":  {
+                       "kit":  "Snel klemsysteem",
+                       "height_mm":  150
+                   }
+    },
+    {
+        "pack":  "Port Clean Conveyor Pack",
+        "segment":  "Haven \u0026 Drybulk",
+        "category":  "Impact",
+        "product":  "BLUTEC Impact Bars",
+        "quantity":  1,
+        "config":  {
+                       "aim":  "minder mors \u0026 bandbeschadiging",
+                       "zone":  "laadpunt"
+                   }
+    },
+    {
+        "pack":  "Port Clean Conveyor Pack",
+        "segment":  "Haven \u0026 Drybulk",
+        "category":  "Overkappingen",
+        "product":  "Bandoverkappingen",
+        "quantity":  1,
+        "config":  {
+                       "type":  "modulair",
+                       "purpose":  "stofbeperking"
+                   }
+    },
+    {
+        "pack":  "Port Clean Conveyor Pack",
+        "segment":  "Haven \u0026 Drybulk",
+        "category":  "Schraper",
+        "product":  "Belle Banne U",
+        "quantity":  1,
+        "config":  {
+                       "station":  "drive",
+                       "placement":  "secondary"
+                   }
+    },
+    {
+        "pack":  "Port Clean Conveyor Pack",
+        "segment":  "Haven \u0026 Drybulk",
+        "category":  "Schraper",
+        "product":  "Promati TPH",
+        "quantity":  1,
+        "config":  {
+                       "station":  "drive",
+                       "placement":  "primary"
+                   }
+    },
+    {
+        "pack":  "Quarry \u0026 Cement Uptime Pack",
+        "segment":  "Quarry \u0026 Cement",
+        "category":  "Afdichting",
+        "product":  "Multi-Seal",
+        "quantity":  1,
+        "config":  {
+                       "height_mm":  200
+                   }
+    },
+    {
+        "pack":  "Quarry \u0026 Cement Uptime Pack",
+        "segment":  "Quarry \u0026 Cement",
+        "category":  "Impact",
+        "product":  "BLUTEC Impact Bars",
+        "quantity":  1,
+        "config":  {
+                       "zone":  "impact bed"
+                   }
+    },
+    {
+        "pack":  "Quarry \u0026 Cement Uptime Pack",
+        "segment":  "Quarry \u0026 Cement",
+        "category":  "Schraper",
+        "product":  "Promati TPL",
+        "quantity":  1,
+        "config":  {
+                       "placement":  "primary",
+                       "belt_speed_mps":  "\u003c=6"
+                   }
+    },
+    {
+        "pack":  "WtE \u0026 Recycling Reliability Pack",
+        "segment":  "WtE \u0026 Recycling",
+        "category":  "Bandbeveiliging",
+        "product":  "SiTec trekkoordschakelaar",
+        "quantity":  1,
+        "config":  {
+                       "reset":  "handmatig",
+                       "length_m":  100
+                   }
+    },
+    {
+        "pack":  "WtE \u0026 Recycling Reliability Pack",
+        "segment":  "WtE \u0026 Recycling",
+        "category":  "Rollen",
+        "product":  "HDPE rollen",
+        "quantity":  4,
+        "config":  {
+                       "where":  "natte/corrosieve secties"
+                   }
+    },
+    {
+        "pack":  "WtE \u0026 Recycling Reliability Pack",
+        "segment":  "WtE \u0026 Recycling",
+        "category":  "Schraper",
+        "product":  "Belle Banne H",
+        "quantity":  1,
+        "config":  {
+                       "placement":  "primary",
+                       "temp_high_c":  120
+                   }
+    },
+    {
+        "pack":  "WtE \u0026 Recycling Reliability Pack",
+        "segment":  "WtE \u0026 Recycling",
+        "category":  "Schraper",
+        "product":  "Belle Banne R",
+        "quantity":  1,
+        "config":  {
+                       "direction":  "bi",
+                       "placement":  "secondary"
+                   }
+    }
+]

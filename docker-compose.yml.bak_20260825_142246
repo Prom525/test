@@ -1,0 +1,187 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: ai-platform-postgres-1
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    # PROMATI_POSTGRES_LOCALHOST_ONLY_V1
+    # Host-toegang blijft beschikbaar voor lokale ingest/batch scripts,
+    # maar PostgreSQL wordt niet meer op alle netwerkinterfaces gepubliceerd.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - ai-platform_pgdata:/var/lib/postgresql/data
+    networks:
+      - core
+    # Voeg de command-regel toe om Postgres parameters te optimaliseren:
+    command: >
+      postgres 
+      -c max_worker_processes=8
+      -c max_parallel_workers_per_gather=4
+      -c max_parallel_workers=8
+      -c shared_buffers=4GB
+      -c maintenance_work_mem=2GB
+      -c max_wal_size=10GB
+      -c checkpoint_timeout=30min
+      -c synchronous_commit=off
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai-platform-qdrant-1
+    # PROMATI_QDRANT_INTERNAL_ONLY_V1
+    # Alleen bereikbaar via het Docker core-netwerk als qdrant:6333.
+    # Geen host-publicatie van de unauthenticated Qdrant API.
+    volumes:
+      - ai-platform_qdrantdata:/qdrant/storage
+    networks:
+      - core
+
+  minio:
+    image: minio/minio:latest
+    container_name: ai-platform-minio-1
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    ports:
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes:
+      - ai-platform_minio:/data
+    networks:
+      - core
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: ai-platform-keycloak-1
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+    ports:
+      - "${KEYCLOAK_HOST_PORT:-8080}:8080"
+    networks:
+      - core
+
+  init-keycloak:
+    image: curlimages/curl:8.6.0
+    container_name: init-keycloak
+    depends_on:
+      - keycloak
+    volumes:
+      - ./keycloak-init:/keycloak-init
+    entrypoint: ["sh", "-c"]
+    command: >
+      "echo Keycloak init placeholder && sleep 5"
+    networks:
+      - core
+
+  api:
+    build:
+      context: ./api
+    image: ai-platform-api
+    container_name: ai-platform-api-1
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      AI_RESEARCH_AGENT_ENABLED: "true"
+      DATABASE_URL: ${DATABASE_URL}
+      RFQ_PDF_DIR: /app/generated/rfq_pdfs
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_VISION_MODEL: ${OPENAI_VISION_MODEL}
+      PROMATI_API_BASE_URL: ${PROMATI_API_BASE_URL}
+      ORG_ADMIN_USER: ${ORG_ADMIN_USER}
+      ORG_ADMIN_PASSWORD: ${ORG_ADMIN_PASSWORD:?ORG_ADMIN_PASSWORD is required}
+    volumes:
+      - ./generated:/app/generated
+      - ./data:/app/data
+    depends_on:
+      - postgres
+      - qdrant
+      - minio
+    networks:
+      - core
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    depends_on:
+      - api
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_ROOT: ${PUBLIC_API_URL}
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+  edocr2:
+    build:
+      context: ./services/edocr2
+      dockerfile: Dockerfile
+    container_name: ai-platform-edocr2-1
+    restart: unless-stopped
+    gpus: all
+    environment:
+      EDOCR2_ENV: development
+      EDOCR2_DEVICE: cuda
+
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      QDRANT_URL: ${QDRANT_URL}
+
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    depends_on:
+      - postgres
+      - qdrant
+      - minio
+    networks:
+      - core
+
+  techreview:
+    build:
+      context: ./services/techreview
+    ports:
+      - "${TECHREVIEW_HOST_PORT:-8200}:8200"
+    environment:
+      TECHREVIEW_USE_PHI: "true"
+      TECHREVIEW_MODEL: ${TECHREVIEW_MODEL}
+      OLLAMA_URL: ${OLLAMA_URL}
+    networks:
+      - core
+    restart: unless-stopped
+
+
+volumes:
+  ai-platform_pgdata:
+    external: true
+    name: ai-platform_pgdata
+
+  ai-platform_qdrantdata:
+    external: true
+    name: ai-platform_qdrantdata
+
+  ai-platform_minio:
+    external: true
+    name: ai-platform_minio
+
+networks:
+  core:
+    driver: bridge

@@ -1,0 +1,305 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+function Assert-Equal {
+    param(
+        [string]$Name,
+        $Actual,
+        $Expected
+    )
+
+    if ($Actual -ne $Expected) {
+        throw "$Name FAILED: expected=[$Expected], actual=[$Actual]"
+    }
+
+    Write-Host "$Name : OK" -ForegroundColor Green
+}
+
+function Assert-True {
+    param(
+        [string]$Name,
+        $Actual
+    )
+
+    if ($Actual -ne $true) {
+        throw "$Name FAILED: expected=True, actual=[$Actual]"
+    }
+
+    Write-Host "$Name : OK" -ForegroundColor Green
+}
+
+
+Write-Host ""
+Write-Host "=== 1. INTERNAL REGRESSION ===" -ForegroundColor Cyan
+
+$Internal = @'
+from pathlib import Path
+
+from app.orchestrator.understanding import detect_band_code
+import app.routers.diagnostics_api as d
+
+
+# ------------------------------------------------------------
+# Bandcode guards
+# ------------------------------------------------------------
+
+band_tests = [
+    ("5 van 5 routes beschikbaar", None),
+    ("alle vijf routes: 5/5", None),
+    ("3 van 10 inspecties", None),
+    ("status van 5 modules", None),
+
+    ("controleer band V3", "V3"),
+    ("controleer band R5", "R5"),
+    ("controleer band E950", "E950"),
+    ("controleer B12", "B12"),
+]
+
+for question, expected in band_tests:
+    result = detect_band_code(question)
+
+    actual = (
+        getattr(result, "value", None)
+        if result
+        else None
+    )
+
+    if actual != expected:
+        raise AssertionError(
+            f"bandcode: {question!r}: "
+            f"expected={expected!r}, actual={actual!r}"
+        )
+
+print("BANDCODE_REGRESSION_OK")
+
+
+# ------------------------------------------------------------
+# Runtime feature markers
+# ------------------------------------------------------------
+
+diag_source = Path(
+    "/app/app/routers/diagnostics_api.py"
+).read_text()
+
+understanding_source = Path(
+    "/app/app/orchestrator/understanding.py"
+).read_text()
+
+required_diag_markers = [
+    "PROMATI_OBJECT_DISCOVERY_V4",
+    "PROMATI_COMPARISON_V31",
+    "PROMATI_COMPARISON_PERF_V32",
+    "PROMATI_SYSTEM_DIAGNOSTICS_OVERVIEW_V11",
+]
+
+required_understanding_markers = [
+    "PROMATI_BANDCODE_VERSION_GUARD_V1",
+    "PROMATI_DIAGNOSTICS_META_ROUTING_V1",
+    "PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V2",
+]
+
+for marker in required_diag_markers:
+    if marker not in diag_source:
+        raise AssertionError(
+            f"diagnostics marker ontbreekt: {marker}"
+        )
+
+for marker in required_understanding_markers:
+    if marker not in understanding_source:
+        raise AssertionError(
+            f"understanding marker ontbreekt: {marker}"
+        )
+
+print("FEATURE_MARKERS_OK")
+
+
+# ------------------------------------------------------------
+# Provenance comparison regression
+# ------------------------------------------------------------
+
+payload = d.DiagnosticsAnalyzeRequest(
+    domain="inspections",
+    topic="Diagnoseer waarom inspectieregels in de parser kunnen wegvallen",
+    mode="sql_deep_dive",
+    question="Diagnoseer waarom inspectieregels in de parser kunnen wegvallen",
+    depth="deep",
+    objects=[],
+    filters={
+        "response_profile": "gpt_compact",
+        "schema": "public",
+    },
+    limit=25,
+)
+
+r = d.analyze_sql_deep_dive(payload)
+
+if r.status != "ok":
+    raise AssertionError(
+        f"sql_deep_dive status={r.status!r}"
+    )
+
+steps = r.summary[
+    "comparison_summary"
+]["chain_steps"]
+
+expected = {
+    1: (94243, 54317, 54317, 39926, 0),
+    2: (54317, 54317, 54317, 0, 0),
+    3: (54317, 77553, 42761, 11556, 34792),
+    4: (77553, 27943, 27943, 49610, 0),
+    5: (109041, 109041, 109041, 0, 0),
+}
+
+for step in steps:
+    n = step["step"]
+
+    actual = (
+        step["source_key_count"],
+        step["target_key_count"],
+        step["in_both_count"],
+        step["observed_only_in_source_count"],
+        step["observed_only_in_target_count"],
+    )
+
+    if actual != expected[n]:
+        raise AssertionError(
+            f"comparison step {n}: "
+            f"expected={expected[n]}, actual={actual}"
+        )
+
+    if step["only_in_source_count"] != 0:
+        raise AssertionError(
+            f"unexpected source loss step {n}"
+        )
+
+    if step["only_in_target_count"] != 0:
+        raise AssertionError(
+            f"unexpected target gain step {n}"
+        )
+
+step5 = next(
+    x for x in steps
+    if x["step"] == 5
+)
+
+if step5["intentional_excluded_count"] != 3191:
+    raise AssertionError(
+        "intentional_excluded_count != 3191"
+    )
+
+print("PROVENANCE_REGRESSION_OK")
+print("INTERNAL_REGRESSION_OK")
+'@
+
+$Internal |
+    docker exec -i ai-platform-api-1 python -
+
+if ($LASTEXITCODE -ne 0) {
+    throw "INTERNAL REGRESSION FAILED"
+}
+
+
+Write-Host ""
+Write-Host "=== 2. SYSTEM OVERVIEW ===" -ForegroundColor Cyan
+
+$SystemBody = @{
+    domain   = "system"
+    topic    = "Controleer de PROMATI systeemstatus"
+    mode     = "overview"
+    question = "Controleer de PROMATI systeemstatus"
+    depth    = "normal"
+    objects  = @()
+    filters  = @{}
+    limit    = 10
+} | ConvertTo-Json -Depth 10
+
+$System = Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://127.0.0.1:8000/diagnostics/analyze" `
+    -ContentType "application/json" `
+    -Body $SystemBody
+
+Assert-Equal "SYSTEM STATUS" `
+    $System.status "ok"
+
+Assert-Equal "DATABASE STATUS" `
+    $System.summary.database_status "ok"
+
+Assert-True "REQUIRED ROUTES" `
+    $System.summary.required_routes_ok
+
+Assert-Equal "ROUTES AVAILABLE" `
+    $System.summary.required_routes_available 5
+
+Assert-Equal "ROUTES TOTAL" `
+    $System.summary.required_routes_total 5
+
+if ($System.findings.Count -gt 0) {
+    throw "SYSTEM FINDINGS FAILED: $($System.findings.Count) findings"
+}
+
+Write-Host "SYSTEM_OVERVIEW_REGRESSION_OK" -ForegroundColor Green
+
+
+Write-Host ""
+Write-Host "=== 3. ORCHESTRATOR META ROUTING ===" -ForegroundColor Cyan
+
+$MetaBody = @{
+    vraag = "Controleer API status: 5 van 5 kernroutes beschikbaar"
+    mode = "auto"
+    limit = 5
+    include_trace = $true
+} | ConvertTo-Json -Depth 10
+
+$Meta = Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://127.0.0.1:8000/orchestrator/ask" `
+    -ContentType "application/json" `
+    -Body $MetaBody
+
+$Result = $Meta.results |
+    Where-Object {
+        $_.action -eq "diagnostics_assistant"
+    } |
+    Select-Object -First 1
+
+Assert-Equal "ORCHESTRATOR STATUS" `
+    $Meta.status "ok"
+
+Assert-Equal "PRIMARY DOMAIN" `
+    $Meta.query_plan.primary_domain "diagnostics"
+
+Assert-Equal "INTENT" `
+    $Meta.query_plan.intent "diagnostics_overview"
+
+$BandCode = $Meta.query_plan.entities.band_code.value
+
+if ($null -ne $BandCode -and $BandCode -ne "") {
+    throw "BAND_CODE FAILED: unexpected=[$BandCode]"
+}
+
+Write-Host "BAND_CODE : OK" -ForegroundColor Green
+
+Assert-Equal "DIAGNOSTICS DOMAIN" `
+    $Meta.query_plan.entities.diagnostics_domain.value "system"
+
+Assert-Equal "DIAGNOSTICS MODE" `
+    $Meta.query_plan.entities.diagnostics_mode.value "overview"
+
+Assert-True "DIAGNOSTICS ACCEPTED" `
+    $Result.accepted
+
+Assert-Equal "RESULT STATUS" `
+    $Result.result.status "ok"
+
+Assert-Equal "RESULT DOMAIN" `
+    $Result.result.domain "system"
+
+Assert-Equal "RESULT MODE" `
+    $Result.result.mode "overview"
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host "PROMATI_REGRESSION_V1_OK" -ForegroundColor Green
+Write-Host "==================================================" -ForegroundColor Cyan

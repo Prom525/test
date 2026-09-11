@@ -1,0 +1,122 @@
+openapi: 3.1.0
+info:
+  title: Promati Product Context API
+  version: 1.0.0
+  description: Productzoekfunctie, productcontext en RAG-vragen voor PromatiGPT.
+
+servers:
+  - url: http://localhost:8000
+
+paths:
+  /analysis/context/product-search:
+    get:
+      operationId: searchPromatiProducts
+      summary: Zoek Promati producten op naam, merk, model of categorie
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+          description: Zoekterm, bijvoorbeeld proload, ramsey, TPH, rollen of Belle Banne.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Zoekresultaten met product-ID en bronsoort.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /analysis/context/product/{product_id}/gpt-context:
+    get:
+      operationId: getScraperProductGptContext
+      summary: Haal GPT-context op voor een bandschraperproduct
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID uit scraper_product.
+      responses:
+        "200":
+          description: Productcontext met technische data, salescontext en gekoppelde RAG-documenten.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /analysis/context/generic-product/{generic_product_id}/gpt-context:
+    get:
+      operationId: getGenericProductGptContext
+      summary: Haal GPT-context op voor een generiek Promati-product
+      parameters:
+        - name: generic_product_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID uit generic_product.
+      responses:
+        "200":
+          description: Generieke productcontext met gekoppelde documenten en rag_query_hint.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /rag/query:
+    post:
+      operationId: queryPromatiRag
+      summary: Stel een vraag aan de Promati RAG-documenten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vraag
+              properties:
+                vraag:
+                  type: string
+                  description: De vraag die beantwoord moet worden.
+                top_k:
+                  type: integer
+                  default: 5
+                  minimum: 1
+                  maximum: 20
+                answer_mode:
+                  type: string
+                  default: extractive
+                  enum:
+                    - extractive
+                    - llm
+                doc_id:
+                  type: string
+                  description: Optionele doc_id-filter. Gebruik bij voorkeur doc_id uit knowledge_documents of rag_query_hint.
+                brand:
+                  type: string
+                  description: Optionele merkfilter.
+                model:
+                  type: string
+                  description: Optionele modelfilter.
+                category:
+                  type: string
+                  description: Optionele categoriefilter.
+      responses:
+        "200":
+          description: Antwoord uit RAG met gebruikte context.
+          content:
+            application/json:
+              schema:
+                type: object

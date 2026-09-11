@@ -1,0 +1,80 @@
+# ===============================
+# PROMATI KNOWLEDGE DB – IMPORTER
+# Automatische database vulling
+# ===============================
+
+Write-Host ">>> Stap 1: Token instellen..." -ForegroundColor Cyan
+
+$token = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJLakduVVFMTUpjX3VLSEQwWEFzdDhxRHRHUkxDVWRBWG01bTBIVW9ZSElFIn0.eyJleHAiOjE3NzE1ODk2MzcsImlhdCI6MTc3MTU4OTMzNywianRpIjoiYjVhOTg2NzktOGJlZi00ZjMxLWI1ZTEtNmQ4ZTYwZjViYzU3IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9wcm9tYXRpIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6Ijc3MWRiMjE1LTAwNGYtNDE0My04Y2E0LWFlY2RiMWRmZjFkMSIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFwaSIsInNpZCI6IjlhMTk2YmE4LWE1MjItNDNjOS1hODVmLWU0NjVjNjVmZDMyMiIsImFjciI6IjEiLCJhbGxvd2VkLW9yaWdpbnMiOlsiKiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLXByb21hdGkiLCJ1bWFfYXV0aG9yaXphdGlvbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiSm9obiBLb2VuZGVycyIsInByZWZlcnJlZF91c2VybmFtZSI6ImpvaG4iLCJnaXZlbl9uYW1lIjoiSm9obiIsImZhbWlseV9uYW1lIjoiS29lbmRlcnMiLCJlbWFpbCI6ImpvaG5AcHJvbWF0aS5jb20ifQ.VeULSoJyAe5C_58-O4DlVQRrsAhxkdGV3FafxqWM8BQwmdf0PygxYV9dCfpyATozX1MCxcP34Tz45p-VcKS6AXvWAxrwD49Wpx73grTcBPI-oUTm-FTS6iDCf4iOkOnovJMvxkA_rrsMcbs3NIR71oyVj3TEW8x6-uQwesZIcZ6OBvaTT0mQttk1ld8DfQxvOpvhukbp0dAKOkpXHJtQBz591951FMPHvknv37tfI6phNVrAWLxrpIgl0uk8VIgJTRM05zsIa6EJZXyszctDg_uYr1L-O89SkgHYkNPlM8xBlw5ncQ33NqErOjsK7vlfDLVYhR53iwtJl9n0hMcySw"
+
+if (-not $token) {
+    Write-Error "Geen token gevonden. Vul eerst $token in."
+    exit
+}
+
+Write-Host "Token ingesteld (eerste 20 chars): $($token.Substring(0,20))..."
+
+# ==============================================
+# Stap 2 — SQL seedbestand inlezen
+# ==============================================
+Write-Host ">>> Stap 2: SQL-bestand inlezen..." -ForegroundColor Cyan
+
+$seedPath = "C:\Users\John Koenders\Downloads\promati_seed.sql"
+
+if (-not (Test-Path $seedPath)) {
+    Write-Error "SQL-bestand niet gevonden op: $seedPath"
+    exit
+}
+
+$sqlText = Get-Content $seedPath -Raw
+Write-Host "SQL-bestand geladen!"
+
+# ==============================================
+# Stap 3 — Statements splitsen
+# ==============================================
+Write-Host ">>> Stap 3: SQL-statements opsplitsen..." -ForegroundColor Cyan
+
+$stmts = $sqlText -split ";[\r\n]+" | Where-Object { $_.Trim().Length -gt 0 }
+
+Write-Host "Aantal statements gevonden:" $stmts.Count
+
+# ==============================================
+# Stap 4 — Statements uitvoeren via /chatdb/sql
+# ==============================================
+Write-Host ">>> Stap 4: Statements uitvoeren..." -ForegroundColor Cyan
+
+$ok = 0
+$err = 0
+
+foreach ($stmt in $stmts) {
+    $clean = $stmt.Trim()
+
+    # commentaar overslaan
+    if ($clean.StartsWith("--")) { continue }
+
+    $json = @{ sql = $clean } | ConvertTo-Json -Depth 5
+
+    $resp = curl.exe -s -X POST "http://localhost:8000/chatdb/sql" `
+        -H "Authorization: Bearer $token" `
+        -H "Content-Type: application/json" `
+        --data-binary $json
+
+    if ($LASTEXITCODE -eq 0 -and -not ($resp | Select-String "detail")) {
+        $ok++
+    } else {
+        $err++
+        Write-Warning "❌ FOUT bij statement:"
+        Write-Host $clean
+        Write-Host $resp -ForegroundColor Red
+    }
+}
+
+# ==============================================
+# Einde
+# ==============================================
+Write-Host "====================================="
+Write-Host "KLAAR!"
+Write-Host "Succesvol: $ok"
+Write-Host "Fouten:    $err"
+Write-Host "====================================="
+``

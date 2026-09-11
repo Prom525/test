@@ -1,0 +1,804 @@
+import os
+import re
+import json
+import argparse
+from datetime import datetime, date
+from pathlib import PureWindowsPath
+from collections import defaultdict, Counter
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+
+load_dotenv()
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:SterkWachtwoord123@localhost:15432/promati"
+)
+
+ROOT_PATH = r"C:\Users\John Koenders\Baucotech\Logbooks - Documenten\Onderhouds Logboeken - Rapport Entretiens\NL\TATA steel"
+
+print("DATABASE_URL =", DATABASE_URL)
+engine = create_engine(DATABASE_URL, future=True)
+
+
+def normalize_spaces(s: str) -> str:
+    return " ".join((s or "").strip().split())
+
+
+def normalize_sheet(sheet: str) -> str:
+    s = normalize_spaces((sheet or "").lower())
+
+    # week  38 / week38 / Week   04 / week04 -> week 38 / week 4
+    m = re.fullmatch(r"week\s*(\d{1,2})", s)
+    if m:
+        return f"week {int(m.group(1))}"
+
+    return s
+
+
+KNOWN_AUXILIARY_SHEETS = {
+    ("afgraaflijn mv2.xls", "week 21 (2)"),
+    ("kleine kade lijn.xls", "week 31 (2)"),
+    ("opwerplijn mengerij.xls", "week 15 (2)"),
+    ("sinterlijn.xlsx", "week 49 (2)"),
+    ("pefa oud.xls", "12-12-07(2)"),
+
+    ("hoogoven 6.xls", "opm. 1"),
+    ("hoogoven 6.xls", "opm. 2"),
+    ("hoogoven 7..xls", "basis"),
+    ("veilheids film hoo 6 & 7 datum.xls", "blad1"),
+    ("pefa oud.xls", "basis"),
+}
+
+
+def is_known_auxiliary_sheet(source_file: str, sheet: str) -> bool:
+    filename = PureWindowsPath(source_file or "").name.strip().lower()
+
+    sheet_label = re.sub(
+        r"\s+",
+        " ",
+        (sheet or "").strip(),
+    ).lower()
+
+    return (filename, sheet_label) in KNOWN_AUXILIARY_SHEETS
+
+def parse_inspected_on(raw_value):
+    if raw_value is None:
+        return None
+
+    s = str(raw_value).strip()
+    if not s or s.lower() == "none":
+        return None
+
+    # Excel-typo zoals 31_05-13.
+    s = re.sub(r"(?<=\d)_(?=\d)", "-", s)
+
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d-%m-%y",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d.%m.%Y",
+        "%d.%m.%y",
+    ]
+
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.date()
+        except ValueError:
+            pass
+
+    return None
+
+def normalize_year_value(raw_year) -> int:
+    s = str(raw_year).strip()
+
+    if len(s) == 2:
+        return datetime.strptime(s, "%y").year
+
+    return int(s)
+
+def parse_explicit_date_from_sheet_name(sheet: str):
+    s = normalize_spaces(sheet)
+
+    # 28-05-14 / 30-09-2025
+    m = re.fullmatch(
+        r"(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{2,4})",
+        s,
+    )
+    if m:
+        d, mth, y = m.groups()
+        y = normalize_year_value(y)
+
+        try:
+            return datetime(
+                y,
+                int(mth),
+                int(d),
+            ).date()
+        except ValueError:
+            return None
+
+    # 9+10-05-17 / 05 & 06-03-24 / 11&13-09-18
+    # Bij meerdere inspectiedagen is de eerste dag leidend.
+    m = re.fullmatch(
+        r"(\d{1,2})\s*(?:\+|&)\s*"
+        r"\d{1,2}\s*-\s*(\d{1,2})\s*-\s*(\d{2,4})",
+        s,
+    )
+    if m:
+        d, mth, y = m.groups()
+        y = normalize_year_value(y)
+
+        try:
+            return datetime(
+                y,
+                int(mth),
+                int(d),
+            ).date()
+        except ValueError:
+            return None
+
+    # 19-01 & 20-01-26 / 19-01+20-01-26
+    # Eerste kalenderdatum is leidend.
+    m = re.fullmatch(
+        r"(\d{1,2})\s*-\s*(\d{1,2})\s*(?:\+|&)\s*"
+        r"\d{1,2}\s*-\s*\d{1,2}\s*-\s*(\d{2,4})",
+        s,
+    )
+
+    if m:
+        d, mth, y = m.groups()
+        y = normalize_year_value(y)
+
+        try:
+            return datetime(
+                y,
+                int(mth),
+                int(d),
+            ).date()
+        except ValueError:
+            return None
+
+    return None
+
+def parse_week_from_sheet_name(sheet: str):
+    s = normalize_spaces((sheet or "").lower())
+    m = re.fullmatch(r"week\s*(\d{1,2})", s)
+    if m:
+        week = int(m.group(1))
+        if 1 <= week <= 53:
+            return week
+    return None
+
+
+def iso_week_to_date(year: int, week: int):
+    try:
+        return date.fromisocalendar(year, week, 1)  # maandag
+    except ValueError:
+        return None
+
+
+def extract_year_candidates_from_text(text_value: str):
+    text_value = text_value or ""
+    years = []
+
+    for m in re.findall(r"\b(20\d{2})\b", text_value):
+        y = int(m)
+        if 2005 <= y <= 2035:
+            years.append(y)
+
+    return years
+
+
+def infer_year_from_source_file(source_file: str):
+    sf = source_file or ""
+    candidates = extract_year_candidates_from_text(sf)
+    if candidates:
+        return Counter(candidates).most_common(1)[0][0]
+    return None
+
+
+def x_to_bool(v):
+    if v is None:
+        return False
+    return str(v).strip().upper() == "X"
+
+
+def clean_json_dict(row_json: dict) -> dict:
+    return {k: (None if v is None else v) for k, v in row_json.items()}
+
+
+def is_empty_row(row_json: dict) -> bool:
+    return all(v is None for v in row_json.values())
+
+
+def is_header_or_footer_row(row_json: dict) -> bool:
+    locatie = row_json.get("Unnamed: 0")
+    merk_type = row_json.get("Unnamed: 2")
+
+    if locatie is None:
+        return False
+
+    loc = str(locatie).strip()
+
+    bad_exact = {
+        "",
+        "Locatie",
+        "Datum                :",
+        "Uitgevoerd door   :",
+        "Handtekening Opdrachtgever:",
+        "Naam ",
+        "Kontaktpersoon",
+        "Adres",
+        "PC + Plaats",
+        "Tel. / Fax ",
+        "Klantgegevens ",
+    }
+
+    if loc in bad_exact:
+        return True
+
+    if loc.lower().startswith("onderhouds-rapport"):
+        return True
+
+    if "Handtekening" in loc:
+        return True
+
+    if loc == "Locatie" and merk_type == "Merk + Type":
+        return True
+
+    return False
+
+
+def is_data_row(row_nr: int, row_json: dict) -> bool:
+    # minder streng dan voorheen
+    if row_nr < 8:
+        return False
+
+    if is_empty_row(row_json):
+        return False
+
+    if is_header_or_footer_row(row_json):
+        return False
+
+    locatie = row_json.get("Unnamed: 0")
+    merk_type = row_json.get("Unnamed: 2")
+    opmerking = row_json.get("Unnamed: 9")
+    klantgegevens = row_json.get("Klantgegevens ")
+    band_breedte = row_json.get("Unnamed: 1")
+    actie_1 = row_json.get("Unnamed: 3")
+    actie_2 = row_json.get("Unnamed: 4")
+    actie_3 = row_json.get("Unnamed: 5")
+
+    return not (
+        locatie is None
+        and merk_type is None
+        and opmerking is None
+        and klantgegevens is None
+        and band_breedte is None
+        and actie_1 is None
+        and actie_2 is None
+        and actie_3 is None
+    )
+
+
+def build_inspection_key(customer_code: str, site_code: str, source_file: str, raw_sheet: str, inspected_on):
+    return (
+        f"{customer_code}|{site_code}|"
+        f"{source_file}|{normalize_sheet(raw_sheet)}|{inspected_on.isoformat()}"
+    )
+
+
+def is_target_excel_source(source_file: str) -> bool:
+    if not source_file:
+        return False
+
+    sf = source_file.lower()
+
+    if ROOT_PATH.lower() not in sf:
+        return False
+
+    if not sf.endswith((".xls", ".xlsx", ".xlsm")):
+        return False
+
+    if os.path.basename(sf) == "totaal.xlsx":
+        return False
+
+    parts = [p.lower() for p in PureWindowsPath(source_file).parts]
+    return any(part.startswith("lijsten") for part in parts)
+
+
+def infer_lijn_code_from_source(source_file: str) -> str:
+    sf = (source_file or "").upper()
+
+    mappings = [
+        ("KOLENOPSLAG 2", "KOLEN2"),
+        ("KOOKSLIJN KOFA1", "KOFA1"),
+        ("KOFA 1", "KOFA1"),
+        ("KOFA1", "KOFA1"),
+        ("KOOKSLIJN KOFA2", "KOFA2"),
+        ("KOFA 2", "KOFA2"),
+        ("KOFA2", "KOFA2"),
+        ("AFGRAAFLIJN MV1", "MV1"),
+        ("OPWERPLIJN MV1", "MV1"),
+        ("MENGVELD 1", "MV1"),
+        ("MV1", "MV1"),
+        ("AFGRAAFLIJN MV2", "MV2"),
+        ("OPWERPLIJN MV2", "MV2"),
+        ("MENGVELD 2", "MV2"),
+        ("MV2", "MV2"),
+        ("EO-1", "EO1"),
+        ("EO 1", "EO1"),
+        ("EO1", "EO1"),
+        ("E200", "EO1"),
+        ("E300", "EO1"),
+        ("PEFA", "PEFA"),
+        ("SIFA", "SIFA"),
+        ("HOO6", "HOO6"),
+        ("HOO 6", "HOO6"),
+        ("HOO7", "HOO7"),
+        ("HOO 7", "HOO7"),
+        ("GSL", "GSL"),
+    ]
+
+    for needle, code in mappings:
+        if needle in sf:
+            return code
+
+    return "UNKNOWN"
+
+
+def load_inspection_lookup(conn):
+    rows = conn.execute(text("""
+        SELECT
+            customer_code,
+            site_code,
+            source_file,
+            sheet,
+            inspection_key,
+            lijn_code,
+            inspected_on
+        FROM sb_inspections_v0
+        WHERE inspected_on IS NOT NULL
+    """)).fetchall()
+
+    lookup = {}
+    by_file = defaultdict(list)
+
+    for customer_code, site_code, source_file, sheet, inspection_key, lijn_code, inspected_on in rows:
+        key = (customer_code, site_code, source_file, normalize_sheet(sheet), inspected_on)
+        record = {
+            "customer_code": customer_code,
+            "site_code": site_code,
+            "inspection_key": inspection_key,
+            "lijn_code": lijn_code,
+            "inspected_on": inspected_on,
+            "sheet": sheet,
+        }
+        lookup[key] = record
+        by_file[(customer_code, site_code, source_file)].append(record)
+
+    return lookup, by_file
+
+
+def load_raw_grouped(conn, mode: str = "incremental"):
+    if mode == "full-rebuild":
+        sql = """
+            SELECT
+                customer_code,
+                site_code,
+                source_file,
+                sheet,
+                row_nr,
+                data->'row' AS row_json
+            FROM sb_stg_inspecties_raw
+            WHERE customer_code IS NOT NULL
+              AND site_code IS NOT NULL
+            ORDER BY customer_code, site_code, source_file, sheet, row_nr
+        """
+    else:
+        sql = """
+            SELECT
+                r.customer_code,
+                r.site_code,
+                r.source_file,
+                r.sheet,
+                r.row_nr,
+                r.data->'row' AS row_json
+            FROM sb_stg_inspecties_raw r
+            JOIN vw_changed_inspection_sheets_todo_v1 c
+              ON c.customer_code = r.customer_code
+             AND c.site_code = r.site_code
+             AND c.source_file = r.source_file
+             AND c.sheet = r.sheet
+            WHERE r.customer_code IS NOT NULL
+              AND r.site_code IS NOT NULL
+            ORDER BY r.customer_code, r.site_code, r.source_file, r.sheet, r.row_nr
+        """
+
+    rows = conn.execute(text(sql)).fetchall()
+
+    grouped = defaultdict(list)
+    for customer_code, site_code, source_file, sheet, row_nr, row_json in rows:
+        grouped[(customer_code, site_code, source_file, sheet)].append((row_nr, row_json))
+
+    return grouped
+
+
+def find_header_date(rows):
+    # Alleen de expliciete Datum-rij gebruiken.
+    for row_nr, row_json in rows:
+        if row_nr > 25:
+            break
+
+        if not isinstance(row_json, dict):
+            continue
+
+        values = [
+            "" if value is None else str(value).strip()
+            for value in row_json.values()
+        ]
+
+        row_lower = " ".join(
+            value.lower()
+            for value in values
+            if value
+        )
+
+        if "datum" not in row_lower:
+            continue
+
+        # Datum staat normaal rechts van het label.
+        for value in reversed(values):
+            dt = parse_inspected_on(value)
+            if dt:
+                return dt
+
+    return None
+
+
+def determine_workbook_year(customer_code, site_code, source_file, sheets_for_file, inspection_by_file, raw_grouped):
+    years = []
+
+    for rec in inspection_by_file.get((customer_code, site_code, source_file), []):
+        if rec.get("inspected_on"):
+            years.append(rec["inspected_on"].year)
+
+    for raw_sheet in sheets_for_file:
+        explicit_dt = parse_explicit_date_from_sheet_name(raw_sheet)
+        if explicit_dt:
+            years.append(explicit_dt.year)
+            continue
+
+        rows = raw_grouped.get((source_file, raw_sheet), [])
+        header_dt = find_header_date(rows)
+        if header_dt:
+            years.append(header_dt.year)
+
+    file_year = infer_year_from_source_file(source_file)
+    if file_year:
+        years.append(file_year)
+
+    if years:
+        return Counter(years).most_common(1)[0][0]
+
+    return None
+
+def ensure_schema(conn) -> None:
+    conn.execute(text("ALTER TABLE sb_inspection_items_v0 ADD COLUMN IF NOT EXISTS customer_code text"))
+    conn.execute(text("ALTER TABLE sb_inspection_items_v0 ADD COLUMN IF NOT EXISTS site_code text"))
+
+def main(mode: str = "incremental"):
+    with engine.begin() as conn:
+        ensure_schema(conn)
+
+        if mode == "full-rebuild":
+            print("[INFO] FULL REBUILD: sb_inspection_items_v0 volledig opnieuw opbouwen ...")
+            conn.execute(text("TRUNCATE TABLE sb_inspection_items_v0 RESTART IDENTITY"))
+        else:
+            print("[INFO] INCREMENTAL: alleen changed sheets verwerken ...")
+
+        inspection_lookup, inspection_by_file = load_inspection_lookup(conn)
+        raw_grouped = load_raw_grouped(conn, mode=mode)
+
+        if mode == "incremental":
+            if not raw_grouped:
+                print("[INFO] Geen changed sheets gevonden. Niets te doen.")
+                return
+
+            print(f"[INFO] Changed sheets gevonden: {len(raw_grouped)}")
+
+        all_target_keys = [
+            (customer_code, site_code, source_file, sheet)
+            for (customer_code, site_code, source_file, sheet) in raw_grouped.keys()
+            if is_target_excel_source(source_file)
+        ]
+        all_target_keys.sort()
+
+        skipped_auxiliary_keys = [
+            key
+            for key in all_target_keys
+            if is_known_auxiliary_sheet(
+                key[2],
+                key[3],
+            )
+        ]
+
+        target_keys = [
+            key
+            for key in all_target_keys
+            if not is_known_auxiliary_sheet(
+                key[2],
+                key[3],
+            )
+        ]
+
+        print(
+            f"[INFO] doel-sheets (Lijsten*, excl. totaal.xlsx): "
+            f"{len(target_keys)}"
+        )
+        print(
+            f"[INFO] skipped auxiliary sheets: "
+            f"{len(skipped_auxiliary_keys)}"
+        )
+
+        sheets_by_file = defaultdict(list)
+        for customer_code, site_code, source_file, raw_sheet in target_keys:
+            sheets_by_file[(customer_code, site_code, source_file)].append(raw_sheet)
+
+        workbook_year_by_file = {}
+
+        for (customer_code, site_code, source_file), sheets_for_file in sheets_by_file.items():
+            workbook_year_by_file[(customer_code, site_code, source_file)] = determine_workbook_year(
+                customer_code=customer_code,
+                site_code=site_code,
+                source_file=source_file,
+                sheets_for_file=sheets_for_file,
+                inspection_by_file=inspection_by_file,
+                raw_grouped={
+                    (sf, sh): rows
+                    for (cc, sc, sf, sh), rows in raw_grouped.items()
+                    if cc == customer_code and sc == site_code and sf == source_file
+                },
+            )
+        n_inserted = 0
+        n_skipped_no_date = 0
+        n_skipped_no_header = 0
+        n_skipped_no_match = 0
+        n_skipped_duplicate_in_run = 0
+
+        skipped_examples = []
+        seen_rows = set()
+
+        for customer_code, site_code, source_file, raw_sheet in target_keys:
+            rows = raw_grouped[(customer_code, site_code, source_file, raw_sheet)]
+            sheet_norm = normalize_sheet(raw_sheet)
+
+            inspection_key = None
+            inspected_on = None
+            lijn_code = infer_lijn_code_from_source(source_file)
+            hit = None
+
+            file_headers = inspection_by_file.get(
+                (customer_code, site_code, source_file),
+                [],
+            )
+
+            # 1. Exacte raw sheet heeft voorrang.
+            #
+            # Dit voorkomt collisions zoals:
+            # week02 / week 02 / week  02 / week2
+            exact_candidates = [
+                rec
+                for rec in file_headers
+                if rec.get("sheet") == raw_sheet
+            ]
+
+            # Als de exacte sheet slechts één header heeft,
+            # is die bestaande canonical header leidend.
+            if len(exact_candidates) == 1:
+                hit = exact_candidates[0]
+                inspected_on = hit["inspected_on"]
+
+            else:
+                # 2. Alleen als exact-sheet niet uniek is:
+                # bepaal datum uit sheet/header/week.
+                inspected_on = parse_explicit_date_from_sheet_name(
+                    raw_sheet
+                )
+
+                if inspected_on is None:
+                    inspected_on = find_header_date(rows)
+
+                if inspected_on is None:
+                    # Geen datum afleiden uit alleen weeknummer + workbookjaar.
+                    # Zonder expliciete sheetdatum of Datum-rij is koppelen
+                    # aan een canonical inspectie niet betrouwbaar.
+                    pass
+
+                # 3. Probeer eerst exact sheet + datum.
+                if inspected_on is not None:
+                    exact_date_candidates = [
+                        rec
+                        for rec in exact_candidates
+                        if rec.get("inspected_on") == inspected_on
+                    ]
+
+                    if len(exact_date_candidates) == 1:
+                        hit = exact_date_candidates[0]
+
+                # 4. Laatste fallback:
+                # normalized sheet + datum, maar ALLEEN indien uniek.
+                if hit is None and inspected_on is not None:
+                    normalized_candidates = [
+                        rec
+                        for rec in file_headers
+                        if normalize_sheet(rec.get("sheet")) == sheet_norm
+                        and rec.get("inspected_on") == inspected_on
+                    ]
+
+                    if len(normalized_candidates) == 1:
+                        hit = normalized_candidates[0]
+
+            if hit is not None:
+                inspection_key = hit["inspection_key"]
+                inspected_on = hit["inspected_on"]
+
+                if hit["lijn_code"]:
+                    lijn_code = hit["lijn_code"]
+
+            # 3. Items mogen NOOIT zelf een inspection_key bouwen.
+            # Headers zijn leidend. Zonder bestaande header geen item-insert,
+            # anders ontstaan orphan-items.
+            if inspected_on is None:
+                n_skipped_no_date += 1
+                if len(skipped_examples) < 50:
+                    skipped_examples.append((source_file, f"{raw_sheet} [geen datum]"))
+                continue
+
+            if inspection_key is None:
+                n_skipped_no_header += 1
+                if len(skipped_examples) < 50:
+                    skipped_examples.append((source_file, f"{raw_sheet} [geen header-match voor {inspected_on}]"))
+                continue
+
+            # Pas verwijderen NADAT exact bekend is welke
+            # canonical inspection opnieuw opgebouwd wordt.
+            if mode == "incremental":
+                conn.execute(
+                    text("""
+                        DELETE FROM sb_inspection_items_v0
+                        WHERE inspection_key = :inspection_key
+                    """),
+                    {
+                        "inspection_key": inspection_key,
+                    },
+                )
+
+            inserted_for_this_sheet = 0
+            candidate_rows_this_sheet = 0
+
+            for row_nr, row_json in rows:
+                if row_json is None:
+                    continue
+
+                if not isinstance(row_json, dict):
+                    row_json = dict(row_json)
+
+                if not is_data_row(row_nr, row_json):
+                    continue
+
+                candidate_rows_this_sheet += 1
+
+                # dedupe op echte inspection_key + raw sheet + row_nr
+                dedupe_key = (inspection_key, source_file, raw_sheet, row_nr)
+                if dedupe_key in seen_rows:
+                    n_skipped_duplicate_in_run += 1
+                    continue
+
+                seen_rows.add(dedupe_key)
+
+                row_json_clean = clean_json_dict(row_json)
+
+                locatie = row_json_clean.get("Unnamed: 0")
+                band_breedte = row_json_clean.get("Unnamed: 1")
+                merk_type = row_json_clean.get("Unnamed: 2")
+
+                demontage = x_to_bool(row_json_clean.get("Unnamed: 3"))
+                reinigen = x_to_bool(row_json_clean.get("Unnamed: 4"))
+                vervangen = x_to_bool(row_json_clean.get("Unnamed: 5"))
+
+                conn.execute(text("""
+                    INSERT INTO sb_inspection_items_v0 (
+                        customer_code,
+                        site_code,
+                        inspection_key,
+                        lijn_code,
+                        source_file,
+                        sheet,
+                        section_idx,
+                        row_nr,
+                        locatie,
+                        band_breedte,
+                        merk_type,
+                        demontage,
+                        reinigen,
+                        vervangen,
+                        row_json
+                    )
+                    VALUES (
+                        :customer_code,
+                        :site_code,
+                        :inspection_key,
+                        :lijn_code,
+                        :source_file,
+                        :sheet,
+                        1,
+                        :row_nr,
+                        :locatie,
+                        :band_breedte,
+                        :merk_type,
+                        :demontage,
+                        :reinigen,
+                        :vervangen,
+                        CAST(:row_json AS jsonb)
+                    )
+                    ON CONFLICT (inspection_key, section_idx, row_nr)
+                    DO NOTHING
+                """), {
+                    "customer_code": customer_code,
+                    "site_code": site_code,
+                    "inspection_key": inspection_key,
+                    "lijn_code": lijn_code,
+                    "source_file": source_file,
+                    "sheet": sheet_norm,
+                    "row_nr": row_nr,
+                    "locatie": locatie,
+                    "band_breedte": None if band_breedte is None else str(band_breedte),
+                    "merk_type": merk_type,
+                    "demontage": demontage,
+                    "reinigen": reinigen,
+                    "vervangen": vervangen,
+                    "row_json": json.dumps(row_json_clean, ensure_ascii=False, default=str),
+                })
+
+                inserted_for_this_sheet += 1
+                n_inserted += 1
+
+            if inserted_for_this_sheet == 0:
+                n_skipped_no_match += 1
+                if len(skipped_examples) < 50 and candidate_rows_this_sheet > 0:
+                    skipped_examples.append(
+                        (source_file, f"{raw_sheet} [0 inserted / {candidate_rows_this_sheet} candidates]")
+                    )
+
+        print(f"[DONE] inserted items: {n_inserted}")
+        print(f"[DONE] skipped no date: {n_skipped_no_date}")
+        print(f"[DONE] skipped no header match: {n_skipped_no_header}")
+        print(f"[DONE] skipped empty sheets: {n_skipped_no_match}")
+        print(f"[DONE] skipped duplicates in run: {n_skipped_duplicate_in_run}")
+
+        if skipped_examples:
+            print("[INFO] eerste skipped voorbeelden:")
+            for source_file, raw_sheet in skipped_examples[:20]:
+                print(f"  - {raw_sheet} | {source_file}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Promote Excel inspection items naar sb_inspection_items_v0"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["incremental", "full-rebuild"],
+        default="incremental",
+        help="incremental = alleen changed sheets; full-rebuild = volledige herbouw",
+    )
+    args = parser.parse_args()
+
+    main(mode=args.mode)

@@ -1,0 +1,801 @@
+{
+  "a2c_a2d_control_failures": [],
+  "blocking_missing": [],
+  "blocking_negative_violations": [],
+  "blocking_value_mismatches": [],
+  "cardinality_mismatches": [],
+  "diagnostics_domain_findings": {
+    "missing": [
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "108"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "112"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "113"
+      },
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "115"
+      },
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "116"
+      },
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "117"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "118"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "119"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "120"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "138"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "139"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "163"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "164"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "165"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "166"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "167"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "168"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "169"
+      },
+      {
+        "expected": "system",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "172"
+      },
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "197"
+      },
+      {
+        "expected": "inspections",
+        "intentional_a2c_a2d_control": false,
+        "key": "diagnostics_domain",
+        "reachability": "exact",
+        "test_id": "198"
+      }
+    ],
+    "negative_violations": [],
+    "value_mismatches": [
+      {
+        "actual": "database",
+        "expected": "system",
+        "expected_key": "diagnostics_domain",
+        "intentional_a2c_a2d_control": false,
+        "runtime_key": "diagnostics_domain",
+        "test_id": "101"
+      }
+    ]
+  },
+  "early_gate_failures": [],
+  "missing_expected": [
+    {
+      "expected": [
+        "BB-U",
+        "BB-R"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "family_codes",
+      "reachability": "unreachable",
+      "test_id": "5"
+    },
+    {
+      "expected": [
+        "PROM-TPH-HD",
+        "PROM-TPH-ND"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "family_codes",
+      "reachability": "unreachable",
+      "test_id": "11"
+    },
+    {
+      "expected": [
+        "BB-U",
+        "BB-R"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "family_codes",
+      "reachability": "unreachable",
+      "test_id": "20"
+    },
+    {
+      "expected": "U1200",
+      "intentional_a2c_a2d_control": false,
+      "key": "scraper_type",
+      "reachability": "unreachable",
+      "test_id": "29"
+    },
+    {
+      "expected": "WEST",
+      "intentional_a2c_a2d_control": false,
+      "key": "side",
+      "reachability": "unreachable",
+      "test_id": "29"
+    },
+    {
+      "expected": "WEST",
+      "intentional_a2c_a2d_control": false,
+      "key": "side",
+      "reachability": "unreachable",
+      "test_id": "37"
+    },
+    {
+      "expected": "Breda",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "61"
+    },
+    {
+      "expected": "Maldegem",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "62"
+    },
+    {
+      "expected": "Breda",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "63"
+    },
+    {
+      "expected": "Breda",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "66"
+    },
+    {
+      "expected": "Maldegem",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "67"
+    },
+    {
+      "expected": "Breda",
+      "intentional_a2c_a2d_control": false,
+      "key": "locatie",
+      "reachability": "unreachable",
+      "test_id": "68"
+    },
+    {
+      "expected": "technicus",
+      "intentional_a2c_a2d_control": false,
+      "key": "functie",
+      "reachability": "unreachable",
+      "test_id": "70"
+    },
+    {
+      "expected": "VCA-coordinator",
+      "intentional_a2c_a2d_control": false,
+      "key": "functie",
+      "reachability": "unreachable",
+      "test_id": "71"
+    },
+    {
+      "expected": "aankoop",
+      "intentional_a2c_a2d_control": false,
+      "key": "afdeling",
+      "reachability": "unreachable",
+      "test_id": "73"
+    },
+    {
+      "expected": "service",
+      "intentional_a2c_a2d_control": false,
+      "key": "afdeling",
+      "reachability": "unreachable",
+      "test_id": "74"
+    },
+    {
+      "expected": [
+        "Breda",
+        "Maldegem"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "comparison_scope",
+      "reachability": "unreachable",
+      "test_id": "80"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "81"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "82"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "83"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "84"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "85"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "86"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "87"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "88"
+    },
+    {
+      "expected": "3",
+      "intentional_a2c_a2d_control": false,
+      "key": "position_id",
+      "reachability": "unreachable",
+      "test_id": "88"
+    },
+    {
+      "expected": [
+        "RFQ-2026-001",
+        "RFQ-2026-002"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_ids",
+      "reachability": "unreachable",
+      "test_id": "90"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "91"
+    },
+    {
+      "expected": "2",
+      "intentional_a2c_a2d_control": false,
+      "key": "position_id",
+      "reachability": "unreachable",
+      "test_id": "91"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "92"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "93"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "94"
+    },
+    {
+      "expected": "1",
+      "intentional_a2c_a2d_control": false,
+      "key": "position_id",
+      "reachability": "unreachable",
+      "test_id": "95"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "96"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "97"
+    },
+    {
+      "expected": "de",
+      "intentional_a2c_a2d_control": false,
+      "key": "language",
+      "reachability": "unreachable",
+      "test_id": "97"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "99"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "100"
+    },
+    {
+      "expected": "vw_meshoogte_latest_per_scraper_clean",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_object",
+      "reachability": "unreachable",
+      "test_id": "104"
+    },
+    {
+      "expected": "vw_mes_cycle_analysis_clean",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_object",
+      "reachability": "unreachable",
+      "test_id": "105"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "108"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "112"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "113"
+    },
+    {
+      "expected": "vw_band_scraper_api_v1",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_object",
+      "reachability": "unreachable",
+      "test_id": "114"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "115"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "116"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "117"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "118"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "119"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "120"
+    },
+    {
+      "expected": [
+        "BB-U",
+        "BB-R"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "family_codes",
+      "reachability": "unreachable",
+      "test_id": "127"
+    },
+    {
+      "expected": [
+        "BB-U",
+        "BB-R"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "family_codes",
+      "reachability": "unreachable",
+      "test_id": "134"
+    },
+    {
+      "expected": "RFQ-2026-001",
+      "intentional_a2c_a2d_control": false,
+      "key": "rfq_id",
+      "reachability": "unreachable",
+      "test_id": "136"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "138"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "139"
+    },
+    {
+      "expected": "AL5",
+      "intentional_a2c_a2d_control": true,
+      "key": "band_candidate",
+      "reachability": "related_only",
+      "test_id": "154"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "163"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "164"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "165"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "166"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "167"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "168"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "169"
+    },
+    {
+      "expected": "system",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "172"
+    },
+    {
+      "expected": [
+        "MV1",
+        "MV2"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "comparison_scope",
+      "reachability": "unreachable",
+      "test_id": "185"
+    },
+    {
+      "expected": [
+        "Breda",
+        "Maldegem"
+      ],
+      "intentional_a2c_a2d_control": false,
+      "key": "comparison_scope",
+      "reachability": "unreachable",
+      "test_id": "193"
+    },
+    {
+      "expected": "A999",
+      "intentional_a2c_a2d_control": true,
+      "key": "band_candidate",
+      "reachability": "related_only",
+      "test_id": "196"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "197"
+    },
+    {
+      "expected": "inspections",
+      "intentional_a2c_a2d_control": false,
+      "key": "diagnostics_domain",
+      "reachability": "exact",
+      "test_id": "198"
+    }
+  ],
+  "negative_violations": [],
+  "queryclass_failures": [],
+  "unexpected_code_like": [
+    {
+      "entity_key": "lijn_code",
+      "test_id": "22",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "24",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "26",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "28",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "29",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "31",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "37",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "121",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "126",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "127",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "128",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "129",
+      "value": "A319"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "131",
+      "value": "A319"
+    },
+    {
+      "entity_key": "installation_code",
+      "test_id": "150",
+      "value": "MV1"
+    },
+    {
+      "entity_key": "scope_code",
+      "test_id": "150",
+      "value": "MV1"
+    },
+    {
+      "entity_key": "area_code",
+      "test_id": "155",
+      "value": "HOO6"
+    },
+    {
+      "entity_key": "installation_code",
+      "test_id": "155",
+      "value": "HOO6"
+    },
+    {
+      "entity_key": "scope_code",
+      "test_id": "155",
+      "value": "HOO6"
+    },
+    {
+      "entity_key": "lijn_code",
+      "test_id": "157",
+      "value": "A319"
+    },
+    {
+      "entity_key": "comparison_scope_codes",
+      "test_id": "185",
+      "value": "MV1"
+    },
+    {
+      "entity_key": "comparison_scope_codes",
+      "test_id": "185",
+      "value": "MV2"
+    }
+  ],
+  "value_mismatches": [
+    {
+      "actual": "database",
+      "expected": "system",
+      "expected_key": "diagnostics_domain",
+      "intentional_a2c_a2d_control": false,
+      "runtime_key": "diagnostics_domain",
+      "test_id": "101"
+    }
+  ]
+}

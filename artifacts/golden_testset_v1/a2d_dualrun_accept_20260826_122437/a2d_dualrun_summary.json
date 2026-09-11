@@ -1,0 +1,21 @@
+{
+  "a2c_control_failures": [],
+  "allowed_delta_failures": [],
+  "early_gate_failures": [],
+  "invariant_failures": [],
+  "queryclass_failures": [],
+  "schema_failures": [],
+  "summary": {
+    "a1b_early_gate_count": 20,
+    "a1b_early_gate_failures": 0,
+    "a2c_control_failures": 0,
+    "allowed_delta_count": 2,
+    "allowed_delta_failures": 0,
+    "invariant_count": 198,
+    "invariant_failures": 0,
+    "queryclass_failures": 0,
+    "queryclass_pass": 200,
+    "same_schema_failures": 0,
+    "total": 200
+  }
+}

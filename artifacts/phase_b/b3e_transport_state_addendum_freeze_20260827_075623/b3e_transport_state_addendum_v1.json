@@ -1,0 +1,84 @@
+﻿{
+    "schema_version":  "promati.phase_b3e.transport_state_addendum.v1",
+    "status":  "ACCEPTED_FOR_LOCAL_ONLY_SHADOW",
+    "base_execution_contract":  "promati.phase_b2e.execution_contract.v1",
+    "transport_boundary":  "EXECUTOR_TO_SENDER_INVOCATION",
+    "explicitly_not_transport_boundaries":  [
+                                                "RAW_HTTP_NETWORK_LAYER",
+                                                "SPECIALIST_SEMANTIC_SUCCESS"
+                                            ],
+    "states":  [
+                   {
+                       "state":  "NOT_ATTEMPTED",
+                       "definition":  "sender invocation did not begin",
+                       "initial_local_shadow_emittable":  false
+                   },
+                   {
+                       "state":  "COMPLETED",
+                       "definition":  "sender callable returned normally with a result dict that reached post-call executor processing",
+                       "initial_local_shadow_emittable":  true
+                   },
+                   {
+                       "state":  "FAILED",
+                       "definition":  "sender invocation raised or aborted before returning a usable result dict",
+                       "initial_local_shadow_emittable":  false
+                   }
+               ],
+    "semantic_separation":  {
+                                "completed_implies_http_success":  false,
+                                "completed_implies_specialist_success":  false,
+                                "failed_implies_specialist_semantic_error":  false,
+                                "transport_and_semantic_outcome_are_orthogonal":  true
+                            },
+    "default_sender_interpretation":  {
+                                          "caught_http_or_network_exception_transport":  "COMPLETED",
+                                          "caught_http_or_network_exception_semantic":  "ERROR",
+                                          "rationale":  "default_sender returned normally to execute_plan with an error result dict"
+                                      },
+    "injected_sender_interpretation":  {
+                                           "returns_result_dict":  "COMPLETED",
+                                           "raises_before_result":  "FAILED",
+                                           "not_called":  "NOT_ATTEMPTED"
+                                       },
+    "initial_local_only_shadow_scope":  {
+                                            "allowed_states":  [
+                                                                   "COMPLETED"
+                                                               ],
+                                            "may_emit_completed":  true,
+                                            "may_emit_failed":  false,
+                                            "may_emit_not_attempted":  false,
+                                            "failed_requires_future_control_flow_support":  true,
+                                            "not_attempted_requires_future_lifecycle_support":  true
+                                        },
+    "compatibility_constraints":  [
+                                      "NO_ENUM_VALUE_CHANGE",
+                                      "NO_EXECUTIONRESULT_SCHEMA_CHANGE",
+                                      "NO_LEGACY_ACCEPTED_CHANGE",
+                                      "NO_LEGACY_WRAPPER_CHANGE",
+                                      "NO_ROUTING_CHANGE",
+                                      "NO_QUERYPLAN_CHANGE",
+                                      "NO_ENDPOINT_CHANGE",
+                                      "NO_FALLBACK_CHANGE",
+                                      "NO_RETRY_CHANGE",
+                                      "NO_EVIDENCE_SCORING"
+                                  ],
+    "initial_executor_shadow_constraints":  [
+                                                "LOCAL_ONLY",
+                                                "FAIL_OPEN",
+                                                "TRANSPORT_STATE_EXPLICIT_COMPLETED",
+                                                "NO_OUTWARD_SCHEMA_EXPOSURE",
+                                                "NO_LEGACY_ACCEPTED_CHANGE",
+                                                "NO_LEGACY_WRAPPER_CHANGE"
+                                            ],
+    "unresolved_runtime_extensions":  [
+                                          "FAILED_TYPED_RESULT_MATERIALIZATION",
+                                          "NOT_ATTEMPTED_TYPED_RESULT_MATERIALIZATION"
+                                      ],
+    "provenance":  {
+                       "b3d_audit_script_sha256":  "F68FDB7AAEE23EC4E8DCD9068AE00F7CB4EA9E09E1404156E684E5E59B3F104D",
+                       "b3e_design_script_sha256":  "12BF99B55D003555EC41D8738855FA930A0462EFCE9114D328DE9902CD35DEBD",
+                       "b2e_contract_spec_sha256":  "5DE306324FB0B15163AB956C69A5220685D23C6BC68EF0583D3C92FAFA6CA2E6",
+                       "b3b2_freeze_manifest_sha256":  "0814F0A4B82C405C5BB370E91B77F540A0F028956F2535BC38EE9FC44C66B4D3"
+                   },
+    "next_step_candidate":  "READ_ONLY_B3F_LOCAL_ONLY_EXECUTOR_SHADOW_PATCH_PLAN"
+}

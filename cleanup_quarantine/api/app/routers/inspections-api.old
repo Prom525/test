@@ -1,0 +1,129 @@
+from fastapi import APIRouter, HTTPException, Query
+from typing import List
+from app.db import get_db_conn
+
+router = APIRouter(prefix="/inspections", tags=["Inspections"])
+
+
+# ---------------------------------------------------------
+# Laatste inspecties
+# ---------------------------------------------------------
+
+@router.get("/latest")
+def latest_inspections(limit: int = Query(20, ge=1, le=200)):
+    sql = """
+        SELECT *
+        FROM public.gpt_latest_inspections_v
+        ORDER BY datum DESC
+        LIMIT %s
+    """
+
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+
+        cur.execute(sql, (limit,))
+        columns = [desc[0] for desc in cur.description]
+
+        rows = [
+            dict(zip(columns, row))
+            for row in cur.fetchall()
+        ]
+
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "ok",
+            "items": rows
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Ik kon de gegevens niet ophalen."
+        )
+
+
+# ---------------------------------------------------------
+# Inspecties per lijn
+# ---------------------------------------------------------
+
+@router.get("/per-line")
+def inspections_per_line(limit: int = Query(50, ge=1, le=500)):
+    sql = """
+        SELECT *
+        FROM public.gpt_inspection_summary_v
+        ORDER BY inspecties DESC
+        LIMIT %s
+    """
+
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+
+        cur.execute(sql, (limit,))
+        columns = [desc[0] for desc in cur.description]
+
+        rows = [
+            dict(zip(columns, row))
+            for row in cur.fetchall()
+        ]
+
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "ok",
+            "items": rows
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Ik kon de gegevens niet ophalen."
+        )
+
+
+# ---------------------------------------------------------
+# Inspectie details
+# ---------------------------------------------------------
+
+@router.get("/{inspection_id}/items")
+def inspection_items(
+    inspection_id: str,
+    limit: int = Query(200, ge=1, le=2000)
+):
+
+    sql = """
+        SELECT *
+        FROM public.gpt_inspection_items_v2
+        WHERE inspection_id = %s
+        LIMIT %s
+    """
+
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+
+        cur.execute(sql, (inspection_id, limit))
+        columns = [desc[0] for desc in cur.description]
+
+        rows = [
+            dict(zip(columns, row))
+            for row in cur.fetchall()
+        ]
+
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "ok",
+            "items": rows
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Ik kon de gegevens niet ophalen."
+        )

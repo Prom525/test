@@ -1,0 +1,114 @@
+﻿{
+    "schema_version":  "promati.phase_b3h.local_only_executor_shadow_freeze.v1",
+    "created_local":  "2026-08-27T08:20:22+02:00",
+    "status":  "B3G_LOCAL_ONLY_EXECUTOR_SHADOW_FROZEN",
+    "executor_supersession":  {
+                                  "path":  "orchestrator\\executor.py",
+                                  "phase_a_frozen_sha256":  "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A",
+                                  "phase_b3g_sha256":  "327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3",
+                                  "change_class":  "AUTHORIZED_PHASE_B_EXECUTION_LAYER_EVOLUTION",
+                                  "phase_a_freeze_artifact_rewritten":  false,
+                                  "phase_a_frozen_source_hash_set_changed":  true,
+                                  "changed_phase_a_frozen_source_files":  [
+                                                                              "orchestrator\\executor.py"
+                                                                          ]
+                              },
+    "phase_a_governance":  {
+                               "routing_source_files_changed":  false,
+                               "planner_changed":  false,
+                               "understanding_changed":  false,
+                               "query_classification_changed":  false,
+                               "normalizer_changed":  false,
+                               "complexity_changed":  false,
+                               "routing_behavior_change_introduced_by_b3g":  false,
+                               "note":  "Phase-A routing artifacts remain frozen. executor.py was intentionally superseded by Phase B; therefore the historical Phase-A source-hash set no longer matches live source exactly."
+                           },
+    "b3g_test":  {
+                     "path":  "tests\\test_phase_b3g_executor_shadow_local_only.py",
+                     "sha256":  "DB7A6843211A4BEEC79D43F172182EA313A577D963414FF6C928C4C6FA26901E"
+                 },
+    "structural_proof":  {
+                             "legacy_accepted_assignment_unchanged":  true,
+                             "legacy_wrapper_unchanged":  true,
+                             "execute_plan_return_forms_unchanged":  true,
+                             "exact_import_delta_only":  true,
+                             "exact_shadow_ast_addition_only":  true,
+                             "shadow_local_only":  true,
+                             "outward_schema_changed":  false,
+                             "transport_state":  "COMPLETED",
+                             "domain_mapping":  "step.domain.value",
+                             "duration_ms_explicit":  true,
+                             "fail_open":  true,
+                             "network_call_added":  false
+                         },
+    "tests":  {
+                  "b3b1_regression_test_count":  18,
+                  "b3b1_regression_tests_green":  true,
+                  "b3g_targeted_test_count":  6,
+                  "b3g_targeted_tests_green":  true
+              },
+    "provenance":  {
+                       "b3g_apply_script_sha256":  "2B642F62910053433B16111D61D23FBE09EFF8EBEBEF534AFEB559BF09F96D4B",
+                       "b3b2_freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b3b2_types_registry_shadow_freeze_20260827_074025",
+                       "b3e_freeze_directory":  "C:\\ai-platform\\artifacts\\phase_b\\b3e_transport_state_addendum_freeze_20260827_075623",
+                       "executor_preimage_sha256":  "64240F4D0C0A63D698DDFE44764DF14E2D2A9CC65EFB53589AED77B479019A5A",
+                       "executor_postimage_sha256":  "327ADF58C303F7A4A0949BC1EF2F46D914492CDDB0D422A495BB8A03148931A3"
+                   },
+    "phase_a_unchanged_files":  [
+                                    {
+                                        "path":  "orchestrator\\models.py",
+                                        "frozen_sha256":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E",
+                                        "current_sha256":  "14C2E9DC4342D4554DF077925D9DAF3FB50B1D36A9B6D093D50379522E190C9E",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\understanding.py",
+                                        "frozen_sha256":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78",
+                                        "current_sha256":  "CF35835C9BD03D1267CED10EE47DCB67795A4DEA38336E4A1E8126049769BF78",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\planner.py",
+                                        "frozen_sha256":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68",
+                                        "current_sha256":  "26DB88A34A29792C82A1F6685E43D397316EE2C5E8E000D5E1A9C4FB77E9CF68",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\band_candidate_shadow.py",
+                                        "frozen_sha256":  "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484",
+                                        "current_sha256":  "D6FC239D81F1FFCB30D5E01EC6BD5B48F098AD21F8A0C9BCC92742C45057C484",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\query_classification.py",
+                                        "frozen_sha256":  "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576",
+                                        "current_sha256":  "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\normalizer.py",
+                                        "frozen_sha256":  "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB",
+                                        "current_sha256":  "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\complexity.py",
+                                        "frozen_sha256":  "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022",
+                                        "current_sha256":  "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022",
+                                        "changed":  false
+                                    },
+                                    {
+                                        "path":  "orchestrator\\service.py",
+                                        "frozen_sha256":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761",
+                                        "current_sha256":  "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761",
+                                        "changed":  false
+                                    }
+                                ],
+    "runtime_state":  {
+                          "docker_image_rebuilt":  false,
+                          "runtime_container_contains_b3g_code":  false,
+                          "api_calls_performed_by_b3h":  false,
+                          "db_writes_performed_by_b3h":  false
+                      },
+    "next_step_candidate":  "READ_ONLY_B3I_REBUILD_AND_RUNTIME_VALIDATION_PLAN"
+}

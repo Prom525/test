@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""
+promote_to_inspections_v1.py
+
+Promotes grouped rows from sb_stg_inspecties_raw into sb_inspections_v0 with:
+- inspected_on derived from:
+  1) sheet name if dd-mm-yy(/yyyy)
+  2) preferred: Excel row 9, column C (row_nr=9, Unnamed:2) if present
+  3) fallback: scan "Datum" rows (c0 like 'datum%') and parse date from Unnamed 1..4:
+     - epoch-ms (12-13 digits)
+     - Excel serial date (4-6 digits)
+     - date strings (dd-mm-yy, dd-mm-yyyy, yyyy-mm-dd, etc.)
+- performed_by from "Uitgevoerd door" (value typically in Unnamed:3)
+- title from row_nr=5
+- sheet_norm to normalize week naming (week  51, Week51, etc.)
+
+Run:
+  $env:DB_URL = "postgresql://postgres:SterkWachtwoord123@127.0.0.1:15432/promati"
+  python .\promote_to_inspections_v1.py
+"""
+
+import os
+import re
+from datetime import datetime, date, timezone, timedelta
+from sqlalchemy import create_engine, text
+
+DB_URL = os.environ.get("DB_URL", "postgresql://postgres:SterkWachtwoord123@127.0.0.1:15432/promati")
+
+RE_SHEET_DATE = re.compile(r"^\s*(\d{2})-(\d{2})-(\d{2,4})\s*$")
+RE_WEEK_ANY = re.compile(r"^\s*week\s*\d+\s*$", re.I)
+RE_WEEK_EXTRACT = re.compile(r"(?i)\bweek\b\W*0*(\d{1,2})\b")
+
+DATE_FORMATS = (
+    "%d-%m-%Y",
+    "%d-%m-%y",
+    "%Y-%m-%d",
+    "%d/%m/%Y",
+    "%d/%m/%y",
+)
+
+def parse_sheet_date(sheet: str) -> date | None:
+    m = RE_SHEET_DATE.match(sheet or "")
+    if not m:
+        return None
+    d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if y < 100:
+        y = 2000 + y if y <= 79 else 1900 + y
+    try:
+        return date(y, mth, d)
+    except ValueError:
+        return None
+
+def sheet_kind(sheet: str) -> str:
+    if parse_sheet_date(sheet):
+        return "date"
+    if RE_WEEK_ANY.match(sheet or "") or RE_WEEK_EXTRACT.search(sheet or ""):
+        return "week"
+    return "other"
+
+def normalize_sheet(sheet: str) -> str:
+    s = (sheet or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    m = RE_WEEK_EXTRACT.search(s)
+    if m:
+        wk = int(m.group(1))
+        return f"week {wk}"
+    return s
+
+def ms_epoch_to_date(ms: int) -> date:
+    # your files store UTC midnight epoch-ms
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).date()
+
+def excel_serial_to_date(n: int) -> date | None:
+    """
+    Excel Windows 1900 date system (common):
+    Using base 1899-12-30 is the standard trick that accounts for Excel's 1900 leap-year bug.
+    """
+    if n < 20000 or n > 80000:
+        return None
+    base = date(1899, 12, 30)
+    return base + timedelta(days=int(n))
+
+def parse_date_string(raw: str) -> date | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    for fmt in DATE_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def parse_any_date_value(raw: str) -> tuple[date | None, str | None]:
+    """
+    Try to parse a value that may be:
+    - epoch-ms (12-13 digits)
+    - Excel serial (4-6 digits)
+    - date string
+    Returns (date, source_tag_suffix)
+    """
+    s = (raw or "").strip()
+    if not s:
+        return None, None
+
+    # digits only
+    digits = re.sub(r"[^0-9]", "", s)
+    if re.fullmatch(r"\d{12,13}", digits or ""):
+        return ms_epoch_to_date(int(digits)), "epoch"
+    if re.fullmatch(r"\d{4,6}", digits or ""):
+        d = excel_serial_to_date(int(digits))
+        if d:
+            return d, "excel_serial"
+
+    d = parse_date_string(s)
+    if d:
+        return d, "string"
+
+    return None, None
+
+def ensure_schema(conn) -> None:
+    conn.execute(text("""
+      create table if not exists sb_inspections_v0 (
+        id bigserial primary key,
+        inspection_key text unique,
+        lijn_code text not null,
+        source_file text not null,
+        sheet text not null,
+        sheet_norm text,
+        sheet_kind text,
+        inspected_on date,
+        inspected_on_source text,
+        performed_by text,
+        title text,
+        row_count int,
+        created_at timestamptz default now()
+      )
+    """))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists sheet_norm text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists sheet_kind text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists inspected_on_source text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists performed_by text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists title text"))
+    conn.execute(text("alter table sb_inspections_v0 add column if not exists row_count int"))
+
+def main() -> None:
+    engine = create_engine(DB_URL)
+
+    q_groups = text("""
+      select lijn_code, source_file, sheet, count(*) as row_count
+      from sb_stg_inspecties_raw
+      where lijn_code is not null and source_file is not null and sheet is not null
+      group by lijn_code, source_file, sheet
+      order by lijn_code, source_file, sheet
+    """)
+
+    # Preferred field if it exists: Excel row 9 col C => row_nr=9, Unnamed:2
+    q_row9_date = text("""
+      select trim(coalesce(data->'row'->>'Unnamed: 2','')) as c2_raw
+      from sb_stg_inspecties_raw
+      where lijn_code = :lijn_code
+        and source_file = :source_file
+        and sheet = :sheet
+        and row_nr = 9
+      limit 1
+    """)
+
+    # Fallback: scan "Datum" rows, and pick best date candidate from Unnamed 1..4
+    q_datum_rows = text("""
+      select
+        trim(coalesce(data->'row'->>'Unnamed: 1','')) as u1,
+        trim(coalesce(data->'row'->>'Unnamed: 2','')) as u2,
+        trim(coalesce(data->'row'->>'Unnamed: 3','')) as u3,
+        trim(coalesce(data->'row'->>'Unnamed: 4','')) as u4
+      from sb_stg_inspecties_raw
+      where lijn_code=:lijn_code and source_file=:source_file and sheet=:sheet
+        and lower(trim(coalesce(data->'row'->>'Unnamed: 0',''))) like 'datum%'
+      order by row_nr
+      limit 50
+    """)
+
+    q_performed_by = text("""
+      select trim(coalesce(data->'row'->>'Unnamed: 3','')) as v
+      from sb_stg_inspecties_raw
+      where lijn_code=:lijn_code and source_file=:source_file and sheet=:sheet
+        and lower(trim(coalesce(data->'row'->>'Unnamed: 0',''))) like 'uitgevoerd door%'
+      order by row_nr
+      limit 1
+    """)
+
+    q_title = text("""
+      select trim(coalesce(data->'row'->>'Unnamed: 0','')) as v
+      from sb_stg_inspecties_raw
+      where lijn_code=:lijn_code and source_file=:source_file and sheet=:sheet
+        and row_nr = 5
+        and coalesce(data->'row'->>'Unnamed: 0','') <> ''
+      limit 1
+    """)
+
+    upsert = text("""
+      insert into sb_inspections_v0
+        (inspection_key, lijn_code, source_file, sheet, sheet_norm, sheet_kind,
+         inspected_on, inspected_on_source, performed_by, title, row_count)
+      values
+        (:inspection_key, :lijn_code, :source_file, :sheet, :sheet_norm, :sheet_kind,
+         :inspected_on, :inspected_on_source, :performed_by, :title, :row_count)
+      on conflict (inspection_key) do update
+        set sheet_norm = excluded.sheet_norm,
+            sheet_kind = excluded.sheet_kind,
+            inspected_on = excluded.inspected_on,
+            inspected_on_source = excluded.inspected_on_source,
+            performed_by = excluded.performed_by,
+            title = excluded.title,
+            row_count = excluded.row_count
+    """)
+
+    total = 0
+    with engine.begin() as conn:
+        ensure_schema(conn)
+
+        groups = conn.execute(q_groups).fetchall()
+        print(f"groups: {len(groups)}")
+
+        for lijn_code, source_file, sheet, row_count in groups:
+            key = f"{lijn_code}|{source_file}|{sheet}"
+            sk = sheet_kind(sheet)
+            sn = normalize_sheet(sheet)
+
+            inspected: date | None = None
+            source: str | None = None
+
+            # 1) from sheet name if it is a date
+            inspected = parse_sheet_date(sheet)
+            if inspected:
+                source = "sheet"
+
+            # 2) preferred: row 9 col C
+            if not inspected:
+                r9_raw = conn.execute(
+                    q_row9_date,
+                    {"lijn_code": lijn_code, "source_file": source_file, "sheet": sheet},
+                ).scalar()
+                d, tag = parse_any_date_value(r9_raw or "")
+                if d:
+                    inspected = d
+                    source = f"row9_c_{tag}"
+
+            # 3) fallback: scan 'Datum' rows, check Unnamed 1..4 for a parseable date
+            if not inspected:
+                rows = conn.execute(
+                    q_datum_rows,
+                    {"lijn_code": lijn_code, "source_file": source_file, "sheet": sheet},
+                ).fetchall()
+
+                candidates: list[tuple[date, str]] = []
+                for r in rows:
+                    for raw_val in (r.u1, r.u2, r.u3, r.u4):
+                        d, tag = parse_any_date_value(raw_val or "")
+                        if d and tag:
+                            candidates.append((d, tag))
+
+                if candidates:
+                    # pick the latest date (usually safest for "inspectiedatum" if multiple sections exist)
+                    best_d, best_tag = max(candidates, key=lambda x: x[0])
+                    inspected = best_d
+                    source = f"datum_row_{best_tag}"
+
+            performed = conn.execute(
+                q_performed_by,
+                {"lijn_code": lijn_code, "source_file": source_file, "sheet": sheet},
+            ).scalar()
+            performed = (performed or "").strip() or None
+
+            title = conn.execute(
+                q_title,
+                {"lijn_code": lijn_code, "source_file": source_file, "sheet": sheet},
+            ).scalar()
+            title = (title or "").strip() or None
+
+            conn.execute(
+                upsert,
+                {
+                    "inspection_key": key,
+                    "lijn_code": lijn_code,
+                    "source_file": source_file,
+                    "sheet": sheet,
+                    "sheet_norm": sn,
+                    "sheet_kind": sk,
+                    "inspected_on": inspected,
+                    "inspected_on_source": source,
+                    "performed_by": performed,
+                    "title": title,
+                    "row_count": int(row_count),
+                },
+            )
+
+            total += 1
+            if total % 250 == 0:
+                print(f"processed {total}/{len(groups)}")
+
+    print(f"DONE inspections upserted: {total}")
+
+if __name__ == "__main__":
+    main()

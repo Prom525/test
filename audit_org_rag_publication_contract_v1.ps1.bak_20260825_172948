@@ -1,0 +1,483 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+$ApiRoot = "C:\ai-platform\api\app"
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI ORG RAG PUBLICATION CONTRACT AUDIT V1" -ForegroundColor Cyan
+Write-Host " READ ONLY - NO WRITES" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+
+# ============================================================
+# 1. Source references
+# ============================================================
+
+Write-Host ""
+Write-Host "=== 1. SOURCE REFERENCES / WRITE PATHS ===" `
+    -ForegroundColor Yellow
+
+$Py = @'
+from pathlib import Path
+import ast
+import re
+
+root = Path(r"C:\ai-platform\api\app")
+
+patterns = (
+    "org_rag_documenten",
+    "laatste_publicatie_status",
+    "laatste_publicatie_response",
+    "laatst_gepubliceerd_op",
+    "replace_ok",
+    "publish",
+    "publication",
+    "republish",
+    "sync",
+    "rag_document_code",
+    "standaard_antwoord_kort",
+)
+
+write_patterns = (
+    r"\binsert\s+into\s+org_rag_documenten\b",
+    r"\bupdate\s+org_rag_documenten\b",
+    r"\bdelete\s+from\s+org_rag_documenten\b",
+    r"\bmerge\s+into\s+org_rag_documenten\b",
+)
+
+files = sorted(root.rglob("*.py"))
+
+print("PYTHON_FILES =", len(files))
+
+for path in files:
+
+    text = path.read_text(
+        encoding="utf-8-sig",
+        errors="replace",
+    )
+
+    lines = text.splitlines()
+
+    hits = [
+        i
+        for i, line in enumerate(lines, start=1)
+        if any(
+            p.casefold() in line.casefold()
+            for p in patterns
+        )
+    ]
+
+    writes = [
+        pattern
+        for pattern in write_patterns
+        if re.search(
+            pattern,
+            text,
+            re.IGNORECASE,
+        )
+    ]
+
+    if not hits and not writes:
+        continue
+
+    print()
+    print("=" * 100)
+    print(path)
+    print("=" * 100)
+
+    try:
+        tree = ast.parse(text)
+    except Exception:
+        tree = None
+
+    def owner(lineno):
+        if tree is None:
+            return None
+
+        candidates = []
+
+        for node in ast.walk(tree):
+            if not isinstance(
+                node,
+                (
+                    ast.FunctionDef,
+                    ast.AsyncFunctionDef,
+                    ast.ClassDef,
+                ),
+            ):
+                continue
+
+            if (
+                getattr(node, "lineno", 0)
+                <= lineno
+                <= getattr(node, "end_lineno", 0)
+            ):
+                candidates.append(node)
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda n: n.lineno,
+        )
+
+    shown = set()
+
+    for hit in hits:
+
+        start = max(1, hit - 5)
+        end = min(len(lines), hit + 8)
+
+        key = (start, end)
+
+        if key in shown:
+            continue
+
+        shown.add(key)
+
+        node = owner(hit)
+
+        print()
+        print(
+            "OWNER =",
+            getattr(node, "name", "<module>"),
+        )
+
+        print(
+            f"LINES = {start}-{end}"
+        )
+
+        for n in range(start, end + 1):
+            marker = ">>" if n == hit else "  "
+
+            print(
+                f"{marker} {n:05d}: "
+                f"{lines[n - 1]}"
+            )
+
+    if writes:
+        print()
+        print("WRITE_PATTERNS:")
+        for item in writes:
+            print(" -", item)
+
+print()
+print("SOURCE_PUBLICATION_AUDIT_COMPLETE")
+'@
+
+$Py | python -
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Source publication audit mislukt."
+}
+
+
+# ============================================================
+# 2. OpenAPI routes rondom ORG / RAG / publish
+# ============================================================
+
+Write-Host ""
+Write-Host "=== 2. OPENAPI ORG/RAG/PUBLISH ROUTES ===" `
+    -ForegroundColor Yellow
+
+$OpenApi = Invoke-RestMethod `
+    -Method Get `
+    -Uri "http://127.0.0.1:8000/openapi.json" `
+    -TimeoutSec 30
+
+$Rows = foreach ($Prop in $OpenApi.paths.PSObject.Properties) {
+
+    $Path = $Prop.Name
+
+    if (
+        $Path -notmatch "org"
+        -and $Path -notmatch "rag"
+        -and $Path -notmatch "publish"
+        -and $Path -notmatch "sync"
+    ) {
+        continue
+    }
+
+    foreach ($MethodProp in $Prop.Value.PSObject.Properties) {
+
+        $Method = $MethodProp.Name.ToUpper()
+
+        if (
+            $Method -notin @(
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+            )
+        ) {
+            continue
+        }
+
+        $Operation = $MethodProp.Value
+
+        [pscustomobject]@{
+            Method = $Method
+            Path = $Path
+            OperationId = $Operation.operationId
+            HasSecurity = (
+                $null -ne $Operation.security
+                -and @($Operation.security).Count -gt 0
+            )
+            Consequential = (
+                $Operation.'x-openai-isConsequential'
+            )
+        }
+    }
+}
+
+$Rows |
+    Sort-Object Path, Method |
+    Format-Table -AutoSize
+
+
+# ============================================================
+# 3. Database triggers on org_rag_documenten
+# ============================================================
+
+function Invoke-PgAudit {
+    param(
+        [string]$Title,
+        [string]$Sql
+    )
+
+    Write-Host ""
+    Write-Host "=== $Title ===" -ForegroundColor Yellow
+
+    $Wrapped = @"
+BEGIN;
+SET TRANSACTION READ ONLY;
+
+$Sql
+
+COMMIT;
+"@
+
+    $Wrapped |
+        docker exec -i `
+            ai-platform-postgres-1 `
+            sh -lc 'psql -X -v ON_ERROR_STOP=1 -P pager=off -P border=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQL audit mislukt: $Title"
+    }
+}
+
+
+Invoke-PgAudit `
+    -Title "3. DB TRIGGERS ON ORG RAG" `
+    -Sql @'
+SELECT
+    tg.tgname AS trigger_name,
+    pg_get_triggerdef(
+        tg.oid,
+        TRUE
+    ) AS trigger_definition,
+
+    p.proname AS function_name
+
+FROM pg_trigger tg
+
+JOIN pg_class c
+  ON c.oid = tg.tgrelid
+
+JOIN pg_namespace n
+  ON n.oid = c.relnamespace
+
+JOIN pg_proc p
+  ON p.oid = tg.tgfoid
+
+WHERE n.nspname = 'public'
+  AND c.relname = 'org_rag_documenten'
+  AND NOT tg.tgisinternal
+
+ORDER BY tg.tgname;
+'@
+
+
+# ============================================================
+# 4. Functions/procedures mentioning org_rag_documenten
+# ============================================================
+
+Invoke-PgAudit `
+    -Title "4. DB FUNCTIONS REFERENCING ORG RAG" `
+    -Sql @'
+SELECT
+    n.nspname AS schema_name,
+    p.proname AS function_name,
+    pg_get_function_identity_arguments(
+        p.oid
+    ) AS arguments
+
+FROM pg_proc p
+
+JOIN pg_namespace n
+  ON n.oid = p.pronamespace
+
+WHERE LOWER(
+        pg_get_functiondef(p.oid)
+      ) LIKE '%org_rag_documenten%'
+
+ORDER BY
+    n.nspname,
+    p.proname;
+'@
+
+
+# ============================================================
+# 5. Constraints / indexes
+# ============================================================
+
+Invoke-PgAudit `
+    -Title "5. ORG RAG CONSTRAINTS" `
+    -Sql @'
+SELECT
+    con.conname AS constraint_name,
+    con.contype AS constraint_type,
+    pg_get_constraintdef(
+        con.oid,
+        TRUE
+    ) AS definition
+
+FROM pg_constraint con
+
+JOIN pg_class c
+  ON c.oid = con.conrelid
+
+JOIN pg_namespace n
+  ON n.oid = c.relnamespace
+
+WHERE n.nspname = 'public'
+  AND c.relname = 'org_rag_documenten'
+
+ORDER BY con.conname;
+'@
+
+
+Invoke-PgAudit `
+    -Title "6. ORG RAG INDEXES" `
+    -Sql @'
+SELECT
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename = 'org_rag_documenten'
+ORDER BY indexname;
+'@
+
+
+# ============================================================
+# 6. Publication response structure
+#
+# Alleen JSON keys, geen response-inhoud.
+# ============================================================
+
+Invoke-PgAudit `
+    -Title "7. PUBLICATION RESPONSE KEY PROFILE" `
+    -Sql @'
+WITH keys AS (
+    SELECT
+        d.doc_id,
+        jsonb_object_keys(
+            CASE
+                WHEN jsonb_typeof(
+                    d.laatste_publicatie_response
+                ) = 'object'
+                THEN d.laatste_publicatie_response
+                ELSE '{}'::jsonb
+            END
+        ) AS response_key
+
+    FROM org_rag_documenten d
+)
+SELECT
+    response_key,
+    COUNT(*)::int AS document_count
+FROM keys
+GROUP BY response_key
+ORDER BY
+    document_count DESC,
+    response_key;
+'@
+
+
+# ============================================================
+# 7. Publication-state distribution
+# ============================================================
+
+Invoke-PgAudit `
+    -Title "8. PUBLICATION STATUS DISTRIBUTION" `
+    -Sql @'
+SELECT
+    actief,
+    COALESCE(
+        laatste_publicatie_status,
+        '<NULL>'
+    ) AS publication_status,
+
+    COUNT(*)::int AS document_count,
+
+    MIN(laatst_gepubliceerd_op)
+        AS first_published,
+
+    MAX(laatst_gepubliceerd_op)
+        AS last_published
+
+FROM org_rag_documenten
+
+GROUP BY
+    actief,
+    laatste_publicatie_status
+
+ORDER BY
+    actief DESC,
+    publication_status;
+'@
+
+
+# ============================================================
+# 8. Search-term linkage
+# ============================================================
+
+Invoke-PgAudit `
+    -Title "9. RAG SEARCH TERM LINKAGE" `
+    -Sql @'
+SELECT
+    d.doc_id,
+    d.actief,
+
+    COUNT(s.id)::int
+        AS search_term_count,
+
+    COUNT(s.id) FILTER (
+        WHERE s.active = TRUE
+    )::int
+        AS active_search_term_count
+
+FROM org_rag_documenten d
+
+LEFT JOIN rag_doc_search_terms s
+  ON s.doc_id = d.doc_id
+
+GROUP BY
+    d.doc_id,
+    d.actief
+
+ORDER BY d.doc_id;
+'@
+
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Green
+Write-Host "ORG_RAG_PUBLICATION_CONTRACT_AUDIT_V1_COMPLETE" `
+    -ForegroundColor Green
+Write-Host "==================================================" -ForegroundColor Green

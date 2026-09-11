@@ -1,0 +1,1062 @@
+param(
+    [string]$BackupDir = `
+        "C:\ai-platform\artifacts\phase_a_a2b_shadow_backup_20260826_102715"
+)
+
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A A2b BAND SHADOW STRUCTURAL AUDIT" -ForegroundColor Cyan
+Write-Host " READ ONLY - NO APP / CONTAINER / API / DB WRITES" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$Root = "C:\ai-platform\api\app\orchestrator"
+
+$UnderstandingPath = Join-Path `
+    $Root `
+    "understanding.py"
+
+$ShadowPath = Join-Path `
+    $Root `
+    "band_candidate_shadow.py"
+
+$OldUnderstandingPath = Join-Path `
+    $BackupDir `
+    "understanding.py"
+
+foreach ($Path in @(
+    $UnderstandingPath,
+    $ShadowPath,
+    $OldUnderstandingPath
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Benodigd bestand niet gevonden: $Path"
+    }
+}
+
+
+$PythonCode = @'
+import ast
+import copy
+import hashlib
+import pathlib
+import sys
+
+
+root = pathlib.Path(sys.argv[1])
+backup_dir = pathlib.Path(sys.argv[2])
+
+understanding_path = root / "understanding.py"
+shadow_path = root / "band_candidate_shadow.py"
+old_understanding_path = backup_dir / "understanding.py"
+
+
+def read(path):
+    return path.read_text(
+        encoding="utf-8-sig"
+    )
+
+
+def parse(path_or_source, label=None, is_source=False):
+    source = (
+        path_or_source
+        if is_source
+        else read(path_or_source)
+    )
+
+    try:
+        return ast.parse(source)
+    except SyntaxError as exc:
+        raise RuntimeError(
+            f"{label or path_or_source}: "
+            f"syntax error line {exc.lineno}: {exc.msg}"
+        ) from exc
+
+
+def dump(tree):
+    return ast.dump(
+        tree,
+        include_attributes=False,
+    )
+
+
+def sha256(path):
+    return hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest().upper()
+
+
+def top_function(tree, name):
+    return [
+        node
+        for node in tree.body
+        if isinstance(
+            node,
+            (
+                ast.FunctionDef,
+                ast.AsyncFunctionDef,
+            ),
+        )
+        and node.name == name
+    ]
+
+
+def assignment_name(node):
+    if isinstance(node, ast.Assign):
+        if len(node.targets) == 1:
+            target = node.targets[0]
+
+            if isinstance(target, ast.Name):
+                return target.id
+
+    if isinstance(node, ast.AnnAssign):
+        if isinstance(node.target, ast.Name):
+            return node.target.id
+
+    return None
+
+
+def call_name(node):
+    if not isinstance(node, ast.Call):
+        return None
+
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+
+    return None
+
+
+old_source = read(
+    old_understanding_path
+)
+
+new_source = read(
+    understanding_path
+)
+
+shadow_source = read(
+    shadow_path
+)
+
+old_tree = parse(
+    old_understanding_path,
+    "backup understanding.py",
+)
+
+new_tree = parse(
+    understanding_path,
+    "current understanding.py",
+)
+
+shadow_tree = parse(
+    shadow_path,
+    "band_candidate_shadow.py",
+)
+
+
+print("")
+print("=== BASELINE HASH ===")
+
+old_hash = sha256(
+    old_understanding_path
+)
+
+expected_old_hash = (
+    "ED7D69D54ADBA7FDBA61988928176243D"
+    "E5C2765CEBCDA6A414AB7381A597E74"
+)
+
+print(
+    f"BACKUP_UNDERSTANDING_SHA256={old_hash}"
+)
+
+if old_hash != expected_old_hash:
+    raise RuntimeError(
+        "Backup understanding.py wijkt af van "
+        "de geaudite A2b baseline."
+    )
+
+print(
+    "A2B_BACKUP_BASELINE_HASH_OK"
+)
+
+
+# ============================================================
+# Shadow module imports: stdlib only
+# ============================================================
+
+print("")
+print("=== SHADOW MODULE CAPABILITY AUDIT ===")
+
+allowed_import_roots = {
+    "__future__",
+    "dataclasses",
+    "enum",
+    "re",
+    "typing",
+}
+
+imports_seen = []
+
+
+for node in ast.walk(shadow_tree):
+
+    if isinstance(node, ast.Import):
+
+        for alias in node.names:
+
+            root_name = (
+                alias.name
+                .split(".")[0]
+            )
+
+            imports_seen.append(
+                alias.name
+            )
+
+            if root_name not in allowed_import_roots:
+                raise RuntimeError(
+                    "Non-stdlib/unapproved shadow import: "
+                    f"{alias.name}"
+                )
+
+
+    if isinstance(node, ast.ImportFrom):
+
+        module = node.module or ""
+
+        root_name = (
+            module.split(".")[0]
+        )
+
+        imports_seen.append(
+            module
+        )
+
+        if root_name not in allowed_import_roots:
+            raise RuntimeError(
+                "Non-stdlib/unapproved shadow import: "
+                f"{module}"
+            )
+
+
+for name in sorted(set(imports_seen)):
+    print(
+        f"SHADOW_IMPORT={name}"
+    )
+
+
+# ============================================================
+# Forbidden direct calls
+# ============================================================
+
+forbidden_name_calls = {
+    "open",
+    "exec",
+    "eval",
+    "compile",
+    "__import__",
+    "input",
+}
+
+forbidden_attribute_calls = {
+    "connect",
+    "execute",
+    "executemany",
+    "commit",
+    "rollback",
+    "request",
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "urlopen",
+    "socket",
+    "run",
+    "popen",
+    "system",
+    "read_text",
+    "write_text",
+    "read_bytes",
+    "write_bytes",
+}
+
+
+for node in ast.walk(shadow_tree):
+
+    if not isinstance(node, ast.Call):
+        continue
+
+    if (
+        isinstance(node.func, ast.Name)
+        and node.func.id
+            in forbidden_name_calls
+    ):
+        raise RuntimeError(
+            "Forbidden shadow call: "
+            f"{node.func.id}"
+        )
+
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr
+            in forbidden_attribute_calls
+    ):
+        raise RuntimeError(
+            "Forbidden shadow attribute call: "
+            f"{node.func.attr}"
+        )
+
+
+# ============================================================
+# No dangerous module references even without import
+# ============================================================
+
+forbidden_names = {
+    "requests",
+    "httpx",
+    "urllib",
+    "socket",
+    "subprocess",
+    "psycopg",
+    "psycopg2",
+    "sqlalchemy",
+    "sqlite3",
+    "pymongo",
+    "redis",
+    "boto3",
+    "os",
+    "pathlib",
+}
+
+
+for node in ast.walk(shadow_tree):
+
+    if (
+        isinstance(node, ast.Name)
+        and node.id in forbidden_names
+    ):
+        raise RuntimeError(
+            "Forbidden shadow capability reference: "
+            f"{node.id}"
+        )
+
+
+print("SHADOW_STDLIB_ONLY=TRUE")
+print("SHADOW_NO_FILE_IO=TRUE")
+print("SHADOW_NO_NETWORK=TRUE")
+print("SHADOW_NO_DB=TRUE")
+print("SHADOW_NO_SUBPROCESS=TRUE")
+
+
+# ============================================================
+# Expected shadow model/function contract
+# ============================================================
+
+status_classes = [
+    node
+    for node in shadow_tree.body
+    if isinstance(node, ast.ClassDef)
+    and node.name == "BandGroundingStatus"
+]
+
+candidate_classes = [
+    node
+    for node in shadow_tree.body
+    if isinstance(node, ast.ClassDef)
+    and node.name == "BandCandidateShadow"
+]
+
+classifier_defs = top_function(
+    shadow_tree,
+    "classify_band_candidate_shadow",
+)
+
+
+if len(status_classes) != 1:
+    raise RuntimeError(
+        "BandGroundingStatus count is niet 1."
+    )
+
+if len(candidate_classes) != 1:
+    raise RuntimeError(
+        "BandCandidateShadow count is niet 1."
+    )
+
+if len(classifier_defs) != 1:
+    raise RuntimeError(
+        "classify_band_candidate_shadow count "
+        "is niet 1."
+    )
+
+
+expected_status_values = {
+    "validated",
+    "mention_only",
+    "comparison_member",
+    "unresolved",
+}
+
+actual_status_values = set()
+
+
+for node in status_classes[0].body:
+
+    if not isinstance(node, ast.Assign):
+        continue
+
+    value = node.value
+
+    if (
+        isinstance(value, ast.Constant)
+        and isinstance(value.value, str)
+    ):
+        actual_status_values.add(
+            value.value
+        )
+
+
+if (
+    actual_status_values
+    != expected_status_values
+):
+    raise RuntimeError(
+        "BandGroundingStatus contract wijkt af: "
+        f"{sorted(actual_status_values)}"
+    )
+
+
+print(
+    "BAND_GROUNDING_STATUS_CONTRACT_OK"
+)
+print(
+    "BAND_CANDIDATE_SHADOW_MODEL_OK"
+)
+
+
+# ============================================================
+# Understanding wiring
+# ============================================================
+
+print("")
+print("=== UNDERSTANDING SHADOW WIRING AUDIT ===")
+
+understand_matches = top_function(
+    new_tree,
+    "understand_query",
+)
+
+if len(understand_matches) != 1:
+    raise RuntimeError(
+        "understand_query count is niet 1."
+    )
+
+understand = understand_matches[0]
+
+
+# Shadow import: exactly one import statement and alias.
+shadow_imports = [
+    node
+    for node in new_tree.body
+    if isinstance(node, ast.ImportFrom)
+    and node.module
+        == "app.orchestrator.band_candidate_shadow"
+]
+
+if len(shadow_imports) != 1:
+    raise RuntimeError(
+        "Shadow import statement count="
+        f"{len(shadow_imports)}, expected 1."
+    )
+
+shadow_import_names = [
+    alias.name
+    for alias in shadow_imports[0].names
+]
+
+if shadow_import_names != [
+    "classify_band_candidate_shadow"
+]:
+    raise RuntimeError(
+        "Shadow import bevat onverwachte aliases: "
+        f"{shadow_import_names}"
+    )
+
+
+# Shadow assignment must be exactly one top-level statement.
+shadow_assignments = [
+    node
+    for node in understand.body
+    if assignment_name(node)
+        == "_band_candidate_shadow"
+]
+
+if len(shadow_assignments) != 1:
+    raise RuntimeError(
+        "Shadow top-level assignment count="
+        f"{len(shadow_assignments)}, expected 1."
+    )
+
+shadow_assignment = shadow_assignments[0]
+
+shadow_call = getattr(
+    shadow_assignment,
+    "value",
+    None,
+)
+
+if not (
+    isinstance(shadow_call, ast.Call)
+    and isinstance(
+        shadow_call.func,
+        ast.Name,
+    )
+    and shadow_call.func.id
+        == "classify_band_candidate_shadow"
+):
+    raise RuntimeError(
+        "Shadow assignment gebruikt niet exact "
+        "classify_band_candidate_shadow(...)."
+    )
+
+
+# Exact arguments must be normalized, band.
+if len(shadow_call.args) != 2:
+    raise RuntimeError(
+        "Shadow classifier argument count is niet 2."
+    )
+
+if not (
+    isinstance(shadow_call.args[0], ast.Name)
+    and shadow_call.args[0].id == "normalized"
+):
+    raise RuntimeError(
+        "Shadow arg 1 is niet normalized."
+    )
+
+if not (
+    isinstance(shadow_call.args[1], ast.Name)
+    and shadow_call.args[1].id == "band"
+):
+    raise RuntimeError(
+        "Shadow arg 2 is niet band."
+    )
+
+
+# Store once, load never.
+shadow_stores = [
+    node
+    for node in ast.walk(understand)
+    if isinstance(node, ast.Name)
+    and node.id == "_band_candidate_shadow"
+    and isinstance(node.ctx, ast.Store)
+]
+
+shadow_loads = [
+    node
+    for node in ast.walk(understand)
+    if isinstance(node, ast.Name)
+    and node.id == "_band_candidate_shadow"
+    and isinstance(node.ctx, ast.Load)
+]
+
+
+if len(shadow_stores) != 1:
+    raise RuntimeError(
+        "Shadow variable store count "
+        f"is {len(shadow_stores)}, expected 1."
+    )
+
+if len(shadow_loads) != 0:
+    raise RuntimeError(
+        "Shadow variable is door productielogica gelezen."
+    )
+
+
+print("SHADOW_IMPORT_EXACT=TRUE")
+print("SHADOW_ASSIGNMENT_COUNT=1")
+print("SHADOW_ARGUMENTS_EXACT=TRUE")
+print("SHADOW_VARIABLE_STORE_COUNT=1")
+print("SHADOW_VARIABLE_LOAD_COUNT=0")
+print("SHADOW_OUTPUT_NOT_CONSUMED=TRUE")
+
+
+# ============================================================
+# Detector -> shadow -> existing flow order
+# ============================================================
+
+band_assignments = []
+line_assignments = []
+scope_assignments = []
+
+
+for node in understand.body:
+
+    name = assignment_name(node)
+
+    value = getattr(
+        node,
+        "value",
+        None,
+    )
+
+    if not isinstance(value, ast.Call):
+        continue
+
+    called = call_name(value)
+
+    if (
+        name == "band"
+        and called == "detect_band_code"
+    ):
+        band_assignments.append(node)
+
+    if (
+        name == "line"
+        and called == "detect_line_code"
+    ):
+        line_assignments.append(node)
+
+    if (
+        name == "scope_resolution"
+        and called == "resolve_scope_context"
+    ):
+        scope_assignments.append(node)
+
+
+if len(band_assignments) != 1:
+    raise RuntimeError(
+        "detect_band_code assignment count is niet 1."
+    )
+
+if len(line_assignments) != 1:
+    raise RuntimeError(
+        "detect_line_code assignment count is niet 1."
+    )
+
+if len(scope_assignments) != 1:
+    raise RuntimeError(
+        "resolve_scope_context assignment count is niet 1."
+    )
+
+
+band_assignment = band_assignments[0]
+line_assignment = line_assignments[0]
+scope_assignment = scope_assignments[0]
+
+
+if not (
+    band_assignment.lineno
+    < shadow_assignment.lineno
+    < line_assignment.lineno
+    < scope_assignment.lineno
+):
+    raise RuntimeError(
+        "Shadow wiring staat niet exact tussen "
+        "band-detectie en bestaande vervolgstappen."
+    )
+
+
+print("DETECT_BAND_CODE_CALL_COUNT=1")
+print("SHADOW_AFTER_BAND_DETECTION=TRUE")
+print("SHADOW_BEFORE_SCOPE_RESOLUTION=TRUE")
+
+
+# ============================================================
+# Production band output must still exist exactly once
+# ============================================================
+
+production_band_assignments = []
+
+for node in ast.walk(understand):
+
+    if not isinstance(node, ast.Assign):
+        continue
+
+    text = ast.get_source_segment(
+        new_source,
+        node,
+    ) or ""
+
+    if (
+        'entities["band_code"]' in text
+        or "entities['band_code']" in text
+    ):
+        production_band_assignments.append(
+            node
+        )
+
+
+if len(production_band_assignments) != 1:
+    raise RuntimeError(
+        "Production band entity assignment count="
+        f"{len(production_band_assignments)}, expected 1."
+    )
+
+
+print(
+    "PRODUCTION_BAND_ENTITY_ASSIGNMENT_COUNT=1"
+)
+
+
+# ============================================================
+# AST normalization:
+#
+# NEW understanding
+# - remove shadow import
+# - remove _band_candidate_shadow assignment
+#
+# MUST then equal backup understanding exactly.
+# ============================================================
+
+normalized = copy.deepcopy(
+    new_tree
+)
+
+
+# Remove shadow import only.
+removed_imports = 0
+
+normalized_body = []
+
+for node in normalized.body:
+
+    if (
+        isinstance(node, ast.ImportFrom)
+        and node.module
+            == "app.orchestrator.band_candidate_shadow"
+    ):
+        removed_imports += 1
+        continue
+
+    normalized_body.append(node)
+
+normalized.body = normalized_body
+
+
+normalized_understands = top_function(
+    normalized,
+    "understand_query",
+)
+
+if len(normalized_understands) != 1:
+    raise RuntimeError(
+        "Normalized understand_query count is niet 1."
+    )
+
+normalized_understand = (
+    normalized_understands[0]
+)
+
+
+removed_assignments = 0
+normalized_function_body = []
+
+
+for node in normalized_understand.body:
+
+    if assignment_name(node) == "_band_candidate_shadow":
+        removed_assignments += 1
+        continue
+
+    normalized_function_body.append(node)
+
+
+normalized_understand.body = (
+    normalized_function_body
+)
+
+
+if removed_imports != 1:
+    raise RuntimeError(
+        "Removed shadow import count="
+        f"{removed_imports}, expected 1."
+    )
+
+if removed_assignments != 1:
+    raise RuntimeError(
+        "Removed shadow assignment count="
+        f"{removed_assignments}, expected 1."
+    )
+
+
+if dump(normalized) != dump(old_tree):
+    raise RuntimeError(
+        "understanding.py bevat naast de A2b "
+        "shadow import + assignment nog andere "
+        "semantische wijzigingen."
+    )
+
+
+print("REMOVED_SHADOW_IMPORTS=1")
+print("REMOVED_SHADOW_ASSIGNMENTS=1")
+print(
+    "UNDERSTANDING_AFTER_SHADOW_REMOVAL_AST_IDENTICAL=TRUE"
+)
+print(
+    "EXISTING_PRODUCTION_UNDERSTANDING_AST_UNCHANGED=TRUE"
+)
+
+
+# ============================================================
+# New module must not be imported elsewhere
+# ============================================================
+
+shadow_import_locations = []
+
+for path in sorted(
+    root.glob("*.py")
+):
+
+    tree = parse(
+        path,
+        str(path),
+    )
+
+    for node in tree.body:
+
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+                == "app.orchestrator.band_candidate_shadow"
+        ):
+            shadow_import_locations.append(
+                path.name
+            )
+
+
+if shadow_import_locations != [
+    "understanding.py"
+]:
+    raise RuntimeError(
+        "Shadow module onverwacht elders geïmporteerd: "
+        f"{shadow_import_locations}"
+    )
+
+
+print(
+    "SHADOW_IMPORTED_ONLY_BY_UNDERSTANDING=TRUE"
+)
+
+
+# ============================================================
+# No QueryPlan/entities reference inside shadow module
+# ============================================================
+
+for forbidden in (
+    "QueryPlan",
+    "DetectedEntity",
+    "entities",
+    "execution_steps",
+    "primary_domain",
+    "clarification_required",
+    "research_required",
+):
+
+    for node in ast.walk(shadow_tree):
+
+        if (
+            isinstance(node, ast.Name)
+            and node.id == forbidden
+        ):
+            raise RuntimeError(
+                "Shadow module references production symbol: "
+                f"{forbidden}"
+            )
+
+
+print(
+    "SHADOW_HAS_NO_PRODUCTION_PLAN_REFERENCES=TRUE"
+)
+
+
+print("")
+print("SHADOW_MODULE_ONLY_INTENDED_CAPABILITIES=TRUE")
+print("UNDERSTANDING_ONLY_INTENDED_DELTA=TRUE")
+print("VALIDATED_ENTITY_OUTPUT_WIRING_UNCHANGED=TRUE")
+print("PHASE_A_A2B_PYTHON_STRUCTURAL_AUDIT_OK")
+'@
+
+
+$PythonCode |
+    python - `
+        $Root `
+        $BackupDir
+
+if ($LASTEXITCODE -ne 0) {
+    throw "A2b Python structural audit mislukt."
+}
+
+
+# ============================================================
+# Frozen file hash audit
+# ============================================================
+
+Write-Host ""
+Write-Host "=== FROZEN FILE HASH AUDIT ===" `
+    -ForegroundColor Yellow
+
+$ExpectedHashes = [ordered]@{
+    "models.py" = `
+        "A12C7FF33F065F545CA698687788329B926922C41C3246243060344E3A843DA2"
+
+    "normalizer.py" = `
+        "3AC3E4381FDB3501FF01E1D19BE317CBDCB03B214034409284E29A2D1303DDDB"
+
+    "query_classification.py" = `
+        "193C690E4D62798566B57D84BD590DB04655357FD6DE86AE4F56EB5E16E35576"
+
+    "planner.py" = `
+        "760B0CE4915E4998FD9F95FAD7FF0123606FDAF7E0C83107DA1E621A2EAAFBC2"
+
+    "complexity.py" = `
+        "1A479E52DD552F92086D3A4D199FC54F9D0BAE77CC6B15924962570B9B425022"
+
+    "service.py" = `
+        "6BDA7AD0D4EB73DE6BB56170CC97B56319EA7AAFBCDA7E9EAFA4F524A4643761"
+}
+
+
+foreach ($Name in $ExpectedHashes.Keys) {
+
+    $Path = Join-Path `
+        $Root `
+        $Name
+
+    if (-not (Test-Path $Path)) {
+        throw "Frozen bestand ontbreekt: $Path"
+    }
+
+    $Actual = (
+        Get-FileHash `
+            $Path `
+            -Algorithm SHA256
+    ).Hash
+
+    $Expected = $ExpectedHashes[$Name]
+
+    Write-Host (
+        "{0,-28} {1}" -f `
+            $Name,
+            $Actual
+    )
+
+    if ($Actual -ne $Expected) {
+        throw (
+            "Frozen hash mismatch voor $Name"
+        )
+    }
+}
+
+
+Write-Host "FROZEN_A1_MODULE_HASHES_OK" `
+    -ForegroundColor Green
+
+
+# ============================================================
+# Timestamp audit for other orchestrator modules
+# ============================================================
+
+Write-Host ""
+Write-Host "=== UNTOUCHED MODULE TIMESTAMP AUDIT ===" `
+    -ForegroundColor Yellow
+
+$BackupTime = (
+    Get-Item $BackupDir
+).CreationTimeUtc
+
+$AllowedAfterBackup = @(
+    "understanding.py",
+    "band_candidate_shadow.py"
+)
+
+$Unexpected = @()
+
+
+Get-ChildItem `
+    -Path $Root `
+    -Filter "*.py" `
+    -File |
+    Sort-Object Name |
+    ForEach-Object {
+
+        $AfterBackup = (
+            $_.LastWriteTimeUtc -gt $BackupTime
+        )
+
+        $Allowed = (
+            $_.Name -in $AllowedAfterBackup
+        )
+
+        Write-Host (
+            "{0,-30} after_backup={1,-5} allowed={2,-5}" -f `
+                $_.Name,
+                $AfterBackup,
+                $Allowed
+        )
+
+        if (
+            $AfterBackup
+            -and
+            -not $Allowed
+        ) {
+            $Unexpected += $_.Name
+        }
+    }
+
+
+if ($Unexpected.Count -ne 0) {
+    throw (
+        "Onverwachte app-file writes na A2b backup: " +
+        ($Unexpected -join ", ")
+    )
+}
+
+
+Write-Host "UNEXPECTED_APP_FILE_WRITES=0"
+Write-Host "UNTOUCHED_MODULE_TIMESTAMP_AUDIT_OK" `
+    -ForegroundColor Green
+
+
+# ============================================================
+# Independent syntax checks
+# ============================================================
+
+Write-Host ""
+Write-Host "=== INDEPENDENT SYNTAX AUDIT ===" `
+    -ForegroundColor Yellow
+
+foreach ($Path in @(
+    $UnderstandingPath,
+    $ShadowPath
+)) {
+
+    python -c `
+        "import ast,pathlib,sys; p=pathlib.Path(sys.argv[1]); ast.parse(p.read_text(encoding='utf-8-sig')); print('SYNTAX_OK', p.name)" `
+        $Path
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Syntaxcheck mislukt: $Path"
+    }
+}
+
+
+Write-Host ""
+Write-Host "NO_FILES_WRITTEN=TRUE"
+Write-Host "NO_APP_CODE_CHANGED_BY_AUDIT=TRUE"
+Write-Host "NO_CONTAINER_CALLS=TRUE"
+Write-Host "NO_API_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_PROVIDER_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+Write-Host "NO_REBUILD_PERFORMED=TRUE"
+
+Write-Host "PHASE_A_A2B_LOCAL_STRUCTURAL_AUDIT_OK" `
+    -ForegroundColor Green

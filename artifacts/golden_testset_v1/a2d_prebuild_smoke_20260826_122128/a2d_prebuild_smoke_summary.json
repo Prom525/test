@@ -1,0 +1,52 @@
+{
+  "a2c_controls": {
+    "118": "exact_semantic_invariant",
+    "185": "exact_semantic_invariant"
+  },
+  "schema_extension": "execution_blockers",
+  "unresolved": [
+    {
+      "blocker": {
+        "blocker_type": "unresolved_required_entity",
+        "candidate_value": "AL5",
+        "entity_name": "band_code",
+        "reason": "band_candidate_unresolved"
+      },
+      "candidate": "AL5",
+      "changed_paths": [
+        "clarification_question [CHANGED]",
+        "clarification_required [CHANGED]",
+        "entities.band_code [REMOVED]",
+        "execution_steps [CHANGED]"
+      ],
+      "confidence": 0.8500000000000001,
+      "execution_steps_after": 0,
+      "execution_steps_before": 1,
+      "intent": "inspection_lookup",
+      "primary_domain": "inspection",
+      "test_id": "154"
+    },
+    {
+      "blocker": {
+        "blocker_type": "unresolved_required_entity",
+        "candidate_value": "A999",
+        "entity_name": "band_code",
+        "reason": "band_candidate_unresolved"
+      },
+      "candidate": "A999",
+      "changed_paths": [
+        "clarification_question [CHANGED]",
+        "clarification_required [CHANGED]",
+        "entities.band_code [REMOVED]",
+        "execution_steps [CHANGED]"
+      ],
+      "confidence": 0.8500000000000001,
+      "execution_steps_after": 0,
+      "execution_steps_before": 1,
+      "intent": "inspection_latest",
+      "primary_domain": "inspection",
+      "test_id": "196"
+    }
+  ],
+  "validated_control": "exact_semantic_invariant"
+}

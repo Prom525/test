@@ -1,0 +1,17 @@
+﻿label,status,doc_id,target_type,target_id,chunks_or_blocks
+Belle Banne U,ingested_and_linked,4955223971298485962,scraper,2,3
+Belle Banne R,ingested_and_linked,2020163977356223497,scraper,3,3
+Belle Banne P,ingested_and_linked,791988331442316015,generic,1,7
+Belle Banne H,ingested_and_linked,5373947228672041817,scraper,1,4
+Belle Banne RV,ingested_and_linked,3489965638794715490,generic,2,7
+Promati TPH,ingested_and_linked,5048999087161516324,scraper,4,4
+Promati TPL,ingested_and_linked,5760664583725262515,scraper,5,4
+Impact Bars,ingested_and_linked,8107097156088473525,generic,24,4
+Transportbandrollen,ingested_and_linked,2372636362509165625,generic,14,58
+Cerapro-ringen,ingested_and_linked,5521722577539015050,generic,18,45
+HDPE Rollen,ingested_and_linked,7792898492586403509,generic,17,10
+Belle Liner,ingested_and_linked,9174234263980876824,generic,4,3
+Sancic,ingested_and_linked,7178653369675130698,generic,5,3
+BLU-TEC Proload,ingested_and_linked,5090078146988319007,generic,8,16
+Rollax,ingested_and_linked,9128089369591751972,generic,25,3
+Transportbandtrommels,ingested_and_linked,3396663592254152845,generic,19,16

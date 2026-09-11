@@ -1,0 +1,68 @@
+﻿{
+    "schema_version":  "promati.phase_b3b2.types_registry_shadow_freeze.v1",
+    "created_local":  "2026-08-27T07:40:25+02:00",
+    "b2e_contract_design_freeze":  "C:\\ai-platform\\artifacts\\phase_b\\b2e_contract_design_freeze_20260826_215159",
+    "b3b1_apply_script":  {
+                              "path":  "C:\\ai-platform_temp\\phase_b\\apply_phase_b3b1_types_registry_shadow_v1.ps1",
+                              "sha256":  "BC3374D2FB1368089D594697214E6CCDDF8324D87067E1D9EBA8ADB64610A674"
+                          },
+    "files":  [
+                  {
+                      "source_path":  "app\\orchestrator\\execution_contracts.py",
+                      "sha256":  "FF66191BAF057371A8802130AC10D5744C2C3775DC2D51362EBD2658667D660E",
+                      "frozen_filename":  "execution_contracts.py"
+                  },
+                  {
+                      "source_path":  "app\\orchestrator\\specialist_registry.py",
+                      "sha256":  "9694B81932F41C1C5B28005D40A8A3586EBD94DFEA9B15D90A65D8086AEF9F8F",
+                      "frozen_filename":  "specialist_registry.py"
+                  },
+                  {
+                      "source_path":  "app\\orchestrator\\execution_shadow.py",
+                      "sha256":  "F5122A5DEAB1635DD48CEE352B2BF5216DADF87CCB5D05CC26C75FFD1A311B8A",
+                      "frozen_filename":  "execution_shadow.py"
+                  },
+                  {
+                      "source_path":  "tests\\test_phase_b3b1_execution_contracts.py",
+                      "sha256":  "B070716A36F8D8DD041CB325E3937D43FA2817AA884D253A69514515743F6AC4",
+                      "frozen_filename":  "test_phase_b3b1_execution_contracts.py"
+                  },
+                  {
+                      "source_path":  "tests\\test_phase_b3b1_specialist_registry.py",
+                      "sha256":  "7D0F683E828E831956415D576AACD17CDCA0A2A5B17677355000E6CDADEF9024",
+                      "frozen_filename":  "test_phase_b3b1_specialist_registry.py"
+                  },
+                  {
+                      "source_path":  "tests\\test_phase_b3b1_execution_shadow.py",
+                      "sha256":  "F147B23FB30B24AFB0916418171EF759B8A01E9AB83164BE74D2D4BC8CE71D36",
+                      "frozen_filename":  "test_phase_b3b1_execution_shadow.py"
+                  }
+              ],
+    "audit":  {
+                  "b2e_contract_fidelity_exact":  true,
+                  "static_import_policy_green":  true,
+                  "network_db_imports_present":  false,
+                  "dependency_dag_proven":  true,
+                  "executor_integration_present":  false,
+                  "other_app_integration_present":  false,
+                  "targeted_unit_tests_green":  true
+              },
+    "runtime":  {
+                    "executor_integration_added":  false,
+                    "legacy_acceptance_changed":  false,
+                    "routing_changed":  false,
+                    "queryplan_changed":  false,
+                    "specialist_endpoints_changed":  false,
+                    "fallback_behavior_changed":  false,
+                    "retry_behavior_changed":  false,
+                    "evidence_scoring_added":  false
+                },
+    "unresolved_gates_preserved":  [
+                                       "ANALYSIS_MODE_RUNTIME_EFFECT",
+                                       "RFQ_DIRECT_PLANNER_ABSENCE_INTENTIONALITY",
+                                       "ORG_DIAGNOSTICS_STATUS_TAXONOMY",
+                                       "RFQ_SUCCESS_STATUS_TAXONOMY",
+                                       "FALLBACK_RUNTIME_CONTRACT"
+                                   ],
+    "next_step_candidate":  "READ_ONLY_B3C_EXECUTOR_SHADOW_INTEGRATION_PLAN"
+}

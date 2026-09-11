@@ -1,0 +1,390 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A PRE-A1b PLAN SNAPSHOT V1" -ForegroundColor Cyan
+Write-Host " PLAN ONLY - NO API / SPECIALISTS / RESEARCH CALLS" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+if (-not (Test-Path $ContractPath)) {
+    throw "Contract niet gevonden: $ContractPath"
+}
+
+$Tests = @(
+    Import-Csv $ContractPath |
+        ForEach-Object {
+            [pscustomobject]@{
+                test_id = [string]$_.test_id
+                question = [string]$_.question
+                expected_query_class = [string]$_.expected_query_class
+            }
+        }
+)
+
+if ($Tests.Count -ne 200) {
+    throw "Verwacht 200 tests, gevonden: $($Tests.Count)"
+}
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$OutputDir = Join-Path `
+    "C:\ai-platform\artifacts\golden_testset_v1" `
+    "pre_a1b_plan_$Stamp"
+
+New-Item `
+    -ItemType Directory `
+    -Path $OutputDir `
+    -Force |
+    Out-Null
+
+$JsonPath = Join-Path `
+    $OutputDir `
+    "pre_a1b_plan_snapshot.json"
+
+$CsvPath = Join-Path `
+    $OutputDir `
+    "pre_a1b_plan_snapshot.csv"
+
+$Payload = $Tests |
+    ConvertTo-Json `
+        -Depth 5 `
+        -Compress
+
+
+$PythonCode = @'
+import json
+import sys
+
+from app.orchestrator.understanding import understand_query
+from app.orchestrator.research import assess_research_requirement
+from app.orchestrator.planner import build_execution_plan
+
+
+def enum_value(value):
+    if value is None:
+        return None
+
+    candidate = getattr(value, "value", None)
+
+    if candidate is not None:
+        return str(candidate)
+
+    return str(value)
+
+
+def entity_payload(entities):
+    result = {}
+
+    for key, item in (entities or {}).items():
+        result[str(key)] = {
+            "value": getattr(item, "value", None),
+            "source": getattr(item, "source", None),
+        }
+
+    return result
+
+
+tests = json.load(sys.stdin)
+results = []
+
+for test in tests:
+    plan = understand_query(test["question"])
+    plan = assess_research_requirement(plan)
+    plan = build_execution_plan(plan)
+
+    results.append(
+        {
+            "test_id": test["test_id"],
+            "question": test["question"],
+            "query_class": enum_value(
+                getattr(plan, "query_class", None)
+            ),
+            "primary_domain": enum_value(
+                plan.primary_domain
+            ),
+            "domains": [
+                enum_value(value)
+                for value in (plan.domains or [])
+            ],
+            "intent": plan.intent,
+            "entities": entity_payload(plan.entities),
+            "confidence": plan.confidence,
+            "clarification_required": bool(
+                plan.clarification_required
+            ),
+            "clarification_question": (
+                plan.clarification_question
+            ),
+            "research_required": bool(
+                plan.research_required
+            ),
+            "execution_steps": [
+                {
+                    "step_id": step.step_id,
+                    "domain": enum_value(step.domain),
+                    "action": step.action,
+                    "required": step.required,
+                    "fallback_allowed": (
+                        step.fallback_allowed
+                    ),
+                }
+                for step in (plan.execution_steps or [])
+            ],
+        }
+    )
+
+print(
+    json.dumps(
+        results,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+)
+'@
+
+$ContainerPython = `
+    "/data/promati_pre_a1b_plan_snapshot_v1.py"
+
+
+# ============================================================
+# Container workspace
+# ============================================================
+
+docker exec `
+    ai-platform-api-1 `
+    sh `
+    -c `
+    "test -w /data"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "/data is niet writable."
+}
+
+
+$PythonCode |
+    docker exec `
+        -i `
+        ai-platform-api-1 `
+        sh `
+        -c `
+        "cat > $ContainerPython"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Container snapshot-script schrijven mislukt."
+}
+
+
+try {
+
+    docker exec `
+        -e PYTHONPATH=/app `
+        -w /app `
+        ai-platform-api-1 `
+        python `
+        -m py_compile `
+        $ContainerPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Container Python syntaxcheck mislukt."
+    }
+
+    Write-Host "CONTAINER_SNAPSHOT_SYNTAX_OK" `
+        -ForegroundColor Green
+
+
+    $RawOutput = (
+        $Payload |
+            docker exec `
+                -e PYTHONPATH=/app `
+                -w /app `
+                -i `
+                ai-platform-api-1 `
+                python `
+                $ContainerPython
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Plan snapshot mislukt."
+    }
+
+
+    $JsonText = (
+        @($RawOutput) -join [Environment]::NewLine
+    ).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($JsonText)) {
+        throw "Snapshot gaf geen JSON terug."
+    }
+
+
+    $Parsed = @(
+        $JsonText |
+            ConvertFrom-Json
+    )
+
+    if ($Parsed.Count -ne 200) {
+        throw (
+            "Verwacht 200 snapshotrecords, gevonden: " +
+            $Parsed.Count
+        )
+    }
+
+
+    Set-Content `
+        -Path $JsonPath `
+        -Value $JsonText `
+        -Encoding UTF8
+
+
+    $Parsed |
+        ForEach-Object {
+
+            [pscustomobject]@{
+                test_id = $_.test_id
+
+                query_class = $_.query_class
+
+                primary_domain = $_.primary_domain
+
+                domains = (
+                    @($_.domains) -join ";"
+                )
+
+                intent = $_.intent
+
+                clarification_required = `
+                    $_.clarification_required
+
+                research_required = `
+                    $_.research_required
+
+                execution_step_count = `
+                    @($_.execution_steps).Count
+
+                execution_actions = (
+                    @(
+                        $_.execution_steps |
+                            ForEach-Object {
+                                $_.action
+                            }
+                    ) -join ";"
+                )
+
+                entities_json = (
+                    $_.entities |
+                        ConvertTo-Json `
+                            -Compress `
+                            -Depth 10
+                )
+
+                question = $_.question
+            }
+        } |
+        Export-Csv `
+            -Path $CsvPath `
+            -NoTypeInformation `
+            -Encoding UTF8
+}
+finally {
+
+    docker exec `
+        ai-platform-api-1 `
+        rm `
+        -f `
+        $ContainerPython `
+        2>$null |
+        Out-Null
+}
+
+
+Write-Host ""
+Write-Host "=== SNAPSHOT SUMMARY ===" -ForegroundColor Yellow
+Write-Host "TOTAL=$($Parsed.Count)"
+
+Write-Host ""
+Write-Host "=== QUERY CLASS ==="
+
+$Parsed |
+    Group-Object query_class |
+    Sort-Object Count -Descending |
+    Format-Table `
+        Count,
+        Name `
+        -AutoSize
+
+
+Write-Host ""
+Write-Host "=== PRIMARY DOMAIN ==="
+
+$Parsed |
+    ForEach-Object {
+
+        $Domain = [string]$_.primary_domain
+
+        if ($Domain -eq "") {
+            $Domain = "<NONE>"
+        }
+
+        $Domain
+    } |
+    Group-Object |
+    Sort-Object Count -Descending |
+    Format-Table `
+        Count,
+        Name `
+        -AutoSize
+
+
+Write-Host ""
+Write-Host "=== NO EXECUTION STEPS ==="
+
+$NoSteps = @(
+    $Parsed |
+        Where-Object {
+            @($_.execution_steps).Count -eq 0
+        }
+)
+
+Write-Host "NO_STEP_PLANS=$($NoSteps.Count)"
+
+
+Write-Host ""
+Write-Host "=== CLARIFICATION ==="
+
+$Parsed |
+    Group-Object clarification_required |
+    Sort-Object Name |
+    Format-Table `
+        Count,
+        Name `
+        -AutoSize
+
+
+Write-Host ""
+Write-Host "=== RESEARCH REQUIRED ==="
+
+$Parsed |
+    Group-Object research_required |
+    Sort-Object Name |
+    Format-Table `
+        Count,
+        Name `
+        -AutoSize
+
+
+Write-Host ""
+Write-Host "JSON=$JsonPath"
+Write-Host "CSV =$CsvPath"
+
+Write-Host ""
+Write-Host "NO_ORCHESTRATOR_ASK_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_PROVIDER_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+Write-Host "PRE_A1B_PLAN_SNAPSHOT_V1_OK" `
+    -ForegroundColor Green

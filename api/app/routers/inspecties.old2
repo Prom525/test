@@ -1,0 +1,155 @@
+from fastapi import APIRouter
+from sqlalchemy import text
+from app.db import engine
+
+router = APIRouter(prefix="/inspecties", tags=["inspecties"])
+
+
+# -----------------------------------------------------
+# Laatste inspecties
+# -----------------------------------------------------
+
+@router.get("")
+def list_inspecties():
+
+    sql = """
+    select
+        id,
+        inspection_key,
+        lijn_code,
+        inspected_on,
+        performed_by,
+        title
+    from sb_inspections_v0
+    order by inspected_on desc nulls last
+    limit 20
+    """
+
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql)).mappings().all()
+
+    return rows
+
+
+# -----------------------------------------------------
+# Inspecties per lijn
+# -----------------------------------------------------
+
+@router.get("/lijn/{lijn_code}")
+def inspecties_per_lijn(lijn_code: str):
+
+    sql = """
+    select
+        id,
+        inspection_key,
+        lijn_code,
+        inspected_on,
+        performed_by,
+        title
+    from sb_inspections_v0
+    where lijn_code = :lijn
+    order by inspected_on desc nulls last
+    limit 20
+    """
+
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql), {"lijn": lijn_code}).mappings().all()
+
+    return rows
+
+
+# -----------------------------------------------------
+# Inspectie details
+# -----------------------------------------------------
+
+@router.get("/{inspection_key}")
+def inspectie_details(inspection_key: str):
+
+    sql_header = """
+    select *
+    from sb_inspections_v0
+    where inspection_key = :key
+    """
+
+    sql_items = """
+    select *
+    from sb_inspection_items_v0
+    where inspection_key = :key
+    """
+
+    with engine.begin() as conn:
+
+        inspection = conn.execute(
+            text(sql_header),
+            {"key": inspection_key}
+        ).mappings().first()
+
+        items = conn.execute(
+            text(sql_items),
+            {"key": inspection_key}
+        ).mappings().all()
+
+    return {
+        "inspection": inspection,
+        "items": items
+    }
+
+# -----------------------------------------------------
+# Inspectie per jaar
+# -----------------------------------------------------
+@router.get("/stats/per-jaar")
+def stats_per_jaar(db: Session = Depends(get_db)):
+
+    sql = """
+    select
+        extract(year from inspected_on)::int as jaar,
+        count(*)::int as aantal
+    from sb_inspections_v0
+    where inspected_on is not null
+    group by 1
+    order by jaar desc
+    """
+
+    rows = db.execute(text(sql)).mappings().all()
+
+    return list(rows)
+
+# -----------------------------------------------------
+# Inspectie per maand
+# -----------------------------------------------------
+@router.get("/stats/per-maand")
+def stats_per_maand(db: Session = Depends(get_db)):
+
+    sql = """
+    select
+        date_trunc('month', inspected_on) as maand,
+        count(*) as aantal
+    from sb_inspections_v0
+    where inspected_on is not null
+    group by 1
+    order by 1 desc
+    """
+
+    rows = db.execute(text(sql)).mappings().all()
+
+    return list(rows)
+
+# -----------------------------------------------------
+# Top lijnen
+# -----------------------------------------------------
+@router.get("/stats/top-lijnen")
+def stats_top_lijnen(db: Session = Depends(get_db)):
+
+    sql = """
+    select
+        lijn_code,
+        count(*) as aantal
+    from sb_inspections_v0
+    group by lijn_code
+    order by aantal desc
+    limit 20
+    """
+
+    rows = db.execute(text(sql)).mappings().all()
+
+    return list(rows)

@@ -1,0 +1,6 @@
+tunnel: b2b90dd1-1092-4aa7-8cc8-b4a2ace33373
+
+ingress:
+  - hostname: promati.internal
+    service: http://api:8000
+  - service: http_status:404

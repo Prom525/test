@@ -1,0 +1,101 @@
+﻿{
+    "contract_version":  "phase_a_v2",
+    "source":  {
+                   "file":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\golden_testset_primary_raw_v1.csv",
+                   "rows":  200
+               },
+    "output":  {
+                   "contract":  "C:\\ai-platform\\artifacts\\golden_testset_v1\\phase_a_test_contract_v2.csv"
+               },
+    "counts":  {
+                   "total_tests":  200,
+                   "blank_query_class":  0,
+                   "blank_expected_domains":  0,
+                   "multi_domain_tests":  17,
+                   "blank_expected_intent":  0,
+                   "rows_with_expected_entities":  200,
+                   "duplicate_ids":  0,
+                   "duplicate_questions":  0,
+                   "validation_errors":  0
+               },
+    "distributions":  {
+                          "test_category":  {
+                                                "clarification":  20,
+                                                "diagnostics":  20,
+                                                "false_positive":  20,
+                                                "inspection":  20,
+                                                "org":  20,
+                                                "product":  20,
+                                                "research":  20,
+                                                "rfq":  20,
+                                                "technical":  19,
+                                                "meta":  15,
+                                                "conversation":  5,
+                                                "Htechnical":  1
+                                            },
+                          "query_class":  {
+                                              "BUSINESS":  146,
+                                              "SYSTEM_META":  44,
+                                              "CONVERSATIONAL":  7,
+                                              "UNKNOWN":  3
+                                          },
+                          "expected_domains":  {
+                                                   "inspection":  50,
+                                                   "diagnostics":  38,
+                                                   "technical":  35,
+                                                   "product":  30,
+                                                   "org":  23,
+                                                   "rfq":  23,
+                                                   "none":  20
+                                               },
+                          "expected_intent":  {
+                                                  "diagnostics_overview":  24,
+                                                  "org_lookup":  23,
+                                                  "technical_lookup":  22,
+                                                  "inspection_trend":  18,
+                                                  "inspection_lookup":  12,
+                                                  "product_selection":  11,
+                                                  "system_meta":  10,
+                                                  "maintenance_priority":  9,
+                                                  "inspection_latest":  7,
+                                                  "none":  7,
+                                                  "product_lookup":  6,
+                                                  "diagnostics_cross_source":  5,
+                                                  "diagnostics_inspection_pipeline":  4,
+                                                  "inventory_lookup":  4,
+                                                  "price_lookup":  4,
+                                                  "rfq_lookup":  4,
+                                                  "advantages_disadvantages":  3,
+                                                  "rfq_position_lookup":  3,
+                                                  "rfq_write_request":  3,
+                                                  "unknown":  3,
+                                                  "rfq_pdf_link":  2,
+                                                  "rfq_readiness":  2,
+                                                  "rfq_risk":  2,
+                                                  "rfq_status":  2,
+                                                  "rfq_supplier_context":  2,
+                                                  "diagnostics_asset_model_health":  1,
+                                                  "diagnostics_inspection_lineage":  1,
+                                                  "diagnostics_view_definition":  1,
+                                                  "diagnostics_view_dependencies":  1,
+                                                  "diagnostics_view_health":  1,
+                                                  "rfq_compare":  1,
+                                                  "rfq_engineering_review":  1,
+                                                  "rfq_timeline":  1
+                                              },
+                          "research_required":  {
+                                                    "false":  164,
+                                                    "true":  36
+                                                },
+                          "clarification_required":  {
+                                                         "false":  176,
+                                                         "true":  24
+                                                     }
+                      },
+    "validation_errors":  [
+
+                          ],
+    "duplicate_questions":  [
+
+                            ]
+}

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
+import '../../config/app_config.dart';
 import 'package:uuid/uuid.dart';
 
 class MobilePlanDetailPage extends StatefulWidget {
@@ -46,7 +48,7 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
 
   Future<MobilePlanDetail> loadPlan() async {
     final uri = Uri.parse(
-      'http://localhost:8000/planner/mobile-download/inspection-plans/${widget.planId}',
+      '${AppConfig.apiBaseUrl}/planner/mobile-download/inspection-plans/${widget.planId}',
     );
 
     final response = await http.get(uri).timeout(const Duration(seconds: 10));
@@ -232,7 +234,7 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
 
     try {
       final uri = Uri.parse(
-        'http://localhost:8000/mobile/inspection-submissions',
+        '${AppConfig.apiBaseUrl}/mobile/inspection-submissions',
       );
       final secondMonteurName = secondMonteurController.text.trim();
 
@@ -307,7 +309,7 @@ class _MobilePlanDetailPageState extends State<MobilePlanDetailPage> {
 
     try {
       final uri = Uri.parse(
-        'http://localhost:8000/planner/mobile-download/inspection-plans/${widget.planId}/downloaded',
+        '${AppConfig.apiBaseUrl}/planner/mobile-download/inspection-plans/${widget.planId}/downloaded',
       );
 
       final response = await http

@@ -1,0 +1,2 @@
+﻿CATEGORY_WARNING: 'Htechnical' occurs 1x. Not corrected.
+DOMAIN_WARNING: expected domain 'none' occurs 20x. Not corrected.

@@ -1,0 +1,1176 @@
+﻿$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A BASELINE V0.1" -ForegroundColor Cyan
+Write-Host " CORRECTED OFFLINE RESCORING" -ForegroundColor Cyan
+Write-Host " NO API CALLS - NO ORCHESTRATOR CHANGES" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+$BaselineDir = `
+    "C:\ai-platform\artifacts\golden_testset_v1\baseline_v0_20260826_083322"
+
+$OldResultsPath = Join-Path `
+    $BaselineDir `
+    "phase_a_baseline_v0_results.csv"
+
+$RawPath = Join-Path `
+    $BaselineDir `
+    "phase_a_baseline_v0_raw.jsonl"
+
+
+foreach ($Path in @(
+    $ContractPath,
+    $OldResultsPath,
+    $RawPath
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Bestand niet gevonden: $Path"
+    }
+}
+
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$OutputDir = Join-Path `
+    "C:\ai-platform\artifacts\golden_testset_v1" `
+    "baseline_v0_1_corrected_$Stamp"
+
+New-Item `
+    -ItemType Directory `
+    -Path $OutputDir `
+    -Force |
+    Out-Null
+
+
+$ResultPath = Join-Path `
+    $OutputDir `
+    "phase_a_baseline_v0_1_results.csv"
+
+$FailurePath = Join-Path `
+    $OutputDir `
+    "phase_a_baseline_v0_1_failures.csv"
+
+$SummaryPath = Join-Path `
+    $OutputDir `
+    "phase_a_baseline_v0_1_summary.json"
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+function Normalize-Text {
+    param(
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    return (
+        [string]$Value
+    ).Trim().ToLowerInvariant()
+}
+
+
+function Normalize-Key {
+    param(
+        [AllowNull()]
+        $Value
+    )
+
+    $Text = Normalize-Text $Value
+
+    return (
+        $Text -replace '[\s\-]+', '_'
+    )
+}
+
+
+function Normalize-EntityValue {
+    param(
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+
+    # Arrays, bijvoorbeeld ["MV1","MV2"].
+    if (
+        $Value -is [System.Array]
+    ) {
+        return (
+            @(
+                $Value |
+                    ForEach-Object {
+                        Normalize-EntityValue $_
+                    }
+            ) -join ","
+        )
+    }
+
+
+    $Text = (
+        [string]$Value
+    ).Trim().ToLowerInvariant()
+
+    $Text = $Text -replace '\s+', ' '
+
+
+    # Code-normalisatie:
+    # A 319 -> a319
+    # AL-5 -> al5
+    if (
+        $Text -match `
+            '^[a-z]{1,16}[\s\-]*\d{1,12}$'
+    ) {
+        $Text = $Text -replace '[\s\-]+', ''
+    }
+
+    return $Text
+}
+
+
+function Convert-ToBool {
+    param(
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+
+    $Text = Normalize-Text $Value
+
+    if ($Text -in @(
+        "true",
+        "t",
+        "1",
+        "yes",
+        "ja"
+    )) {
+        return $true
+    }
+
+    if ($Text -in @(
+        "false",
+        "f",
+        "0",
+        "no",
+        "nee"
+    )) {
+        return $false
+    }
+
+    return $null
+}
+
+
+function Get-ExpectedDomains {
+    param(
+        [AllowNull()]
+        [string]$Json
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Json)) {
+        return @()
+    }
+
+    try {
+        return @(
+            $Json |
+                ConvertFrom-Json |
+                ForEach-Object {
+                    Normalize-Text $_
+                } |
+                Where-Object {
+                    $_ -ne ""
+                }
+        )
+    }
+    catch {
+        throw "Kan expected_domains_json niet lezen: $Json"
+    }
+}
+
+
+function Get-ExpectedEntityMap {
+    param(
+        [AllowNull()]
+        [string]$Raw
+    )
+
+    $Result = [ordered]@{}
+
+    if ($null -eq $Raw) {
+        return $Result
+    }
+
+    $Text = $Raw.Trim()
+
+    # "-" = exact geen business entities verwacht.
+    if (
+        $Text -eq "" `
+        -or $Text -eq "-"
+    ) {
+        return $Result
+    }
+
+    # Negatieve contractasserties.
+    if ($Text -match '^NO_(.+)$') {
+
+        $NegativeName = Normalize-Key $Matches[1]
+
+        switch ($NegativeName) {
+
+            "band_code" {
+                $Result["__forbid_band_code"] = "true"
+                return $Result
+            }
+
+            "family_without_context" {
+                $Result["__forbid_family_code"] = "true"
+                return $Result
+            }
+
+            default {
+                throw (
+                    "Onbekende negative entity assertion: " +
+                    "'$Text'"
+                )
+            }
+        }
+    }
+
+    # Normale key=value expectations.
+    $Parts = @(
+        $Text -split '\s*[;|]\s*'
+    )
+
+    foreach ($Part in $Parts) {
+
+        if ($Part -notmatch '=') {
+            throw (
+                "Onbekend expected_entities formaat: " +
+                "'$Text'"
+            )
+        }
+
+        $Pair = $Part -split '=', 2
+
+        if ($Pair.Count -ne 2) {
+            throw "Ongeldig entity-paar: $Part"
+        }
+
+        $Key = Normalize-Key $Pair[0]
+
+        if ($Key -eq "") {
+            throw "Lege entity-key in: $Text"
+        }
+
+        $Result[$Key] = `
+            Normalize-EntityValue $Pair[1]
+    }
+
+    return $Result
+}
+
+
+function Get-ActualEntityMap {
+    param(
+        [AllowNull()]
+        $EntityObject
+    )
+
+    $Result = [ordered]@{}
+
+    if ($null -eq $EntityObject) {
+        return $Result
+    }
+
+
+    foreach (
+        $Property in $EntityObject.PSObject.Properties
+    ) {
+
+        $Key = Normalize-Key $Property.Name
+
+        $Object = $Property.Value
+
+        $Value = $Object
+
+        if (
+            $null -ne $Object `
+            -and $Object.PSObject.Properties.Name `
+                -contains "value"
+        ) {
+            $Value = $Object.value
+        }
+
+        $Result[$Key] = `
+            Normalize-EntityValue $Value
+    }
+
+    return $Result
+}
+
+
+function Test-Entities {
+    param(
+        [System.Collections.IDictionary]$Expected,
+        [System.Collections.IDictionary]$Actual
+    )
+
+    $Required = [ordered]@{}
+
+    $Forbidden = New-Object `
+        System.Collections.Generic.List[string]
+
+    foreach ($Key in $Expected.Keys) {
+
+        if ($Key.StartsWith("__forbid_")) {
+
+            $ForbiddenKey = $Key.Substring(
+                "__forbid_".Length
+            )
+
+            if ($ForbiddenKey -ne "") {
+                $Forbidden.Add($ForbiddenKey)
+            }
+
+            continue
+        }
+
+        $Required[$Key] = $Expected[$Key]
+    }
+
+    # Pure negatieve assertie:
+    # alleen de verboden entity is relevant;
+    # andere entities mogen aanwezig zijn.
+    $NegativeOnly = (
+        $Forbidden.Count -gt 0 `
+        -and $Required.Count -eq 0
+    )
+
+    $ControlKeys = @(
+        "diagnostics_mode",
+        "diagnostics_domain",
+        "diagnostics_depth",
+        "scope_context_mode"
+    )
+
+    $ActualScored = [ordered]@{}
+
+    foreach ($Key in $Actual.Keys) {
+
+        if (
+            $Key -in $ControlKeys `
+            -and -not $Required.Contains($Key) `
+            -and -not $Forbidden.Contains($Key)
+        ) {
+            continue
+        }
+
+        $ActualScored[$Key] = $Actual[$Key]
+    }
+
+    $Missing = @()
+    $Mismatch = @()
+    $Unexpected = @()
+
+    # Vereiste entities.
+    foreach ($Key in $Required.Keys) {
+
+        if (-not $ActualScored.Contains($Key)) {
+            $Missing += $Key
+            continue
+        }
+
+        $ExpectedValue = `
+            Normalize-EntityValue $Required[$Key]
+
+        $ActualValue = `
+            Normalize-EntityValue $ActualScored[$Key]
+
+        if ($ExpectedValue -ne $ActualValue) {
+
+            $Mismatch += (
+                "{0}: expected={1}, actual={2}" -f `
+                    $Key,
+                    $ExpectedValue,
+                    $ActualValue
+            )
+        }
+    }
+
+    # Verboden entities.
+    foreach ($Key in $Forbidden) {
+
+        if ($ActualScored.Contains($Key)) {
+            $Unexpected += (
+                "FORBIDDEN:{0}" -f $Key
+            )
+        }
+    }
+
+    # Bij "-" of normale positive expectations
+    # zijn extra business entities eveneens onverwacht.
+    if (-not $NegativeOnly) {
+
+        foreach ($Key in $ActualScored.Keys) {
+
+            if ($Required.Contains($Key)) {
+                continue
+            }
+
+            if ($Forbidden.Contains($Key)) {
+                continue
+            }
+
+            $Unexpected += $Key
+        }
+    }
+
+    return [pscustomobject]@{
+
+        Pass = (
+            $Missing.Count -eq 0 `
+            -and $Mismatch.Count -eq 0 `
+            -and $Unexpected.Count -eq 0
+        )
+
+        Missing = (
+            $Missing -join "; "
+        )
+
+        Mismatch = (
+            $Mismatch -join "; "
+        )
+
+        Unexpected = (
+            $Unexpected -join "; "
+        )
+
+        ActualJson = (
+            $ActualScored |
+                ConvertTo-Json `
+                    -Compress `
+                    -Depth 10
+        )
+    }
+}
+
+
+function Get-Accuracy {
+    param(
+        [object[]]$Rows,
+        [string]$Property
+    )
+
+    $Passed = @(
+        $Rows |
+            Where-Object {
+                $_.$Property -eq $true
+            }
+    ).Count
+
+    $Total = $Rows.Count
+
+    $Pct = $null
+
+    if ($Total -gt 0) {
+        $Pct = [Math]::Round(
+            100.0 * $Passed / $Total,
+            2
+        )
+    }
+
+    return [ordered]@{
+        scored = $Total
+        passed = $Passed
+        failed = $Total - $Passed
+        accuracy_pct = $Pct
+    }
+}
+
+
+# ============================================================
+# Input
+# ============================================================
+
+$Contract = @(
+    Import-Csv $ContractPath
+)
+
+$OldResults = @(
+    Import-Csv $OldResultsPath
+)
+
+
+if ($Contract.Count -ne 200) {
+    throw "Contract bevat niet exact 200 tests."
+}
+
+if ($OldResults.Count -ne 200) {
+    throw "Oude baseline bevat niet exact 200 tests."
+}
+
+
+$OldResultById = @{}
+
+foreach ($Row in $OldResults) {
+    $OldResultById[[string]$Row.test_id] = $Row
+}
+
+
+# ============================================================
+# Raw responses
+# ============================================================
+
+$RawById = @{}
+
+foreach ($Line in Get-Content $RawPath) {
+
+    if ([string]::IsNullOrWhiteSpace($Line)) {
+        continue
+    }
+
+    $Record = $Line | ConvertFrom-Json
+
+    $RawById[[string]$Record.test_id] = $Record
+}
+
+
+if ($RawById.Count -ne 200) {
+    throw (
+        "Verwacht 200 raw responses, gevonden: " +
+        $RawById.Count
+    )
+}
+
+
+# ============================================================
+# Rescore
+# ============================================================
+
+$Results = New-Object `
+    System.Collections.Generic.List[object]
+
+
+foreach ($Test in $Contract) {
+
+    $Id = [string]$Test.test_id
+
+    if (-not $RawById.ContainsKey($Id)) {
+        throw "Raw response ontbreekt voor test $Id"
+    }
+
+    if (-not $OldResultById.ContainsKey($Id)) {
+        throw "Oud resultaat ontbreekt voor test $Id"
+    }
+
+
+    $Raw = $RawById[$Id]
+    $Old = $OldResultById[$Id]
+
+    $Response = $Raw.response
+
+    if ($null -eq $Response) {
+        throw "Test $Id heeft geen response."
+    }
+
+
+    $Plan = $Response.query_plan
+
+
+    # --------------------------------------------------------
+    # Domain
+    # --------------------------------------------------------
+
+    $ExpectedDomains = @(
+        Get-ExpectedDomains `
+            $Test.expected_domains_json
+    )
+
+    $ActualDomain = ""
+
+    if ($null -ne $Plan) {
+        $ActualDomain = `
+            Normalize-Text $Plan.primary_domain
+    }
+
+
+    $DomainPass = $false
+
+    if ($ActualDomain -eq "") {
+
+        # Leeg actual domain is alleen correct
+        # wanneer golden expliciet "none" toestaat.
+        $DomainPass = (
+            "none" -in $ExpectedDomains
+        )
+    }
+    else {
+
+        $DomainPass = (
+            $ActualDomain -in $ExpectedDomains
+        )
+    }
+
+
+    # --------------------------------------------------------
+    # Intent
+    # --------------------------------------------------------
+
+    $ActualIntent = ""
+
+    if ($null -ne $Plan) {
+        $ActualIntent = `
+            Normalize-Text $Plan.intent
+    }
+
+    $ExpectedIntent = `
+        Normalize-Text $Test.expected_intent
+
+    $IntentPass = (
+        $ActualIntent -eq $ExpectedIntent
+    )
+
+
+    # --------------------------------------------------------
+    # Entities
+    # --------------------------------------------------------
+
+    $ExpectedEntities = `
+        Get-ExpectedEntityMap `
+            $Test.expected_entities_raw
+
+    $ActualEntities = [ordered]@{}
+
+    if (
+        $null -ne $Plan `
+        -and $null -ne $Plan.entities
+    ) {
+        $ActualEntities = `
+            Get-ActualEntityMap `
+                $Plan.entities
+    }
+
+
+    $EntityResult = Test-Entities `
+        -Expected $ExpectedEntities `
+        -Actual $ActualEntities
+
+
+    # --------------------------------------------------------
+    # Research
+    # --------------------------------------------------------
+
+    $ExpectedResearch = `
+        Convert-ToBool `
+            $Test.expected_research_required
+
+    $ActualResearch = $null
+
+    if (
+        $null -ne $Response.research `
+        -and $Response.research.PSObject.Properties.Name `
+            -contains "required"
+    ) {
+        $ActualResearch = `
+            Convert-ToBool `
+                $Response.research.required
+    }
+
+    $ResearchPass = (
+        $null -ne $ExpectedResearch `
+        -and $null -ne $ActualResearch `
+        -and $ExpectedResearch -eq $ActualResearch
+    )
+
+
+    # --------------------------------------------------------
+    # Clarification
+    # --------------------------------------------------------
+
+    $ExpectedClarification = `
+        Convert-ToBool `
+            $Test.expected_clarification_required
+
+    $ActualClarification = $null
+
+    if (
+        $null -ne $Response.clarification `
+        -and $Response.clarification.PSObject.Properties.Name `
+            -contains "required"
+    ) {
+        $ActualClarification = `
+            Convert-ToBool `
+                $Response.clarification.required
+    }
+
+    $ClarificationPass = (
+        $null -ne $ExpectedClarification `
+        -and $null -ne $ActualClarification `
+        -and $ExpectedClarification -eq `
+            $ActualClarification
+    )
+
+
+    # --------------------------------------------------------
+    # QueryClass
+    # --------------------------------------------------------
+
+    $ActualQueryClass = ""
+
+    if (
+        $Response.PSObject.Properties.Name `
+            -contains "query_class"
+    ) {
+        $ActualQueryClass = `
+            Normalize-Text $Response.query_class
+    }
+    elseif (
+        $null -ne $Plan `
+        -and $Plan.PSObject.Properties.Name `
+            -contains "query_class"
+    ) {
+        $ActualQueryClass = `
+            Normalize-Text $Plan.query_class
+    }
+
+
+    # V0 heeft nog geen QueryClass.
+    $QueryClassStatus = "NOT_AVAILABLE"
+
+
+    # --------------------------------------------------------
+    # Failure classification
+    # --------------------------------------------------------
+
+    $Failures = @()
+
+    if (-not $DomainPass) {
+        $Failures += "DOMAIN_MISMATCH"
+    }
+
+    if (-not $IntentPass) {
+        $Failures += "INTENT_MISMATCH"
+    }
+
+    if (-not $EntityResult.Pass) {
+        $Failures += "ENTITY_MISMATCH"
+    }
+
+    if (-not $ResearchPass) {
+        $Failures += "RESEARCH_MISMATCH"
+    }
+
+    if (-not $ClarificationPass) {
+        $Failures += "CLARIFICATION_MISMATCH"
+    }
+
+
+    $OverallPass = (
+        $Failures.Count -eq 0
+    )
+
+    $FailureClass = "PASS"
+
+    if (-not $OverallPass) {
+        $FailureClass = $Failures -join ";"
+    }
+
+    # --------------------------------------------------------
+    # Special band-code signal
+    # --------------------------------------------------------
+
+    $ActualHasBandCode = `
+        $ActualEntities.Contains("band_code")
+
+    $ExpectedHasBandCode = `
+        $ExpectedEntities.Contains("band_code")
+
+    $UnexpectedValidatedBandCode = (
+        $ActualHasBandCode `
+        -and -not $ExpectedHasBandCode
+    )
+
+
+    $Results.Add(
+        [pscustomobject]@{
+
+            test_id = $Id
+            source_row = $Test.source_row
+            test_category = $Test.test_category
+            question = $Test.question
+
+            expected_query_class = `
+                $Test.expected_query_class
+
+            actual_query_class = `
+                $ActualQueryClass
+
+            query_class_status = `
+                $QueryClassStatus
+
+
+            expected_domains = `
+                $Test.expected_domains_json
+
+            actual_primary_domain = `
+                $ActualDomain
+
+            domain_pass = `
+                $DomainPass
+
+
+            expected_intent = `
+                $ExpectedIntent
+
+            actual_intent = `
+                $ActualIntent
+
+            intent_pass = `
+                $IntentPass
+
+
+            expected_entities = `
+                $Test.expected_entities_raw
+
+            actual_entities = `
+                $EntityResult.ActualJson
+
+            entity_pass = `
+                $EntityResult.Pass
+
+            missing_entities = `
+                $EntityResult.Missing
+
+            mismatched_entities = `
+                $EntityResult.Mismatch
+
+            unexpected_entities = `
+                $EntityResult.Unexpected
+
+            unexpected_validated_band_code = `
+                $UnexpectedValidatedBandCode
+
+
+            expected_research = `
+                $ExpectedResearch
+
+            actual_research = `
+                $ActualResearch
+
+            research_pass = `
+                $ResearchPass
+
+
+            expected_clarification = `
+                $ExpectedClarification
+
+            actual_clarification = `
+                $ActualClarification
+
+            clarification_pass = `
+                $ClarificationPass
+
+
+            latency_ms = $Old.latency_ms
+            failure_class = $FailureClass
+
+            overall_pass = $OverallPass
+        }
+    )
+}
+
+
+# ============================================================
+# Metrics
+# ============================================================
+
+$DomainMetric = Get-Accuracy `
+    $Results `
+    "domain_pass"
+
+$IntentMetric = Get-Accuracy `
+    $Results `
+    "intent_pass"
+
+$EntityMetric = Get-Accuracy `
+    $Results `
+    "entity_pass"
+
+$ResearchMetric = Get-Accuracy `
+    $Results `
+    "research_pass"
+
+$ClarificationMetric = Get-Accuracy `
+    $Results `
+    "clarification_pass"
+
+
+$UnexpectedBandCodes = @(
+    $Results |
+        Where-Object {
+            $_.unexpected_validated_band_code
+        }
+)
+
+
+$OverallPassed = @(
+    $Results |
+        Where-Object {
+            $_.overall_pass
+        }
+).Count
+
+
+# ============================================================
+# Write
+# ============================================================
+
+$Results |
+    Export-Csv `
+        -Path $ResultPath `
+        -NoTypeInformation `
+        -Encoding UTF8
+
+
+$Results |
+    Where-Object {
+        -not $_.overall_pass
+    } |
+    Export-Csv `
+        -Path $FailurePath `
+        -NoTypeInformation `
+        -Encoding UTF8
+
+
+$Summary = [ordered]@{
+
+    baseline_version = "phase_a_v0_1_corrected"
+
+    source_baseline = $BaselineDir
+
+    total_tests = $Results.Count
+
+    overall = [ordered]@{
+        passed = $OverallPassed
+        failed = $Results.Count - $OverallPassed
+
+        accuracy_pct = [Math]::Round(
+            100.0 * $OverallPassed / $Results.Count,
+            2
+        )
+    }
+
+    metrics = [ordered]@{
+        query_class = [ordered]@{
+            scored = 0
+            status = "NOT_AVAILABLE"
+        }
+
+        domain = $DomainMetric
+        intent = $IntentMetric
+        entities = $EntityMetric
+        research = $ResearchMetric
+        clarification = $ClarificationMetric
+    }
+
+    entity_diagnostics = [ordered]@{
+
+        expected_empty_entity_tests = @(
+            $Contract |
+                Where-Object {
+                    (
+                        [string]$_.expected_entities_raw
+                    ).Trim() -eq "-"
+                }
+        ).Count
+
+        unexpected_validated_band_code_tests = `
+            $UnexpectedBandCodes.Count
+    }
+
+    output = [ordered]@{
+        results = $ResultPath
+        failures = $FailurePath
+    }
+}
+
+
+$Summary |
+    ConvertTo-Json `
+        -Depth 10 |
+    Set-Content `
+        -Path $SummaryPath `
+        -Encoding UTF8
+
+
+# ============================================================
+# Console
+# ============================================================
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " CORRECTED BASELINE V0.1 SUMMARY" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+Write-Host "TOTAL_TESTS=$($Results.Count)"
+Write-Host "OVERALL_PASS=$OverallPassed/$($Results.Count)"
+
+Write-Host ""
+
+Write-Host (
+    "DOMAIN_ACCURACY={0}% ({1}/200)" -f `
+        $DomainMetric.accuracy_pct,
+        $DomainMetric.passed
+)
+
+Write-Host (
+    "INTENT_ACCURACY={0}% ({1}/200)" -f `
+        $IntentMetric.accuracy_pct,
+        $IntentMetric.passed
+)
+
+Write-Host (
+    "ENTITY_ACCURACY={0}% ({1}/200)" -f `
+        $EntityMetric.accuracy_pct,
+        $EntityMetric.passed
+)
+
+Write-Host (
+    "RESEARCH_ACCURACY={0}% ({1}/200)" -f `
+        $ResearchMetric.accuracy_pct,
+        $ResearchMetric.passed
+)
+
+Write-Host (
+    "CLARIFICATION_ACCURACY={0}% ({1}/200)" -f `
+        $ClarificationMetric.accuracy_pct,
+        $ClarificationMetric.passed
+)
+
+Write-Host "QUERY_CLASS_ACCURACY=NOT_AVAILABLE"
+
+Write-Host ""
+
+Write-Host (
+    "UNEXPECTED_VALIDATED_BAND_CODE_TESTS={0}" -f `
+        $UnexpectedBandCodes.Count
+)
+
+
+Write-Host ""
+Write-Host "=== ACCURACY BY CATEGORY ===" `
+    -ForegroundColor Yellow
+
+$Results |
+    Group-Object test_category |
+    ForEach-Object {
+
+        $Group = @($_.Group)
+
+        $DomainPassed = @(
+            $Group |
+                Where-Object { $_.domain_pass }
+        ).Count
+
+        $IntentPassed = @(
+            $Group |
+                Where-Object { $_.intent_pass }
+        ).Count
+
+        $EntityPassed = @(
+            $Group |
+                Where-Object { $_.entity_pass }
+        ).Count
+
+        [pscustomobject]@{
+            category = $_.Name
+            tests = $Group.Count
+
+            domain_pct = [Math]::Round(
+                100.0 * $DomainPassed / $Group.Count,
+                1
+            )
+
+            intent_pct = [Math]::Round(
+                100.0 * $IntentPassed / $Group.Count,
+                1
+            )
+
+            entity_pct = [Math]::Round(
+                100.0 * $EntityPassed / $Group.Count,
+                1
+            )
+        }
+    } |
+    Sort-Object category |
+    Format-Table -AutoSize
+
+
+Write-Host ""
+Write-Host "=== UNEXPECTED VALIDATED BAND_CODES ===" `
+    -ForegroundColor Yellow
+
+if ($UnexpectedBandCodes.Count -eq 0) {
+
+    Write-Host "NONE"
+}
+else {
+
+    $UnexpectedBandCodes |
+        Select-Object `
+            test_id,
+            test_category,
+            question,
+            expected_entities,
+            actual_entities,
+            actual_primary_domain,
+            actual_intent |
+        Format-Table -AutoSize -Wrap
+}
+
+
+Write-Host ""
+Write-Host "=== FAILURE CLASS DISTRIBUTION ===" `
+    -ForegroundColor Yellow
+
+$Results |
+    Group-Object failure_class |
+    Sort-Object Count -Descending |
+    Format-Table `
+        Count,
+        Name `
+        -AutoSize
+
+
+Write-Host ""
+Write-Host "Results : $ResultPath"
+Write-Host "Failures: $FailurePath"
+Write-Host "Summary : $SummaryPath"
+
+Write-Host ""
+Write-Host "PHASE_A_BASELINE_V0_1_CORRECTED_OK" `
+    -ForegroundColor Green
+

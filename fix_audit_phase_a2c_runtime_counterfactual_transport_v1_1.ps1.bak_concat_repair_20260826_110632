@@ -1,0 +1,400 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " FIX A2c COUNTERFACTUAL PYTHON TRANSPORT V1.1" -ForegroundColor Cyan
+Write-Host " AUDIT HELPER ONLY - NO APP CODE / NO REBUILD" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+
+$Path = `
+    "C:\ai-platform\audit_phase_a2c_runtime_counterfactual_v1.ps1"
+
+if (-not (Test-Path $Path)) {
+    throw "Audit-script niet gevonden: $Path"
+}
+
+
+$Content = Get-Content `
+    -Path $Path `
+    -Raw
+
+
+# ============================================================
+# Idempotency
+# ============================================================
+
+$Marker = `
+    "PROMATI_A2C_COUNTERFACTUAL_TEMPFILE_TRANSPORT_V1_1"
+
+if ($Content.Contains($Marker)) {
+    Write-Host "TRANSPORT_FIX_ALREADY_PRESENT=TRUE"
+    Write-Host "NO_WRITE_REQUIRED=TRUE"
+    exit 0
+}
+
+
+# ============================================================
+# Current PowerShell must at least be syntactically valid
+# ============================================================
+
+$Tokens = $null
+$Errors = $null
+
+[System.Management.Automation.Language.Parser]::ParseInput(
+    $Content,
+    [ref]$Tokens,
+    [ref]$Errors
+) | Out-Null
+
+if (@($Errors).Count -ne 0) {
+    throw "Huidig audit-helper-script bevat PowerShell syntaxfouten."
+}
+
+
+# ============================================================
+# Locate the brittle:
+#
+#   $Raw = (
+#       $Payload | docker exec ... python -c $PythonCode
+#   )
+#
+# plus its immediate failure guard.
+# ============================================================
+
+$StartNeedle = '$Raw = ('
+
+$Start = $Content.IndexOf(
+    $StartNeedle
+)
+
+if ($Start -lt 0) {
+    throw '$Raw execution block niet gevonden.'
+}
+
+
+$FailureGuardNeedle = `
+    'if ($LASTEXITCODE -ne 0) {'
+
+$FailureStart = $Content.IndexOf(
+    $FailureGuardNeedle,
+    $Start
+)
+
+if ($FailureStart -lt 0) {
+    throw "Failure guard na `$Raw block niet gevonden."
+}
+
+
+$ExpectedThrow = `
+    'throw "A2c runtime counterfactual audit mislukt."'
+
+$ThrowPos = $Content.IndexOf(
+    $ExpectedThrow,
+    $FailureStart
+)
+
+if ($ThrowPos -lt 0) {
+    throw "Verwachte A2c failure throw niet gevonden."
+}
+
+
+$FailureEnd = $Content.IndexOf(
+    '}',
+    $ThrowPos
+)
+
+if ($FailureEnd -lt 0) {
+    throw "Einde van A2c failure guard niet gevonden."
+}
+
+$FailureEnd++
+
+
+# ============================================================
+# Ensure this is really the old python -c transport block.
+# ============================================================
+
+$OldBlock = $Content.Substring(
+    $Start,
+    $FailureEnd - $Start
+)
+
+if (-not $OldBlock.Contains('python')) {
+    throw "Gevonden block bevat geen Python invocation."
+}
+
+if (-not $OldBlock.Contains('-c')) {
+    throw "Gevonden block bevat niet de verwachte python -c transportvorm."
+}
+
+if (-not $OldBlock.Contains('$PythonCode')) {
+    throw "Gevonden block gebruikt `$PythonCode niet."
+}
+
+if (-not $OldBlock.Contains('$Payload')) {
+    throw "Gevonden block gebruikt `$Payload niet."
+}
+
+
+# ============================================================
+# Replacement:
+#
+# 1. write Python helper to /data
+# 2. py_compile in container
+# 3. pipe ONLY JSON payload through stdin
+# 4. remove helper in finally
+#
+# No application source file is touched.
+# ============================================================
+
+$Replacement = @'
+# PROMATI_A2C_COUNTERFACTUAL_TEMPFILE_TRANSPORT_V1_1
+#
+# Multiline Python is deliberately NOT passed through `python -c`.
+# PowerShell/docker argument quoting can corrupt large multiline code.
+#
+# Instead:
+# - write the audit helper temporarily to /data
+# - syntaxcheck it inside the runtime container
+# - pipe only the JSON test payload through stdin
+# - always remove the temporary helper
+
+$ContainerPython = `
+    "/data/promati_a2c_runtime_counterfactual_v1.py"
+
+
+docker exec `
+    ai-platform-api-1 `
+    sh `
+    -c `
+    "test -w /data"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "/data is niet writable in de API-container."
+}
+
+
+$PythonCode |
+    docker exec `
+        -i `
+        ai-platform-api-1 `
+        sh `
+        -c `
+        "cat > $ContainerPython"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Tijdelijk A2c Python-helperbestand schrijven mislukt."
+}
+
+
+try {
+
+    docker exec `
+        -e PYTHONPATH=/app `
+        -w /app `
+        ai-platform-api-1 `
+        python `
+        -m py_compile `
+        $ContainerPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw (
+            "A2c Python-code zelf faalt syntaxcheck. " +
+            "Dit is dan geen PowerShell/docker quoting-probleem meer."
+        )
+    }
+
+    Write-Host `
+        "A2C_COUNTERFACTUAL_PYTHON_SYNTAX_OK" `
+        -ForegroundColor Green
+
+
+    $Raw = (
+        $Payload |
+            docker exec `
+                -e PYTHONPATH=/app `
+                -w /app `
+                -i `
+                ai-platform-api-1 `
+                python `
+                $ContainerPython
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "A2c runtime counterfactual audit mislukt."
+    }
+}
+finally {
+
+    docker exec `
+        ai-platform-api-1 `
+        rm `
+        -f `
+        $ContainerPython `
+        2>$null |
+        Out-Null
+}
+
+'@
+
+
+$NewContent = (
+    $Content.Substring(0, $Start)
+    + $Replacement
+    + $Content.Substring($FailureEnd)
+)
+
+
+# ============================================================
+# Correct obsolete audit marker.
+#
+# We DO use one ephemeral /data helper now.
+# Do not leave a false "NO_TEMP_FILES_WRITTEN=TRUE" claim.
+# ============================================================
+
+$OldTempMarker = `
+    'Write-Host "NO_TEMP_FILES_WRITTEN=TRUE"'
+
+$NewTempMarker = @'
+Write-Host "TEMP_CONTAINER_HELPER_USED=TRUE"
+Write-Host "TEMP_CONTAINER_HELPER_REMOVED=TRUE"
+Write-Host "NO_PERSISTENT_AUDIT_FILES_WRITTEN=TRUE"
+'@
+
+
+if (-not $NewContent.Contains($OldTempMarker)) {
+    throw (
+        "Verwachte NO_TEMP_FILES_WRITTEN marker niet gevonden. " +
+        "Geen wijziging uitgevoerd."
+    )
+}
+
+$NewContent = $NewContent.Replace(
+    $OldTempMarker,
+    $NewTempMarker
+)
+
+
+# ============================================================
+# Important semantic markers must remain
+# ============================================================
+
+foreach ($RequiredMarker in @(
+    "A2B_FREEZE_HASHES_OK",
+    "SAFE_ONLY_TESTS_118_185_CHANGED=TRUE",
+    "SAFE_ONLY_BAND_ENTITY_REMOVED=TRUE",
+    "A2C_SAFE_PARTIAL_POLICY_RUNTIME_PROVEN=TRUE",
+    "A2C_UNRESOLVED_REMAINS_SEPARATE_POLICY_PROBLEM=TRUE",
+    "PHASE_A_A2C_RUNTIME_COUNTERFACTUAL_OK",
+    "PROCESS_LOCAL_MONKEYPATCH_ONLY=TRUE"
+)) {
+
+    if (-not $NewContent.Contains($RequiredMarker)) {
+        throw "Semantische audit-marker verdwenen: $RequiredMarker"
+    }
+}
+
+
+# ============================================================
+# Pre-write PowerShell syntaxcheck
+# ============================================================
+
+$NewTokens = $null
+$NewErrors = $null
+
+[System.Management.Automation.Language.Parser]::ParseInput(
+    $NewContent,
+    [ref]$NewTokens,
+    [ref]$NewErrors
+) | Out-Null
+
+if (@($NewErrors).Count -ne 0) {
+
+    Write-Host ""
+    Write-Host "=== PROPOSED SCRIPT PARSER ERRORS ===" `
+        -ForegroundColor Red
+
+    foreach ($Item in @($NewErrors)) {
+
+        Write-Host (
+            "Line {0}, col {1}: {2} | token='{3}'" -f `
+                $Item.Extent.StartLineNumber,
+                $Item.Extent.StartColumnNumber,
+                $Item.Message,
+                $Item.Extent.Text
+        ) -ForegroundColor Red
+    }
+
+    throw (
+        "Transportfix faalt PowerShell syntaxcheck. " +
+        "Origineel is niet overschreven."
+    )
+}
+
+
+# ============================================================
+# Timestamp backup
+# ============================================================
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$Backup = (
+    "$Path.bak_transport_v1_1_$Stamp"
+)
+
+Copy-Item `
+    -Path $Path `
+    -Destination $Backup `
+    -Force
+
+
+# ============================================================
+# Write helper only
+# ============================================================
+
+Set-Content `
+    -Path $Path `
+    -Value $NewContent `
+    -Encoding UTF8
+
+
+# ============================================================
+# Stored-file syntaxcheck
+# ============================================================
+
+$StoredTokens = $null
+$StoredErrors = $null
+
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $Path,
+    [ref]$StoredTokens,
+    [ref]$StoredErrors
+) | Out-Null
+
+if (@($StoredErrors).Count -ne 0) {
+    throw (
+        "Opgeslagen audit-helper faalt syntaxcheck. " +
+        "Backup=$Backup"
+    )
+}
+
+
+Write-Host ""
+Write-Host "BACKUP=$Backup"
+Write-Host "OLD_PYTHON_DASH_C_TRANSPORT_REMOVED=TRUE"
+Write-Host "TEMP_CONTAINER_PYTHON_TRANSPORT_ADDED=TRUE"
+Write-Host "CONTAINER_PY_COMPILE_ADDED=TRUE"
+Write-Host "JSON_PAYLOAD_REMAINS_STDIN_ONLY=TRUE"
+Write-Host "TEMP_HELPER_CLEANUP_IN_FINALLY=TRUE"
+Write-Host "ONLY_AUDIT_HELPER_CHANGED=TRUE"
+Write-Host "APP_CODE_CHANGED=FALSE"
+Write-Host "A2B_CODE_CHANGED=FALSE"
+Write-Host "REBUILD_REQUIRED=FALSE"
+Write-Host "POWERSHELL_SYNTAX_OK" `
+    -ForegroundColor Green
+
+Write-Host "A2C_COUNTERFACTUAL_TRANSPORT_FIX_V1_1_OK" `
+    -ForegroundColor Green

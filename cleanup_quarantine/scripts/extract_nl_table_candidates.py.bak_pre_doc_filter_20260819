@@ -1,0 +1,296 @@
+import json
+import re
+import sys
+from datetime import datetime
+
+import requests
+import psycopg2
+
+
+API_BASE = "http://localhost:8000"
+
+POSTGRES = {
+    "host": "localhost",
+    "port": 15432,
+    "dbname": "promati",
+    "user": "postgres",
+    "password": "SterkWachtwoord123",
+}
+
+DOCS = [
+    {
+        "doc_id": "1_schema_transportinstallatie",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "2_bepaling_van_bandbreedte_en_bandsnelheid",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "3_bepaling_van_het_motorvermogen_van_een_transportband",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "4_bepaling_van_het_motorvermogen_van_een_transportband",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "5_de_transporband_algemeen",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "6_band_ondersteuning_tussen_de_eindtrommels",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "7_aandrijving_aandrijftrommel_keertrommel_spantrommel",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "8_bandreiniging_voorspanning_bandstabiliteit",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "9_berekeningsvoorbeeld_transportband_met_rol_ondersteuning",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+    {
+        "doc_id": "10_berekenings_voorbeeld_transportband_met_glij_ondersteuning",
+        "source_code": "TRANSPORTBANDENBOEK",
+        "topic_group": "transportbandenboek_calculations",
+    },
+]
+
+
+def clean_text(s: str) -> str:
+    if not s:
+        return ""
+    replacements = {
+        "Ã©": "é",
+        "Ã¨": "è",
+        "Ã«": "ë",
+        "Ã¯": "ï",
+        "Ã¶": "ö",
+        "Ã¼": "ü",
+        "Ã ": "à",
+        "Â°": "°",
+        "Âµ": "µ",
+        "Â²": "²",
+        "Â³": "³",
+        "Ã—": "×",
+        "â€“": "–",
+        "â€”": "—",
+        "â€¢": "•",
+        "â€™": "’",
+        "â€œ": "“",
+        "â€": "”",
+    }
+    for a, b in replacements.items():
+        s = s.replace(a, b)
+    return s
+
+
+def get_chunks(doc_id: str) -> list[dict]:
+    payload = {"doc_id": doc_id, "limit": 5000}
+    r = requests.post(f"{API_BASE}/rag/chunks", json=payload, timeout=120)
+    r.raise_for_status()
+    data = r.json()
+    return data.get("chunks", [])
+
+
+def looks_like_table(text: str) -> bool:
+    t = text.lower()
+
+    if "tabel" in t:
+        return True
+
+    # Veel technische tabelwaarden/eheden in één chunk.
+    unit_hits = len(re.findall(r"\b(mm|cm|m/s|m/sec|t/h|m3/h|m³/h|kw|pk|kg|n|rpm|graden|°)\b", t))
+    number_hits = len(re.findall(r"\d+[,.]?\d*", t))
+
+    if unit_hits >= 3 and number_hits >= 8:
+        return True
+
+    # meerdere regels met cijfers duiden vaak op tabelachtige tekst
+    numeric_lines = 0
+    for line in text.splitlines():
+        if len(re.findall(r"\d+[,.]?\d*", line)) >= 2:
+            numeric_lines += 1
+
+    return numeric_lines >= 3
+
+
+def extract_table_title(text: str) -> str:
+    lines = [x.strip() for x in text.splitlines() if x.strip()]
+    for line in lines:
+        if re.search(r"\btabel\s+\d+", line, flags=re.I):
+            return clean_text(line[:180])
+
+    for line in lines[:10]:
+        if "tabel" in line.lower():
+            return clean_text(line[:180])
+
+    return "Tabel-kandidaat uit Nederlandse transportbanddocumentatie"
+
+
+def simple_columns_and_rows(text: str):
+    """
+    Bewust conservatief.
+    We slaan vooral raw_text op.
+    columns_json/rows_json zijn indicatief en moeten handmatig gereviewd worden.
+    """
+    lines = [clean_text(x.strip()) for x in text.splitlines() if x.strip()]
+    table_lines = []
+
+    for line in lines:
+        if re.search(r"\d+[,.]?\d*", line) or "tabel" in line.lower():
+            table_lines.append(line)
+
+    columns = [
+        {"key": "raw_line", "label": "Ruwe tabelregel"},
+    ]
+
+    rows = [{"raw_line": line} for line in table_lines[:80]]
+
+    return columns, rows
+
+
+def candidate_exists(cur, source_doc_id: str, chunk_index: int, table_title: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1
+        FROM technical_table_candidate
+        WHERE source_doc_id = %s
+          AND chunk_index = %s
+          AND table_title = %s
+        LIMIT 1
+        """,
+        (source_doc_id, chunk_index, table_title),
+    )
+    return cur.fetchone() is not None
+
+
+def main():
+    conn = psycopg2.connect(**POSTGRES)
+    conn.autocommit = False
+
+    try:
+        with conn.cursor() as cur:
+            total_created = 0
+
+            for doc in DOCS:
+                doc_id = doc["doc_id"]
+                source_code = doc["source_code"]
+                topic_group = doc["topic_group"]
+
+                print(f"\nScannen: {doc_id}")
+
+                cur.execute(
+                    """
+                    INSERT INTO technical_extraction_run
+                      (source_doc_id, source_code, extraction_type, status, notes)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING run_id
+                    """,
+                    (
+                        doc_id,
+                        source_code,
+                        "table_candidate",
+                        "started",
+                        "Kleine NL transportbanddocumenten - tabelcandidate extractie",
+                    ),
+                )
+                run_id = cur.fetchone()[0]
+
+                chunks = get_chunks(doc_id)
+                scanned = 0
+                created = 0
+
+                for ch in chunks:
+                    scanned += 1
+                    chunk_index = ch.get("chunk_index")
+                    text = clean_text(ch.get("text") or "")
+
+                    if not looks_like_table(text):
+                        continue
+
+                    title = extract_table_title(text)
+                    columns, rows = simple_columns_and_rows(text)
+
+                    if candidate_exists(cur, doc_id, chunk_index, title):
+                        continue
+
+                    cur.execute(
+                        """
+                        INSERT INTO technical_table_candidate
+                          (
+                            source_doc_id,
+                            source_code,
+                            chunk_index,
+                            page_no,
+                            topic_group,
+                            table_title,
+                            raw_text,
+                            columns_json,
+                            rows_json,
+                            markdown_table,
+                            possible_canonical_key,
+                            match_status,
+                            confidence,
+                            review_note
+                          )
+                        VALUES
+                          (%s, %s, %s, NULL, %s, %s, %s, %s::jsonb, %s::jsonb, NULL, NULL, 'candidate', %s, %s)
+                        """,
+                        (
+                            doc_id,
+                            source_code,
+                            chunk_index,
+                            topic_group,
+                            title,
+                            text,
+                            json.dumps(columns, ensure_ascii=False),
+                            json.dumps(rows, ensure_ascii=False),
+                            0.55,
+                            "Automatisch gevonden tabelachtige chunk; handmatige review nodig.",
+                        ),
+                    )
+                    created += 1
+                    total_created += 1
+
+                cur.execute(
+                    """
+                    UPDATE technical_extraction_run
+                    SET status = 'completed',
+                        chunks_scanned = %s,
+                        candidates_created = %s,
+                        updated_at = now()
+                    WHERE run_id = %s
+                    """,
+                    (scanned, created, run_id),
+                )
+
+                print(f"Chunks gescand: {scanned}, candidates: {created}")
+
+            conn.commit()
+            print(f"\nKlaar. Totaal nieuwe table candidates: {total_created}")
+
+    except Exception as e:
+        conn.rollback()
+        print("FOUT:", e, file=sys.stderr)
+        raise
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

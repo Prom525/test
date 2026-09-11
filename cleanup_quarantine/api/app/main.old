@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+import importlib
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+
+def _optional_import(module_path: str):
+    """
+    Importeer module optioneel.
+    Geeft None terug als module niet bestaat.
+    Zo crasht de API niet door 1 ontbrekende router.
+    """
+    try:
+        return importlib.import_module(module_path)
+    except Exception:
+        return None
+
+
+def _include_router_if_present(
+    app: FastAPI,
+    module,
+    prefix: str = "",
+    tags: list[str] | None = None,
+    attr: str = "router",
+):
+    if module is None:
+        return
+    router = getattr(module, attr, None)
+    if router is None:
+        return
+    app.include_router(router, prefix=prefix, tags=tags or [])
+
+
+app = FastAPI(
+    title="Promati – Lokaal AI Platform API",
+    version="1.0.0",
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Verplichte routers ---
+from app.routers import (  # noqa: E402
+    berekeningen,
+    calendar_line_mapping,
+    files,
+    inspecties,
+    lijn_mapping,
+    machines,
+    products,
+    rag,
+    scrapers,
+)
+
+app.include_router(products.router, tags=["products"])
+app.include_router(scrapers.router, tags=["scrapers"])
+app.include_router(machines.router, tags=["machines"])
+app.include_router(inspecties.router, tags=["inspecties"])
+app.include_router(rag.router, tags=["rag"])
+app.include_router(berekeningen.router, tags=["berekeningen"])
+app.include_router(files.router, tags=["files"])
+app.include_router(calendar_line_mapping.router, tags=["calendar-line-mapping"])
+app.include_router(lijn_mapping.router, tags=["lijn-mapping"])
+
+# --- Optionele routers ---
+chatdb_mod = _optional_import("app.routers.chatdb")
+_include_router_if_present(app, chatdb_mod, tags=["chatdb"])
+
+plugin_mod = _optional_import("app.routers.plugin")
+_include_router_if_present(app, plugin_mod, tags=["plugin"])
+
+analysis_mod = _optional_import("app.routers.analysis_api_v6")
+_include_router_if_present(app, analysis_mod, tags=["analysis"])
+
+
+@app.get("/healthz", tags=["health"])
+def healthz():
+    return {"status": "ok"}

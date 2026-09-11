@@ -1,0 +1,60 @@
+
+openapi: 3.0.3
+info:
+  title: Promati SQL Assistant API (Plugin facade)
+  version: "1.0.0"
+  description: |
+    Facade endpoints voor ChatGPT Actions. READ-ONLY toegang tot databasefunctionaliteit.
+servers:
+  - url: http://localhost:8000
+paths:
+  /plugin/schema:
+    get:
+      summary: Haal het publieke schema op (read-only)
+      operationId: getPluginSchema
+      responses:
+        '200':
+          description: Schema info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+  /plugin/sql:
+    post:
+      summary: Voer een veilige SELECT/CTE query uit
+      operationId: runPluginSql
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sql:
+                  type: string
+                  description: Alleen SELECT of WITH (CTE) statements.
+                max_rows:
+                  type: integer
+                  default: 500
+                timeout_ms:
+                  type: integer
+                  default: 6000
+      responses:
+        '200':
+          description: Resultset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true

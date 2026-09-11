@@ -1,0 +1,375 @@
+﻿def _fetch_provenance_edge_comparison(
+    source_object: str,
+    target_object: str,
+    spec: dict,
+    filters: dict | None,
+    limit: int,
+) -> dict:
+    """
+    Vergelijkt echte provenance-keys via SQL.
+
+    Geen sample-based vergelijking.
+    """
+
+    key_columns = list(
+        spec.get("key_columns") or []
+    )
+
+    if not key_columns:
+        raise RuntimeError(
+            "V3 edge zonder key_columns."
+        )
+
+    source_where, source_params = (
+        _provenance_filter_where(
+            source_object,
+            filters,
+            "src",
+        )
+    )
+
+    target_where, target_params = (
+        _provenance_filter_where(
+            target_object,
+            filters,
+            "tgt",
+        )
+    )
+
+    source_where = _append_sql_condition(
+        source_where,
+        spec.get("source_extra_condition"),
+    )
+
+    source_table = (
+        f'{quote_ident("public")}.'
+        f'{quote_ident(source_object)}'
+    )
+
+    target_table = (
+        f'{quote_ident("public")}.'
+        f'{quote_ident(target_object)}'
+    )
+
+    key_sql = ", ".join(
+        quote_ident(column)
+        for column in key_columns
+    )
+
+    params = {
+        **source_params,
+        **target_params,
+    }
+
+    ctes = f"""
+        WITH source_rows AS (
+            SELECT
+                {key_sql}
+            FROM {source_table}
+            {source_where}
+        ),
+        target_rows AS (
+            SELECT
+                {key_sql}
+            FROM {target_table}
+            {target_where}
+        ),
+        source_keys AS (
+            SELECT DISTINCT
+                {key_sql}
+            FROM source_rows
+        ),
+        target_keys AS (
+            SELECT DISTINCT
+                {key_sql}
+            FROM target_rows
+        ),
+        only_source AS (
+            SELECT *
+            FROM source_keys
+
+            EXCEPT
+
+            SELECT *
+            FROM target_keys
+        ),
+        only_target AS (
+            SELECT *
+            FROM target_keys
+
+            EXCEPT
+
+            SELECT *
+            FROM source_keys
+        )
+    """
+
+    counts = fetch_one(
+        ctes
+        + """
+        SELECT
+            (
+                SELECT COUNT(*)::bigint
+                FROM source_rows
+            ) AS source_raw_rows,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM target_rows
+            ) AS target_raw_rows,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM source_keys
+            ) AS source_key_count,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM target_keys
+            ) AS target_key_count,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM source_keys s
+                JOIN target_keys t
+                  USING ("""
+        + key_sql
+        + """)
+            ) AS in_both_count,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM only_source
+            ) AS only_in_source_count,
+
+            (
+                SELECT COUNT(*)::bigint
+                FROM only_target
+            ) AS only_in_target_count
+        """,
+        params,
+    ) or {}
+
+    example_limit = max(
+        1,
+        min(
+            int(limit or 25),
+            25,
+        ),
+    )
+
+    example_params = {
+        **params,
+        "example_limit": example_limit,
+    }
+
+    order_sql = ", ".join(
+        quote_ident(column)
+        for column in key_columns
+    )
+
+    # V3.1:
+    # examples pas ophalen wanneer een verschil ONVERWACHT is.
+    # Verwachte filter/expansion/enrichment-verschillen hoeven
+    # niet opnieuw met zware EXCEPT-querysets gesampled te worden.
+    only_source_examples = []
+    only_target_examples = []
+
+    observed_source = int(
+        counts.get(
+            "only_in_source_count"
+        )
+        or 0
+    )
+
+    observed_target = int(
+        counts.get(
+            "only_in_target_count"
+        )
+        or 0
+    )
+
+    if spec.get(
+        "source_difference_expected"
+    ):
+        unexpected_source = 0
+        expected_source = observed_source
+    else:
+        unexpected_source = observed_source
+        expected_source = 0
+
+    if spec.get(
+        "target_difference_expected"
+    ):
+        unexpected_target = 0
+        expected_target = observed_target
+    else:
+        unexpected_target = observed_target
+        expected_target = 0
+
+    # --------------------------------------------------------
+    # V3.1 performance:
+    # Alleen voorbeelden ophalen voor ECHT onverwachte verschillen.
+    # De count-query hierboven blijft altijd leidend.
+    # --------------------------------------------------------
+
+    if unexpected_source > 0:
+        only_source_examples = fetch_all(
+            ctes
+            + f"""
+            SELECT *
+            FROM only_source
+            ORDER BY {order_sql}
+            LIMIT :example_limit
+            """,
+            example_params,
+        ) or []
+
+    if unexpected_target > 0:
+        only_target_examples = fetch_all(
+            ctes
+            + f"""
+            SELECT *
+            FROM only_target
+            ORDER BY {order_sql}
+            LIMIT :example_limit
+            """,
+            example_params,
+        ) or []
+
+    intentional_excluded_count = 0
+
+    if spec.get(
+        "report_intentional_exclusion"
+    ):
+        exclusion_where = _append_sql_condition(
+            _provenance_filter_where(
+                source_object,
+                filters,
+                "exc",
+            )[0],
+            (
+                "check_code = "
+                "'band_algemene_staat'::text"
+            ),
+        )
+
+        exclusion_params = (
+            _provenance_filter_where(
+                source_object,
+                filters,
+                "exc",
+            )[1]
+        )
+
+        exclusion = fetch_one(
+            f"""
+            SELECT
+                COUNT(*)::bigint
+                    AS rows_total
+            FROM {source_table}
+            {exclusion_where}
+            """,
+            exclusion_params,
+        ) or {}
+
+        intentional_excluded_count = int(
+            exclusion.get("rows_total")
+            or 0
+        )
+
+    return {
+        "compare_mode": "chain",
+        "comparison_version": "v3.1_provenance",
+        "edge_type": spec.get("edge_type"),
+        "expectation": spec.get("expectation"),
+        "expected_behavior_reason": spec.get(
+            "reason"
+        ),
+        "source_object": (
+            f"public.{source_object}"
+        ),
+        "target_object": (
+            f"public.{target_object}"
+        ),
+        "comparison_key": key_columns,
+        "comparison": {
+            "source_rows": int(
+                counts.get("source_raw_rows")
+                or 0
+            ),
+            "target_rows": int(
+                counts.get("target_raw_rows")
+                or 0
+            ),
+            "source_key_count": int(
+                counts.get("source_key_count")
+                or 0
+            ),
+            "target_key_count": int(
+                counts.get("target_key_count")
+                or 0
+            ),
+            "in_both_count": int(
+                counts.get("in_both_count")
+                or 0
+            ),
+            "only_in_source_count":
+                observed_source,
+            "only_in_target_count":
+                observed_target,
+            "only_in_source":
+                only_source_examples,
+            "only_in_target":
+                only_target_examples,
+        },
+        "summary": {
+            # Deze twee velden betekenen vanaf V3:
+            # ONVERWACHT verschil. Daarmee blijft bestaande
+            # presentatiecode backwards-compatible.
+            "only_in_source_count":
+                unexpected_source,
+            "only_in_target_count":
+                unexpected_target,
+
+            "observed_only_in_source_count":
+                observed_source,
+            "observed_only_in_target_count":
+                observed_target,
+
+            "expected_only_in_source_count":
+                expected_source,
+            "expected_only_in_target_count":
+                expected_target,
+
+            "source_rows": int(
+                counts.get("source_raw_rows")
+                or 0
+            ),
+            "target_rows": int(
+                counts.get("target_raw_rows")
+                or 0
+            ),
+            "source_key_count": int(
+                counts.get("source_key_count")
+                or 0
+            ),
+            "target_key_count": int(
+                counts.get("target_key_count")
+                or 0
+            ),
+            "in_both_count": int(
+                counts.get("in_both_count")
+                or 0
+            ),
+
+            "intentional_excluded_count":
+                intentional_excluded_count,
+
+            "has_loss_downstream":
+                unexpected_source > 0,
+            "has_gain_downstream":
+                unexpected_target > 0,
+        },
+    }
+

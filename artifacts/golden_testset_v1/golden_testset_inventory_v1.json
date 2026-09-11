@@ -1,0 +1,49 @@
+{
+  "workbook": "GoldenTestSet200.xlsx",
+  "sheet_count": 1,
+  "sheets": [
+    {
+      "name": "Blad1",
+      "data_row_count": 200,
+      "column_count": 10,
+      "header_row": 1,
+      "headers": [
+        "id",
+        "category",
+        "question",
+        "query_class",
+        "expected_domains",
+        "target_intent",
+        "expected_entities",
+        "research",
+        "clarification",
+        "note"
+      ],
+      "detected_contract_mapping": {
+        "test_id": "id",
+        "question": "question",
+        "expected_query_class": "query_class",
+        "expected_entities": "expected_entities",
+        "expected_research_required": "research",
+        "expected_clarification_required": "clarification"
+      },
+      "label_distribution": {
+        "expected_query_class": {
+          "BUSINESS": 146,
+          "SYSTEM_META": 44,
+          "CONVERSATIONAL": 7,
+          "UNKNOWN": 3
+        },
+        "expected_research_required": {
+          "false": 164,
+          "true": 36
+        },
+        "expected_clarification_required": {
+          "false": 176,
+          "true": 24
+        }
+      }
+    }
+  ],
+  "primary_sheet": "Blad1"
+}

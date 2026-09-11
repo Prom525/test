@@ -1,0 +1,19 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Promati ChatDB",
+  "name_for_model": "promati_chatdb",
+  "description_for_human": "Voer veilige SQL-selects uit op Promati's bedrijfsdatabase.",
+  "description_for_model": "Use this tool to run safe SQL (SELECT/WITH) and read AI-views like vw_products_flat_specs, vw_accounts_with_notes, vw_packs_expanded_specs. Add LIMIT if missing.",
+  "auth": {
+    "type": "bearer",
+    "authorization_type": "Bearer",
+    "verification_tokens": {}
+  },
+  "api": {
+    "type": "openapi",
+    "url": "<PUBLIC_URL_TO_SWAGGER_JSON>"
+  },
+  "logo_url": "<PUBLIC_LOGO_URL_OPTIONEEL>",
+  "contact_email": "ops@promati.tld",
+  "legal_info_url": "https://example.com/terms"
+}

@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""
+promote_to_inspection_items_v1.py
+
+Creates normalized inspection items from the "table" below the header row (usually row_nr ~10)
+in sb_stg_inspecties_raw, and writes them to sb_inspection_items_v0.
+
+- Supports multiple sections per sheet (multiple headers).
+- Detects header by looking for "Locatie", "Band", "Merk", and action columns.
+- Parses booleans from action columns (Demontage/Reinigen/Vervangen) based on X/Ja/1/True etc.
+- Stores original row as JSON for traceability.
+
+Run:
+  $env:DB_URL = "postgresql://postgres:SterkWachtwoord123@127.0.0.1:15432/promati"
+  python .\promote_to_inspection_items_v1.py
+"""
+
+import os
+import re
+import json
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from sqlalchemy import create_engine, text
+
+DB_URL = os.environ.get("DB_URL", "postgresql://postgres:SterkWachtwoord123@127.0.0.1:15432/promati")
+
+# Some sheets have "Unnamed: 0" ... "Unnamed: 20"
+RE_UNNAMED = re.compile(r"^Unnamed:\s*\d+$", re.I)
+
+TRUE_TOKENS = {
+    "x", "ja", "j", "yes", "y", "true", "1", "ok", "v", "√", "check", "checked",
+    "uitgevoerd", "done"
+}
+
+def norm(s: Any) -> str:
+    if s is None:
+        return ""
+    return str(s).strip()
+
+def norm_lower(s: Any) -> str:
+    return norm(s).lower()
+
+def parse_bool(v: Any) -> bool:
+    s = norm_lower(v)
+    if not s:
+        return False
+    # common "x" mark, "ja", "1", "true", etc.
+    if s in TRUE_TOKENS:
+        return True
+    # sometimes people use "x " or "x."
+    if s.startswith("x"):
+        return True
+    return False
+
+def looks_like_header(row: Dict[str, Any]) -> bool:
+    # Header often looks like:
+    # Unnamed:0="Locatie", Unnamed:1="Band-breedte", Unnamed:2="Merk + Type", Unnamed:3="Demontage", ...
+    vals = [norm_lower(row.get(f"Unnamed: {i}")) for i in range(0, 16)]
+    if not any(vals):
+        return False
+
+    has_locatie = any("locatie" in v for v in vals)
+    has_band = any("band" in v for v in vals)  # band-breedte
+    has_merk = any("merk" in v for v in vals) or any("type" == v or "type" in v for v in vals)
+
+    has_dem = any("demontage" in v for v in vals)
+    has_rei = any("reinigen" in v for v in vals)
+    has_ver = any("vervangen" in v for v in vals)
+
+    # Minimum: locatie + band + merk, plus at least 1 action column (or assume it exists)
+    if has_locatie and has_band and has_merk:
+        return True
+    # Some variants miss "Merk" but have "Type" and actions
+    if has_locatie and has_band and (has_dem or has_rei or has_ver):
+        return True
+    return False
+
+def build_colmap_from_header(row: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Find indices for key columns by scanning header text.
+    Returns mapping keys: locatie, band, merk, demontage, reinigen, vervangen
+    """
+    vals = {i: norm_lower(row.get(f"Unnamed: {i}")) for i in range(0, 25)}
+    colmap: Dict[str, int] = {}
+
+    def find_idx(keyword: str) -> Optional[int]:
+        for i, v in vals.items():
+            if keyword in v:
+                return i
+        return None
+
+    # main fields
+    i_loc = find_idx("locatie")
+    i_band = find_idx("band")
+    i_merk = find_idx("merk")
+    i_type = find_idx("type")
+
+    if i_loc is not None:
+        colmap["locatie"] = i_loc
+    if i_band is not None:
+        colmap["band"] = i_band
+    # prefer "merk" but fallback to "type" if merk not present
+    if i_merk is not None:
+        colmap["merk"] = i_merk
+    elif i_type is not None:
+        colmap["merk"] = i_type
+    else:
+        # fallback: typical layout: 0,1,2
+        colmap["merk"] = 2
+
+    # action fields
+    i_dem = find_idx("demontage")
+    i_rei = find_idx("reinigen")
+    i_ver = find_idx("vervangen")
+    if i_dem is not None:
+        colmap["demontage"] = i_dem
+    if i_rei is not None:
+        colmap["reinigen"] = i_rei
+    if i_ver is not None:
+        colmap["vervangen"] = i_ver
+
+    # If actions not found, assume after merk column: merk+1..merk+3
+    base = colmap.get("merk", 2)
+    colmap.setdefault("demontage", base + 1)
+    colmap.setdefault("reinigen", base + 2)
+    colmap.setdefault("vervangen", base + 3)
+
+    # Ensure band/locatie defaults
+    colmap.setdefault("locatie", 0)
+    colmap.setdefault("band", 1)
+
+    return colmap
+
+def row_get(row: Dict[str, Any], idx: int) -> str:
+    return norm(row.get(f"Unnamed: {idx}"))
+
+def row_is_blank(row: Dict[str, Any], idxs: List[int]) -> bool:
+    return all(not norm(row.get(f"Unnamed: {i}")) for i in idxs)
+
+def main() -> None:
+    engine = create_engine(DB_URL)
+
+    create_table_sql = text("""
+      create table if not exists sb_inspection_items_v0 (
+        id bigserial primary key,
+        inspection_key text not null,
+        lijn_code text not null,
+        source_file text not null,
+        sheet text not null,
+
+        section_idx int not null default 1,
+        header_row_nr int,
+        row_nr int not null,
+
+        locatie text,
+        band_breedte text,
+        merk_type text,
+
+        demontage boolean default false,
+        reinigen boolean default false,
+        vervangen boolean default false,
+
+        row_json jsonb,
+        created_at timestamptz default now()
+      )
+    """)
+
+    # Unique per item: same inspection, same section, same row
+    create_unique_sql = text("""
+      create unique index if not exists sb_inspection_items_uq
+      on sb_inspection_items_v0 (inspection_key, section_idx, row_nr)
+    """)
+
+    # Read all inspections (keys)
+    q_inspections = text("""
+      select inspection_key, lijn_code, source_file, sheet
+      from sb_inspections_v0
+      order by lijn_code, source_file, sheet
+    """)
+
+    # Read all rows for one sheet
+    q_rows = text("""
+      select row_nr, data->'row' as row
+      from sb_stg_inspecties_raw
+      where lijn_code=:lijn_code and source_file=:source_file and sheet=:sheet
+      order by row_nr
+    """)
+
+    insert_item = text("""
+      insert into sb_inspection_items_v0
+        (inspection_key, lijn_code, source_file, sheet, section_idx, header_row_nr, row_nr,
+         locatie, band_breedte, merk_type, demontage, reinigen, vervangen, row_json)
+      values
+        (:inspection_key, :lijn_code, :source_file, :sheet, :section_idx, :header_row_nr, :row_nr,
+         :locatie, :band_breedte, :merk_type, :demontage, :reinigen, :vervangen, cast(:row_json as jsonb))
+      on conflict (inspection_key, section_idx, row_nr) do update
+        set locatie = excluded.locatie,
+            band_breedte = excluded.band_breedte,
+            merk_type = excluded.merk_type,
+            demontage = excluded.demontage,
+            reinigen = excluded.reinigen,
+            vervangen = excluded.vervangen,
+            row_json = excluded.row_json
+    """)
+
+    total_items = 0
+    total_sections = 0
+
+    with engine.begin() as conn:
+        conn.execute(create_table_sql)
+        conn.execute(create_unique_sql)
+
+        inspections = conn.execute(q_inspections).fetchall()
+        print(f"inspections: {len(inspections)}")
+
+        for n, (inspection_key, lijn_code, source_file, sheet) in enumerate(inspections, start=1):
+            rows = conn.execute(
+                q_rows,
+                {"lijn_code": lijn_code, "source_file": source_file, "sheet": sheet},
+            ).fetchall()
+
+            # Convert row json to dict and normalize keys
+            parsed_rows: List[Tuple[int, Dict[str, Any]]] = []
+            for row_nr, row_obj in rows:
+                if row_obj is None:
+                    continue
+                # row_obj is already a dict (jsonb) via SQLAlchemy
+                # Ensure we have Unnamed keys; keep as-is
+                parsed_rows.append((int(row_nr), dict(row_obj)))
+
+            # Find header rows (can be multiple)
+            header_indices: List[int] = []
+            for i, (row_nr, row_dict) in enumerate(parsed_rows):
+                if looks_like_header(row_dict):
+                    header_indices.append(i)
+
+            if not header_indices:
+                # No header table found; skip silently
+                continue
+
+            # Process each section
+            for s_idx, h_i in enumerate(header_indices, start=1):
+                header_row_nr, header_row = parsed_rows[h_i]
+                colmap = build_colmap_from_header(header_row)
+                total_sections += 1
+
+                # Iterate rows below header until next header OR until long blank stretch
+                next_header_i = header_indices[s_idx] if s_idx < len(header_indices) else None
+
+                blank_streak = 0
+                for j in range(h_i + 1, len(parsed_rows)):
+                    if next_header_i is not None and j >= next_header_i:
+                        break
+
+                    row_nr, row_dict = parsed_rows[j]
+
+                    # Stop conditions: two consecutive blanks on key columns
+                    key_idxs = [colmap["locatie"], colmap["band"], colmap["merk"]]
+                    if row_is_blank(row_dict, key_idxs):
+                        blank_streak += 1
+                        if blank_streak >= 2:
+                            break
+                        continue
+                    blank_streak = 0
+
+                    # Skip obvious metadata rows
+                    c0 = norm_lower(row_dict.get("Unnamed: 0"))
+                    if c0.startswith("datum") or c0.startswith("uitgevoerd door") or "onderhouds-rapport" in c0:
+                        continue
+
+                    locatie = row_get(row_dict, colmap["locatie"])
+                    band = row_get(row_dict, colmap["band"])
+                    merk = row_get(row_dict, colmap["merk"])
+
+                    dem = parse_bool(row_dict.get(f"Unnamed: {colmap['demontage']}"))
+                    rei = parse_bool(row_dict.get(f"Unnamed: {colmap['reinigen']}"))
+                    ver = parse_bool(row_dict.get(f"Unnamed: {colmap['vervangen']}"))
+
+                    # Only keep rows that look like real items:
+                    if not (locatie or band or merk or dem or rei or ver):
+                        continue
+
+                    conn.execute(
+                        insert_item,
+                        {
+                            "inspection_key": inspection_key,
+                            "lijn_code": lijn_code,
+                            "source_file": source_file,
+                            "sheet": sheet,
+                            "section_idx": s_idx,
+                            "header_row_nr": header_row_nr,
+                            "row_nr": row_nr,
+                            "locatie": locatie or None,
+                            "band_breedte": band or None,
+                            "merk_type": merk or None,
+                            "demontage": bool(dem),
+                            "reinigen": bool(rei),
+                            "vervangen": bool(ver),
+                            "row_json": json.dumps(row_dict, ensure_ascii=False),
+                        }
+                    )
+                    total_items += 1
+
+            if n % 200 == 0:
+                print(f"processed {n}/{len(inspections)} inspections, items so far: {total_items}")
+
+    print(f"DONE. sections: {total_sections}, items upserted: {total_items}")
+
+if __name__ == "__main__":
+    main()

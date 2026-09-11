@@ -1,0 +1,152 @@
+from app.orchestrator.models import (
+    Domain,
+    ExecutionStep,
+    QueryPlan,
+)
+
+
+def _entity_value(
+    plan: QueryPlan,
+    name: str,
+):
+    entity = plan.entities.get(name)
+    return entity.value if entity else None
+
+
+def _ordered_domains(
+    plan: QueryPlan,
+) -> list[Domain]:
+    """
+    Primary domain eerst, daarna eventuele aanvullende domeinen.
+    Duplicaten worden verwijderd met behoud van volgorde.
+    """
+    ordered: list[Domain] = []
+
+    if plan.primary_domain is not None:
+        ordered.append(plan.primary_domain)
+
+    for domain in plan.domains:
+        if domain not in ordered:
+            ordered.append(domain)
+
+    return ordered
+
+
+def _build_product_step(
+    plan: QueryPlan,
+    step_no: int,
+) -> ExecutionStep:
+    params = {
+        "vraag": plan.original_question,
+        "mode": "auto",
+    }
+
+    family_code = _entity_value(
+        plan,
+        "family_code",
+    )
+
+    belt_width_mm = _entity_value(
+        plan,
+        "belt_width_mm",
+    )
+
+    if family_code is not None:
+        params["family_code"] = family_code
+
+    if belt_width_mm is not None:
+        params["belt_width_mm"] = belt_width_mm
+
+    return ExecutionStep(
+        step_id=f"step_{step_no}_product",
+        domain=Domain.PRODUCT,
+        action="product_assistant",
+        params=params,
+        required=True,
+        fallback_allowed=True,
+    )
+
+
+def _build_inspection_step(
+    plan: QueryPlan,
+    step_no: int,
+) -> ExecutionStep:
+    params = {
+        "vraag": plan.original_question,
+        "mode": "auto",
+    }
+
+    lijn_code = _entity_value(
+        plan,
+        "lijn_code",
+    )
+
+    band_code = _entity_value(
+        plan,
+        "band_code",
+    )
+
+    scraper_type = _entity_value(
+        plan,
+        "scraper_type",
+    )
+
+    if lijn_code is not None:
+        params["lijn_code"] = lijn_code
+
+    if band_code is not None:
+        params["band_code"] = band_code
+
+    if scraper_type is not None:
+        params["scraper_type"] = scraper_type
+
+    return ExecutionStep(
+        step_id=f"step_{step_no}_inspection",
+        domain=Domain.INSPECTION,
+        action="analysis_assistant",
+        params=params,
+        required=True,
+        fallback_allowed=True,
+    )
+
+
+def build_execution_plan(
+    plan: QueryPlan,
+) -> QueryPlan:
+    """
+    Bouwt alleen execution_steps.
+
+    Geen HTTP-calls.
+    Geen database-acties.
+    Geen fallback-uitvoering.
+
+    Als clarification nodig is, wordt bewust niets uitgevoerd.
+    """
+    plan.execution_steps = []
+
+    if plan.clarification_required:
+        return plan
+
+    domains = _ordered_domains(plan)
+
+    for step_no, domain in enumerate(
+        domains,
+        start=1,
+    ):
+        if domain == Domain.PRODUCT:
+            plan.execution_steps.append(
+                _build_product_step(
+                    plan,
+                    step_no,
+                )
+            )
+
+        elif domain == Domain.INSPECTION:
+            plan.execution_steps.append(
+                _build_inspection_step(
+                    plan,
+                    step_no,
+                )
+            )
+
+    return plan

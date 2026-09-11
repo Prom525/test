@@ -1,0 +1,1523 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Promati Context API",
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev"
+    }
+  ],
+  "paths": {
+    "/analysis/inspections/recent": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Recent Inspections",
+        "description": "Toont de meest recente inspecties uit:\n1. sb_inspections_v0 = Excel/logboek-inspecties\n2. stg_doc_inspections = Word/PDF inspectiedocumenten\n\nDit endpoint is bedoeld voor PromatiGPT Actions.",
+        "operationId": "get_recent_inspections_analysis_inspections_recent_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "include_word_docs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Word Docs"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/{rfq_id}/positions/{position_id}": {
+      "get": {
+        "tags": [
+          "gpt-context"
+        ],
+        "summary": "Get Rfq Position Gpt Context",
+        "operationId": "get_rfq_position_gpt_context_analysis_context_rfq__rfq_id__positions__position_id__get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/{rfq_id}/positions/{position_id}/engineering-review": {
+      "get": {
+        "tags": [
+          "gpt-context"
+        ],
+        "summary": "Get Rfq Position Engineering Review",
+        "operationId": "get_rfq_position_engineering_review_analysis_context_rfq__rfq_id__positions__position_id__engineering_review_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/org/location-info": {
+      "get": {
+        "operationId": "location_info_analysis_context_org_location_info_get",
+        "summary": "Get Promati location information",
+        "description": "Gebruik dit endpoint voor vragen over firma- en locatiegegevens zoals adres, telefoonnummer, btw-nummer, ondernemingsnummer, kvk-nummer, openingstijden, noodnummer of alarm-instructies.",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "firma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "Promati"
+            }
+          },
+          {
+            "name": "locatie",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Location information response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/diagnostics/modules": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Modules",
+        "operationId": "diagnostics_modules_diagnostics_modules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/diagnostics/overview": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Diagnostics Overview",
+        "operationId": "diagnostics_overview_diagnostics_overview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/database/catalog": {
+      "get": {
+        "tags": [
+          "database-context"
+        ],
+        "summary": "Get Database Catalog",
+        "operationId": "get_database_catalog_analysis_context_database_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/database/table/{schema}/{table}": {
+      "get": {
+        "tags": [
+          "database-context"
+        ],
+        "summary": "Get Database Table Sample",
+        "operationId": "get_database_table_sample_analysis_context_database_table__schema___table__get",
+        "parameters": [
+          {
+            "name": "schema",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Table"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/belt/{band_code}": {
+      "get": {
+        "tags": [
+          "promati-context"
+        ],
+        "summary": "Get Belt Context",
+        "operationId": "get_belt_context_analysis_context_belt__band_code__get",
+        "parameters": [
+          {
+            "name": "band_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Band Code"
+            }
+          },
+          {
+            "name": "lijn_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/line/{lijn_code}": {
+      "get": {
+        "tags": [
+          "promati-context"
+        ],
+        "summary": "Get Line Context",
+        "operationId": "get_line_context_analysis_context_line__lijn_code__get",
+        "parameters": [
+          {
+            "name": "lijn_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lijn Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/product/scrapers": {
+      "get": {
+        "tags": [
+          "promati-context"
+        ],
+        "summary": "Get Scraper Product Context",
+        "operationId": "get_scraper_product_context_analysis_context_product_scrapers_get",
+        "parameters": [
+          {
+            "name": "slot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot"
+            }
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/system": {
+      "get": {
+        "tags": [
+          "promati-context"
+        ],
+        "summary": "Get System Context",
+        "operationId": "get_system_context_analysis_context_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/search": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Search Rfq Context",
+        "operationId": "search_rfq_context_analysis_context_rfq_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/supplier-recommendation": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Supplier Recommendation",
+        "operationId": "supplier_recommendation_analysis_context_rfq_supplier_recommendation_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "product_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Type"
+            }
+          },
+          {
+            "name": "bearing_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Type"
+            }
+          },
+          {
+            "name": "rubber_material",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rubber Material"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/similar": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Similar Rfq Context",
+        "operationId": "similar_rfq_context_analysis_context_rfq_similar_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "product_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Type"
+            }
+          },
+          {
+            "name": "bearing_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Type"
+            }
+          },
+          {
+            "name": "rubber_material",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rubber Material"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/supplier-package": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Supplier Package",
+        "operationId": "supplier_package_analysis_context_rfq_supplier_package_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "product_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Type"
+            }
+          },
+          {
+            "name": "bearing_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Type"
+            }
+          },
+          {
+            "name": "rubber_material",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rubber Material"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/risk-review": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Risk Review",
+        "operationId": "rfq_risk_review_analysis_context_rfq_risk_review_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Position Id"
+            }
+          },
+          {
+            "name": "product_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Type"
+            }
+          },
+          {
+            "name": "bearing_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bearing Type"
+            }
+          },
+          {
+            "name": "rubber_material",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rubber Material"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/readiness": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Readiness",
+        "operationId": "rfq_readiness_analysis_context_rfq_readiness_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/action-plan": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Action Plan",
+        "operationId": "rfq_action_plan_analysis_context_rfq_action_plan_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/dashboard": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Dashboard",
+        "operationId": "rfq_dashboard_analysis_context_rfq_dashboard_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/supplier-selection": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Supplier Selection",
+        "operationId": "rfq_supplier_selection_analysis_context_rfq_supplier_selection_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 6,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/rfq-package": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Package",
+        "operationId": "rfq_package_analysis_context_rfq_rfq_package_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/org/internal-help": {
+      "get": {
+        "tags": ["org-context"],
+        "summary": "Internal Help And Routing",
+        "operationId": "internal_help_analysis_context_org_internal_help_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "firma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Firma"
+            }
+          },
+          {
+            "name": "locatie",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Locatie"
+            }
+          },
+          {
+            "name": "afdeling",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Afdeling"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/analysis/context/rfq/status": {
+      "get": {
+        "tags": [
+          "rfq-context"
+        ],
+        "summary": "Rfq Status",
+        "operationId": "rfq_status_analysis_context_rfq_status_get",
+        "parameters": [
+          {
+            "name": "rfq_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rfq Id"
+            }
+          },
+          {
+            "name": "position_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Position Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-openai-isConsequential": false
+      }
+    },
+    "/rag/query": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "summary": "Query RAG documents",
+        "operationId": "rag_query_post",
+        "description": "Gebruik dit endpoint om aanvullende procedurele of achtergrondinformatie uit RAG op te halen. Voor org-procedures altijd doc_id gebruiken vanuit rag_document_code van internal-help.",
+        "x-openai-isConsequential": false,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vraag": {
+                    "type": "string",
+                    "description": "De gebruikersvraag of vervolgvraag."
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "default": 5
+                  },
+                  "doc_id": {
+                    "type": "string",
+                    "description": "Exact document-id. Voor org-procedures gebruiken: rag_document_code uit internal-help."
+                  }
+                },
+                "required": [
+                  "vraag"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GenericObject": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "context_type": {
+            "type": "string"
+          },
+          "write_actions_available": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

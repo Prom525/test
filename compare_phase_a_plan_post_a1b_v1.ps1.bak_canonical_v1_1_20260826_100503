@@ -1,0 +1,836 @@
+$ErrorActionPreference = "Stop"
+
+Set-Location C:\ai-platform
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " PROMATI PHASE-A POST-A1b 20-vs-180 COMPARATOR" -ForegroundColor Cyan
+Write-Host " PLAN ONLY - NO API / SPECIALISTS / PROVIDER CALLS" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+
+$ContractPath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\phase_a_test_contract_v2.csv"
+
+$PrePath = `
+    "C:\ai-platform\artifacts\golden_testset_v1\pre_a1b_plan_20260826_094458\pre_a1b_plan_snapshot.json"
+
+foreach ($Path in @(
+    $ContractPath,
+    $PrePath
+)) {
+    if (-not (Test-Path $Path)) {
+        throw "Bestand niet gevonden: $Path"
+    }
+}
+
+
+# ============================================================
+# Golden contract
+# ============================================================
+
+$Contract = @(
+    Import-Csv $ContractPath
+)
+
+if ($Contract.Count -ne 200) {
+    throw "Golden contract bevat $($Contract.Count) rows; verwacht 200."
+}
+
+
+$Tests = @(
+    $Contract |
+        ForEach-Object {
+            [pscustomobject]@{
+                test_id = [string]$_.test_id
+                question = [string]$_.question
+                expected_query_class = (
+                    [string]$_.expected_query_class
+                ).Trim().ToLowerInvariant()
+
+                expected_domains_json = `
+                    [string]$_.expected_domains_json
+            }
+        }
+)
+
+$Payload = $Tests |
+    ConvertTo-Json `
+        -Depth 6 `
+        -Compress
+
+
+# ============================================================
+# Current post-A1b plan generator
+# ============================================================
+
+$PythonCode = @'
+import json
+import sys
+
+from app.orchestrator.understanding import understand_query
+from app.orchestrator.complexity import assess_research_requirement
+from app.orchestrator.planner import build_execution_plan
+
+
+def enum_value(value):
+    if value is None:
+        return None
+
+    candidate = getattr(value, "value", None)
+
+    if candidate is not None:
+        return str(candidate)
+
+    return str(value)
+
+
+def entity_payload(entities):
+    result = {}
+
+    for key, item in sorted(
+        (entities or {}).items(),
+        key=lambda pair: str(pair[0]),
+    ):
+        result[str(key)] = {
+            "value": getattr(item, "value", None),
+            "source": getattr(item, "source", None),
+        }
+
+    return result
+
+
+tests = json.load(sys.stdin)
+
+results = []
+
+for test in tests:
+    plan = understand_query(test["question"])
+    plan = assess_research_requirement(plan)
+    plan = build_execution_plan(plan)
+
+    results.append(
+        {
+            "test_id": test["test_id"],
+            "question": test["question"],
+            "query_class": enum_value(
+                getattr(plan, "query_class", None)
+            ),
+            "primary_domain": enum_value(
+                plan.primary_domain
+            ),
+            "domains": [
+                enum_value(domain)
+                for domain in (plan.domains or [])
+            ],
+            "intent": plan.intent,
+            "entities": entity_payload(
+                plan.entities
+            ),
+            "clarification_required": bool(
+                plan.clarification_required
+            ),
+            "research_required": bool(
+                plan.research_required
+            ),
+            "execution_steps": [
+                {
+                    "domain": enum_value(step.domain),
+                    "action": step.action,
+                    "required": bool(step.required),
+                    "fallback_allowed": bool(
+                        step.fallback_allowed
+                    ),
+                }
+                for step in (
+                    plan.execution_steps or []
+                )
+            ],
+        }
+    )
+
+print(
+    json.dumps(
+        results,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+)
+'@
+
+$ContainerPython = `
+    "/data/promati_post_a1b_compare_v1.py"
+
+
+# ============================================================
+# Write temporary evaluator as container user
+# ============================================================
+
+docker exec `
+    ai-platform-api-1 `
+    sh `
+    -c `
+    "test -w /data"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "/data is niet writable."
+}
+
+$PythonCode |
+    docker exec `
+        -i `
+        ai-platform-api-1 `
+        sh `
+        -c `
+        "cat > $ContainerPython"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Container comparator schrijven mislukt."
+}
+
+
+try {
+
+    docker exec `
+        -e PYTHONPATH=/app `
+        -w /app `
+        ai-platform-api-1 `
+        python `
+        -m py_compile `
+        $ContainerPython
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Container comparator syntaxcheck mislukt."
+    }
+
+    Write-Host "POST_A1B_COMPARATOR_SYNTAX_OK" `
+        -ForegroundColor Green
+
+
+    $RawOutput = (
+        $Payload |
+            docker exec `
+                -e PYTHONPATH=/app `
+                -w /app `
+                -i `
+                ai-platform-api-1 `
+                python `
+                $ContainerPython
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Post-A1b plan generatie mislukt."
+    }
+}
+finally {
+
+    docker exec `
+        ai-platform-api-1 `
+        rm `
+        -f `
+        $ContainerPython `
+        2>$null |
+        Out-Null
+}
+
+
+$PostJsonText = (
+    @($RawOutput) -join [Environment]::NewLine
+).Trim()
+
+if ([string]::IsNullOrWhiteSpace($PostJsonText)) {
+    throw "Geen post-A1b JSON ontvangen."
+}
+
+
+# ============================================================
+# Explicit JSON array expansion
+# ============================================================
+
+$PostRaw = (
+    $PostJsonText |
+        ConvertFrom-Json
+)
+
+$Post = @(
+    $PostRaw |
+        ForEach-Object { $_ }
+)
+
+if ($Post.Count -ne 200) {
+    throw "Post-A1b bevat $($Post.Count) plannen; verwacht 200."
+}
+
+
+$PreRaw = (
+    Get-Content `
+        $PrePath `
+        -Raw |
+        ConvertFrom-Json
+)
+
+$Pre = @(
+    $PreRaw |
+        ForEach-Object { $_ }
+)
+
+if ($Pre.Count -ne 200) {
+    throw "Pre-A1b bevat $($Pre.Count) plannen; verwacht 200."
+}
+
+
+# ============================================================
+# Indexes
+# ============================================================
+
+$PreById = @{}
+$PostById = @{}
+$ContractById = @{}
+
+foreach ($Row in $Pre) {
+    $PreById[[string]$Row.test_id] = $Row
+}
+
+foreach ($Row in $Post) {
+    $PostById[[string]$Row.test_id] = $Row
+}
+
+foreach ($Row in $Contract) {
+    $ContractById[[string]$Row.test_id] = $Row
+}
+
+if (
+    $PreById.Count -ne 200 -or
+    $PostById.Count -ne 200 -or
+    $ContractById.Count -ne 200
+) {
+    throw "Dubbele of ontbrekende test IDs."
+}
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+function Convert-ToCanonicalJson {
+    param(
+        $Value
+    )
+
+    return (
+        $Value |
+            ConvertTo-Json `
+                -Compress `
+                -Depth 30
+    )
+}
+
+
+function Get-ExpectedDomains {
+    param(
+        [string]$Json
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Json)) {
+        return @()
+    }
+
+    return @(
+        $Json |
+            ConvertFrom-Json |
+            ForEach-Object {
+                ([string]$_).Trim().ToLowerInvariant()
+            }
+    )
+}
+
+
+function Get-ComparablePlan {
+    param(
+        $Plan
+    )
+
+    # Deliberately compare the agreed A1b invariant contract.
+    return [ordered]@{
+        primary_domain = $Plan.primary_domain
+
+        domains = @(
+            $Plan.domains
+        )
+
+        intent = $Plan.intent
+
+        entities = $Plan.entities
+
+        clarification_required = `
+            [bool]$Plan.clarification_required
+
+        research_required = `
+            [bool]$Plan.research_required
+
+        execution_steps = @(
+            $Plan.execution_steps |
+                ForEach-Object {
+                    [ordered]@{
+                        domain = $_.domain
+                        action = $_.action
+                        required = [bool]$_.required
+                        fallback_allowed = `
+                            [bool]$_.fallback_allowed
+                    }
+                }
+        )
+    }
+}
+
+
+# ============================================================
+# Classify target cohort from golden contract
+# ============================================================
+
+$TargetIds = @()
+$InvariantIds = @()
+
+$ConversationalIds = @()
+$UnknownIds = @()
+$PureSystemMetaIds = @()
+
+foreach ($Row in $Contract) {
+
+    $Id = [string]$Row.test_id
+
+    $Class = (
+        [string]$Row.expected_query_class
+    ).Trim().ToUpperInvariant()
+
+    $Domains = @(
+        Get-ExpectedDomains `
+            ([string]$Row.expected_domains_json)
+    )
+
+    $PureSystemMeta = (
+        $Class -eq "SYSTEM_META" -and
+        $Domains.Count -eq 1 -and
+        $Domains[0] -eq "none"
+    )
+
+
+    if ($Class -eq "CONVERSATIONAL") {
+
+        $TargetIds += $Id
+        $ConversationalIds += $Id
+    }
+    elseif ($Class -eq "UNKNOWN") {
+
+        $TargetIds += $Id
+        $UnknownIds += $Id
+    }
+    elseif ($PureSystemMeta) {
+
+        $TargetIds += $Id
+        $PureSystemMetaIds += $Id
+    }
+    else {
+
+        $InvariantIds += $Id
+    }
+}
+
+
+if ($TargetIds.Count -ne 20) {
+    throw "Target count=$($TargetIds.Count), verwacht 20."
+}
+
+if ($InvariantIds.Count -ne 180) {
+    throw "Invariant count=$($InvariantIds.Count), verwacht 180."
+}
+
+if ($ConversationalIds.Count -ne 7) {
+    throw "Conversational count is niet 7."
+}
+
+if ($UnknownIds.Count -ne 3) {
+    throw "Unknown count is niet 3."
+}
+
+if ($PureSystemMetaIds.Count -ne 10) {
+    throw "Pure SYSTEM_META count is niet 10."
+}
+
+
+# ============================================================
+# QueryClass 200/200
+# ============================================================
+
+$QueryClassFailures = @()
+
+foreach ($Row in $Contract) {
+
+    $Id = [string]$Row.test_id
+
+    $Expected = (
+        [string]$Row.expected_query_class
+    ).Trim().ToLowerInvariant()
+
+    $Actual = (
+        [string]$PostById[$Id].query_class
+    ).Trim().ToLowerInvariant()
+
+    if ($Expected -ne $Actual) {
+
+        $QueryClassFailures += [pscustomobject]@{
+            test_id = $Id
+            expected = $Expected
+            actual = $Actual
+            question = $Row.question
+        }
+    }
+}
+
+
+# ============================================================
+# 180 invariants
+# ============================================================
+
+$InvariantFailures = @()
+
+foreach ($Id in $InvariantIds) {
+
+    $PrePlan = Get-ComparablePlan `
+        $PreById[$Id]
+
+    $PostPlan = Get-ComparablePlan `
+        $PostById[$Id]
+
+    $PreJson = Convert-ToCanonicalJson `
+        $PrePlan
+
+    $PostJson = Convert-ToCanonicalJson `
+        $PostPlan
+
+    if ($PreJson -ne $PostJson) {
+
+        $InvariantFailures += [pscustomobject]@{
+            test_id = $Id
+
+            query_class = `
+                $PostById[$Id].query_class
+
+            pre_primary_domain = `
+                $PreById[$Id].primary_domain
+
+            post_primary_domain = `
+                $PostById[$Id].primary_domain
+
+            pre_intent = `
+                $PreById[$Id].intent
+
+            post_intent = `
+                $PostById[$Id].intent
+
+            question = `
+                $ContractById[$Id].question
+        }
+    }
+}
+
+
+# ============================================================
+# 20 target contracts
+# ============================================================
+
+$TargetFailures = @()
+
+foreach ($Id in $ConversationalIds) {
+
+    $P = $PostById[$Id]
+
+    $Ok = (
+        $null -eq $P.primary_domain -and
+        @($P.domains).Count -eq 0 -and
+        $P.intent -eq "none" -and
+        @(
+            $P.entities.PSObject.Properties
+        ).Count -eq 0 -and
+        -not [bool]$P.clarification_required -and
+        -not [bool]$P.research_required -and
+        @($P.execution_steps).Count -eq 0
+    )
+
+    if (-not $Ok) {
+        $TargetFailures += [pscustomobject]@{
+            test_id = $Id
+            cohort = "CONVERSATIONAL"
+            question = $ContractById[$Id].question
+        }
+    }
+}
+
+
+foreach ($Id in $UnknownIds) {
+
+    $P = $PostById[$Id]
+
+    $Ok = (
+        $null -eq $P.primary_domain -and
+        @($P.domains).Count -eq 0 -and
+        $P.intent -eq "unknown" -and
+        @(
+            $P.entities.PSObject.Properties
+        ).Count -eq 0 -and
+        [bool]$P.clarification_required -and
+        -not [bool]$P.research_required -and
+        @($P.execution_steps).Count -eq 0
+    )
+
+    if (-not $Ok) {
+        $TargetFailures += [pscustomobject]@{
+            test_id = $Id
+            cohort = "UNKNOWN"
+            question = $ContractById[$Id].question
+        }
+    }
+}
+
+
+foreach ($Id in $PureSystemMetaIds) {
+
+    $P = $PostById[$Id]
+
+    $Ok = (
+        $null -eq $P.primary_domain -and
+        @($P.domains).Count -eq 0 -and
+        $P.intent -eq "system_meta" -and
+        @(
+            $P.entities.PSObject.Properties
+        ).Count -eq 0 -and
+        -not [bool]$P.clarification_required -and
+        -not [bool]$P.research_required -and
+        @($P.execution_steps).Count -eq 0
+    )
+
+    if (-not $Ok) {
+        $TargetFailures += [pscustomobject]@{
+            test_id = $Id
+            cohort = "PURE_SYSTEM_META"
+            question = $ContractById[$Id].question
+        }
+    }
+}
+
+
+# ============================================================
+# Ensure all 20 actually differ from pre-A1b plan
+# ============================================================
+
+$TargetChanged = @()
+
+foreach ($Id in $TargetIds) {
+
+    $PrePlan = Get-ComparablePlan `
+        $PreById[$Id]
+
+    $PostPlan = Get-ComparablePlan `
+        $PostById[$Id]
+
+    if (
+        (Convert-ToCanonicalJson $PrePlan) -ne
+        (Convert-ToCanonicalJson $PostPlan)
+    ) {
+        $TargetChanged += $Id
+    }
+}
+
+
+# ============================================================
+# Persist post snapshot + summary
+# ============================================================
+
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$OutputDir = Join-Path `
+    "C:\ai-platform\artifacts\golden_testset_v1" `
+    "post_a1b_compare_$Stamp"
+
+New-Item `
+    -ItemType Directory `
+    -Path $OutputDir `
+    -Force |
+    Out-Null
+
+$PostPath = Join-Path `
+    $OutputDir `
+    "post_a1b_plan_snapshot.json"
+
+$SummaryPath = Join-Path `
+    $OutputDir `
+    "post_a1b_compare_summary.json"
+
+Set-Content `
+    -Path $PostPath `
+    -Value $PostJsonText `
+    -Encoding UTF8
+
+
+$Summary = [ordered]@{
+    total = 200
+
+    query_class_pass = `
+        200 - $QueryClassFailures.Count
+
+    target_count = $TargetIds.Count
+
+    target_changed = $TargetChanged.Count
+
+    target_contract_failures = `
+        $TargetFailures.Count
+
+    invariant_count = $InvariantIds.Count
+
+    invariant_failures = `
+        $InvariantFailures.Count
+
+    conversational_count = `
+        $ConversationalIds.Count
+
+    unknown_count = `
+        $UnknownIds.Count
+
+    pure_system_meta_count = `
+        $PureSystemMetaIds.Count
+
+    pre_snapshot = $PrePath
+
+    post_snapshot = $PostPath
+}
+
+$Summary |
+    ConvertTo-Json `
+        -Depth 10 |
+    Set-Content `
+        -Path $SummaryPath `
+        -Encoding UTF8
+
+
+# ============================================================
+# Report
+# ============================================================
+
+Write-Host ""
+Write-Host "=== POST-A1b ACCEPTANCE ===" `
+    -ForegroundColor Yellow
+
+Write-Host "TOTAL=200"
+
+Write-Host (
+    "QUERYCLASS_PASS={0}/200" -f `
+        (200 - $QueryClassFailures.Count)
+)
+
+Write-Host "TARGET_COUNT=$($TargetIds.Count)"
+Write-Host "TARGET_CHANGED=$($TargetChanged.Count)"
+Write-Host (
+    "TARGET_CONTRACT_FAILURES=" +
+    $TargetFailures.Count
+)
+
+Write-Host "INVARIANT_COUNT=$($InvariantIds.Count)"
+Write-Host (
+    "INVARIANT_FAILURES=" +
+    $InvariantFailures.Count
+)
+
+
+if ($QueryClassFailures.Count -gt 0) {
+
+    Write-Host ""
+    Write-Host "=== QUERYCLASS FAILURES ===" `
+        -ForegroundColor Red
+
+    $QueryClassFailures |
+        Format-Table `
+            -AutoSize `
+            -Wrap
+}
+
+
+if ($TargetFailures.Count -gt 0) {
+
+    Write-Host ""
+    Write-Host "=== TARGET CONTRACT FAILURES ===" `
+        -ForegroundColor Red
+
+    $TargetFailures |
+        Format-Table `
+            -AutoSize `
+            -Wrap
+}
+
+
+if ($InvariantFailures.Count -gt 0) {
+
+    Write-Host ""
+    Write-Host "=== INVARIANT FAILURES ===" `
+        -ForegroundColor Red
+
+    $InvariantFailures |
+        Format-Table `
+            -AutoSize `
+            -Wrap
+}
+
+
+Write-Host ""
+Write-Host "POST_SNAPSHOT=$PostPath"
+Write-Host "SUMMARY=$SummaryPath"
+
+
+# ============================================================
+# Hard acceptance gate
+# ============================================================
+
+if ($QueryClassFailures.Count -ne 0) {
+    throw "QueryClass is niet meer 200/200."
+}
+
+if ($TargetIds.Count -ne 20) {
+    throw "A1b target cohort is niet 20."
+}
+
+if ($TargetChanged.Count -ne 20) {
+    throw (
+        "Niet exact 20 targetplannen gewijzigd: " +
+        $TargetChanged.Count
+    )
+}
+
+if ($TargetFailures.Count -ne 0) {
+    throw (
+        "Target gatecontract failures=" +
+        $TargetFailures.Count
+    )
+}
+
+if ($InvariantIds.Count -ne 180) {
+    throw "A1b invariant cohort is niet 180."
+}
+
+if ($InvariantFailures.Count -ne 0) {
+    throw (
+        "Invariant regressions=" +
+        $InvariantFailures.Count
+    )
+}
+
+
+Write-Host ""
+Write-Host "QUERYCLASS_200_OF_200=TRUE"
+Write-Host "A1B_EXACT_TARGET_CHANGES=20"
+Write-Host "A1B_TARGET_CONTRACTS_OK=TRUE"
+Write-Host "A1B_INVARIANTS_UNCHANGED=180"
+Write-Host "NO_API_CALLS=TRUE"
+Write-Host "NO_SPECIALIST_CALLS=TRUE"
+Write-Host "NO_RESEARCH_PROVIDER_CALLS=TRUE"
+Write-Host "NO_DB_WRITES=TRUE"
+Write-Host "PHASE_A_A1B_POST_COMPARE_OK" `
+    -ForegroundColor Green

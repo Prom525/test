@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../config/app_config.dart';
+
 import 'mobile_plan_detail_page.dart';
 
 class MobilePlansPage extends StatefulWidget {
@@ -35,7 +37,7 @@ class _MobilePlansPageState extends State<MobilePlansPage> {
     final userId = userIdController.text.trim();
 
     final uri = Uri.parse(
-      'http://localhost:8000/planner/mobile-download/inspection-plans',
+      '${AppConfig.apiBaseUrl}/planner/mobile-download/inspection-plans',
     ).replace(queryParameters: {'assigned_user_id': userId, 'limit': '50'});
 
     final response = await http.get(uri).timeout(const Duration(seconds: 10));

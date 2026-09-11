@@ -1,0 +1,60 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Promati ChatDB API",
+    "version": "1.0.0",
+    "description": "Execute safe SQL (SELECT/WITH/CREATE VIEW) via /chatdb/sql with statement_timeout and max rows."
+  },
+  "servers": [
+    { "url": "https://uninveighing-nguyet-hilly.ngrok-free.dev" }
+  ],
+  "paths": {
+    "/chatdb/sql": {
+      "post": {
+        "operationId": "runSql",
+        "summary": "Run a safe SQL query",
+        "description": "Allowed: SELECT/WITH/INSERT/CREATE VIEW/TABLE (per server validator). Returns rows or {status:'ok'}.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json; charset=utf-8": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sql": { "type": "string", "description": "SQL string, e.g. SELECT ... (no trailing ;)" },
+                  "max_rows": { "type": "integer", "default": 500, "minimum": 1, "maximum": 5000 },
+                  "timeout_ms": { "type": "integer", "default": 6000, "minimum": 100, "maximum": 30000 }
+                },
+                "required": ["sql"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows or status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "properties": { "rows": { "type": "array", "items": { "type": "object" } } }, "required": ["rows"] },
+                    { "type": "object", "properties": { "status": { "type": "string" } }, "required": ["status"] }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or SQL error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  }
+}
