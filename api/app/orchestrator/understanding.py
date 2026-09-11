@@ -780,6 +780,23 @@ def detect_band_code(
 ) -> DetectedEntity | None:
     q = question or ""
 
+    natural_language_prefixes = {
+        "VAN",
+        "VOOR",
+        "MET",
+        "ZONDER",
+        "TOT",
+        "PER",
+        "BIJ",
+        "EN",
+        "AAN",
+        "OP",
+        "VIA",
+        "FOR",
+        "AND",
+        "THE",
+    }
+
     # Expliciet "band B12" heeft de hoogste zekerheid.
     match = re.search(
         r"\bband\s+([a-z]{1,3}[\s-]?\d{1,3})\b",
@@ -793,14 +810,24 @@ def detect_band_code(
             "",
             match.group(1),
         ).upper()
+        prefix_match = re.match(r"[A-Z]+", value)
+        prefix = prefix_match.group(0) if prefix_match else ""
+        has_separator = bool(re.search(r"[\s-]", match.group(1)))
 
-        return _entity(
-            name="band_code",
-            raw_value=match.group(1),
-            value=value,
-            confidence=0.96,
-            source="explicit_band_pattern",
-        )
+        # "band van 120 mm" beschrijft een dimensie en is geen
+        # expliciete bandcode. Pas dezelfde lexicale guard toe
+        # voordat het vroege explicit-band pad een entity teruggeeft.
+        if not (
+            has_separator
+            and prefix in natural_language_prefixes
+        ):
+            return _entity(
+                name="band_code",
+                raw_value=match.group(1),
+                value=value,
+                confidence=0.96,
+                source="explicit_band_pattern",
+            )
 
     # PROMATI_BANDCODE_VERSION_GUARD_V1
     #
@@ -882,43 +909,10 @@ def detect_band_code(
             re.search(r"[\s-]", raw)
         )
 
-        standalone_word_prefix_denylist = {
-            # Nederlands
-            "VAN",
-            "MET",
-            "TOT",
-            "PER",
-            "BIJ",
-            "EN",
-
-            # PROMATI_BANDCODE_FALSE_POSITIVE_GUARD_V4
-            #
-            # Natuurlijke voorzetsel + nummer-combinaties zijn
-            # geen transportbandcodes.
-            #
-            # Voorbeelden:
-            # - "aan 127" -> niet AAN127
-            # - "op 127"  -> niet OP127
-            # - "via 127" -> niet VIA127
-            #
-            # Alleen separatorvormen worden geraakt door de
-            # bestaande V2-logica. Compacte codes zoals OP127
-            # blijven geldig. Expliciet "band AAN127" wordt
-            # eerder al door explicit_band_pattern afgehandeld.
-            "AAN",
-            "OP",
-            "VIA",
-
-            # Engels
-            "FOR",
-            "AND",
-            "THE",
-        }
-
         if (
             has_separator
             and raw_prefix
-            in standalone_word_prefix_denylist
+            in natural_language_prefixes
         ):
             continue
 
