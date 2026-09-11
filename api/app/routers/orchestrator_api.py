@@ -5,6 +5,7 @@ from app.orchestrator.error_taxonomy import (
 )
 from app.orchestrator.models import OrchestratorAskRequest
 from app.orchestrator.run_logging import persist_orchestrator_run
+from app.orchestrator.response_shaping import shape_orchestrator_response
 from app.orchestrator.service import run_orchestrator
 
 
@@ -60,4 +61,7 @@ def orchestrator_ask(
         response,
     )
 
-    return response
+    return shape_orchestrator_response(
+        response,
+        payload.response_profile,
+    )
