@@ -1409,6 +1409,39 @@ def detect_diagnostics_domain(
     question: str,
 ) -> str:
     q = (question or "").casefold()
+    objects = detect_diagnostics_objects(q)
+
+    # CP6: concrete diagnostics objects are stronger evidence than loose domain
+    # words elsewhere in the question. Keep RFQ polarity protected by CP3.
+    if any(
+        marker in object_name
+        for object_name in objects
+        for marker in (
+            "vw_mes_lifecycle",
+            "inspection",
+            "inspectie",
+            "meshoogte",
+            "sb_inspection",
+        )
+    ):
+        return "inspections"
+
+    if any(
+        re.search(
+            r"(?:^|_)(?:org|organisatie|function|functie|user|gebruiker|vca)(?:_|$)|internal_help",
+            object_name,
+        )
+        for object_name in objects
+    ):
+        return "org"
+
+    rfq_is_negated = _is_explicitly_negated(q, NEGATED_RFQ_PATTERN)
+    if not rfq_is_negated and any(
+        marker in object_name
+        for object_name in objects
+        for marker in ("rfq", "offerte")
+    ):
+        return "rfq"
 
     if is_cross_source_diagnostics_query(q):
 
@@ -1494,13 +1527,24 @@ def detect_diagnostics_domain(
             "org diagnose",
             "organisatie-diagnose",
             "organisatie diagnose",
+            "organisatiekoppeling",
+            "organisatie koppeling",
+            "org-koppeling",
+            "org koppeling",
+            "vca-documentatie",
+            "vca documentatie",
         )
     )
 
-    if general_org_signal:
+    org_responsibility_context = (
+        any(term in q for term in ("verantwoordelijk", "verantwoordelijke"))
+        and any(term in q for term in ("vca", "organisatie", "org"))
+    )
+
+    if general_org_signal or org_responsibility_context:
         return "org"
 
-    if not _is_explicitly_negated(q, NEGATED_RFQ_PATTERN) and any(
+    if not rfq_is_negated and any(
         term in q
         for term in (
             "rfq",
