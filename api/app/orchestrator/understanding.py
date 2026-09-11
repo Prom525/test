@@ -185,6 +185,37 @@ INSPECTION_DOMAIN_TERMS = (
     "presteert slecht",
 )
 
+
+# CP3: explicit negative domain mentions are constraints, not routing signals.
+# Keep this deliberately lexical and bounded to the negated clause.
+NEGATED_DOMAIN_PATTERNS = {
+    Domain.PRODUCT: r"\b(?:product(?:advies|informatie|info|selectie)?|producten?|schraperselectie)\b",
+    Domain.INSPECTION: r"\b(?:inspectie(?:analyse|advies|rapport)?|inspecties?)\b",
+    Domain.TECHNICAL: r"\b(?:techniek|technisch(?:e)?|cema)\b",
+    Domain.ORG: r"\b(?:org|organisatie(?:analyse|advies)?)\b",
+}
+
+NEGATED_RFQ_PATTERN = r"\b(?:rfq(?:-?vraag)?|offerte(?:vraag)?)\b"
+
+
+def _is_explicitly_negated(question: str, pattern: str) -> bool:
+    """Recognize a domain inside a short Dutch negative constraint clause."""
+    q = (question or "").casefold()
+    for match in re.finditer(r"\b(?:geen|zonder|niet)\b", q):
+        clause = re.split(
+            r"[.;!?]|\b(?:maar|echter)\b",
+            q[match.end():],
+            maxsplit=1,
+        )[0]
+        if re.search(pattern, clause):
+            return True
+    return False
+
+
+def _domain_is_negated(question: str, domain: Domain) -> bool:
+    pattern = NEGATED_DOMAIN_PATTERNS.get(domain)
+    return bool(pattern and _is_explicitly_negated(question, pattern))
+
 BAND_CONTEXT_INSPECTION_TERMS = (
     "hoe staat",
     "ervoor",
@@ -263,6 +294,7 @@ def detect_requested_information(
     """
     q = (question or "").casefold()
     requested: list[str] = []
+    product_negated = _domain_is_negated(q, Domain.PRODUCT)
 
     def add(name: str) -> None:
         if name not in requested:
@@ -422,13 +454,15 @@ def detect_requested_information(
         has_theory = any(term in q for term in cross_domain_theory_terms)
         has_article = any(term in q for term in cross_domain_article_terms)
         # PROMATI_P4_15D_CROSS_DOMAIN_TRIGGER_REPAIR_V1
-        has_product = (
+        has_product = not product_negated and (
             any(term in q for term in cross_domain_product_terms)
             or "schraper" in q
             or "bandschraper" in q
             or "scraper" in q
         )
-        has_selection = any(term in q for term in cross_domain_selection_terms)
+        has_selection = not product_negated and any(
+            term in q for term in cross_domain_selection_terms
+        )
         has_performance = (
             any(term in q for term in cross_domain_performance_terms)
             or ("slijt" in q and "snel" in q)
@@ -1471,7 +1505,7 @@ def detect_diagnostics_domain(
     if general_org_signal:
         return "org"
 
-    if any(
+    if not _is_explicitly_negated(q, NEGATED_RFQ_PATTERN) and any(
         term in q
         for term in (
             "rfq",
@@ -1498,6 +1532,7 @@ def detect_diagnostics_domain(
             "scraper",
             "meshoogte",
             "inspection_key",
+            "vw_mes_lifecycle",
             "position",
             "positie",
         )
@@ -1703,16 +1738,21 @@ def _score_domain(
     technical_score = 0.0
     org_score = 0.0
 
-    if family:
+    product_negated = _domain_is_negated(q, Domain.PRODUCT)
+    inspection_negated = _domain_is_negated(q, Domain.INSPECTION)
+    technical_negated = _domain_is_negated(q, Domain.TECHNICAL)
+    org_negated = _domain_is_negated(q, Domain.ORG)
+
+    if family and not product_negated:
         product_score += 0.75
 
-    if any(term in q for term in PRODUCT_DOMAIN_TERMS):
+    if not product_negated and any(term in q for term in PRODUCT_DOMAIN_TERMS):
         product_score += 0.20
 
-    if any(term in q for term in INSPECTION_DOMAIN_TERMS):
+    if not inspection_negated and any(term in q for term in INSPECTION_DOMAIN_TERMS):
         inspection_score += 0.65
 
-    if band:
+    if band and not inspection_negated:
         inspection_score += 0.20
 
         # Een expliciete formulering "band <code>" is een sterke
@@ -1747,12 +1787,12 @@ def _score_domain(
         ):
             inspection_score += 0.45
 
-    if line:
+    if line and not inspection_negated:
         inspection_score += 0.15
 
     # Alleen een door PROMATI-data bevestigde scope telt mee.
     # Scope alleen is bewust onvoldoende om alles naar inspection te sturen.
-    if scope:
+    if scope and not inspection_negated:
         inspection_score += 0.25
 
         if any(
@@ -1784,7 +1824,7 @@ def _score_domain(
     # Conservatieve technische routering.
     # Alleen duidelijke technische termen zijn hier voldoende.
     # Productnamen blijven via de bestaande productrouter lopen.
-    if any(
+    if not technical_negated and any(
         term in q
         for term in (
             "cema",
@@ -1827,7 +1867,7 @@ def _score_domain(
         "documentverantwoordelijkheden",
     )
 
-    if any(
+    if not org_negated and any(
         term in q
         for term in org_role_terms
     ):
@@ -1843,7 +1883,7 @@ def _score_domain(
     #
     # Daarom alleen ORG-score toevoegen wanneer geen duidelijke
     # product- of technische context aanwezig is.
-    if "functie" in q:
+    if "functie" in q and not org_negated:
         product_or_technical_terms = (
             "bandschraper",
             "schraper",
@@ -1868,7 +1908,8 @@ def _score_domain(
     # Locatietermen alleen zijn niet genoeg: de vraag moet
     # expliciet over Promati gaan.
     if (
-        "promati" in q
+        not org_negated
+        and "promati" in q
         and any(
             term in q
             for term in (
