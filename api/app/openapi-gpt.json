@@ -70,13 +70,14 @@
                   "properties": {
                     "status": {"type": "string"},
                     "answer": {"type": "string", "maxLength": 8024},
+                    "trace_id": {"type": "string", "format": "uuid", "description": "Compacte correlatie-id voor de server-side runlog."},
                     "response_profile": {"type": "string", "enum": ["compact"]},
                     "domains": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
                     "tasks": {"type": "array", "maxItems": 12, "items": {"type": "object"}},
                     "coverage": {"type": "object"},
                     "clarification": {}
                   },
-                  "required": ["status", "answer", "response_profile", "domains", "tasks", "coverage"]
+                  "required": ["status", "answer", "trace_id", "response_profile", "domains", "tasks", "coverage"]
                 }
               }
             }

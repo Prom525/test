@@ -199,6 +199,16 @@ def test_record_contains_no_raw_content():
     )
 
 
+def test_record_reuses_response_trace_id_as_run_id():
+
+    response = _response()
+    response["trace_id"] = "725511dd-0db0-48db-b493-3b526b1cc518"
+
+    record = run_logging.build_orchestrator_run_record(response)
+
+    assert record["run_id"] == response["trace_id"]
+
+
 def test_persistence_is_fail_open():
 
     with patch.object(
@@ -272,7 +282,7 @@ def test_router_schedules_background_logging():
         result = (
             orchestrator_api
             .orchestrator_ask(
-                SimpleNamespace(),
+                SimpleNamespace(response_profile="debug"),
                 background_tasks,
             )
         )

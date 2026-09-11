@@ -294,8 +294,15 @@ def build_orchestrator_run_record(
 
     record = {
         "run_id":
-            str(
-                uuid4()
+            (
+                _safe_text(
+                    response.get(
+                        "trace_id"
+                    )
+                )
+                or str(
+                    uuid4()
+                )
             ),
 
         "run_log_contract_version":

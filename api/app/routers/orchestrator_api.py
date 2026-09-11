@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, BackgroundTasks
 
 from app.orchestrator.error_taxonomy import (
@@ -39,6 +41,8 @@ def orchestrator_ask(
     - de exception wordt daarna opnieuw opgegooid zodat
       bestaand HTTP-gedrag behouden blijft.
     """
+    trace_id = str(uuid4())
+
     try:
 
         response = run_orchestrator(
@@ -47,14 +51,19 @@ def orchestrator_ask(
 
     except Exception as exc:
 
+        exception_response = build_exception_run_response(
+            exc
+        )
+        exception_response["trace_id"] = trace_id
+
         persist_orchestrator_run(
-            build_exception_run_response(
-                exc
-            )
+            exception_response
         )
 
         raise
 
+
+    response["trace_id"] = trace_id
 
     background_tasks.add_task(
         persist_orchestrator_run,
