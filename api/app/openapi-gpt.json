@@ -45,6 +45,12 @@
                   "include_trace": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "response_profile": {
+                    "type": "string",
+                    "enum": ["compact", "debug"],
+                    "default": "compact",
+                    "description": "Compact is de begrensde GPT/Action-response; debug is alleen voor expliciete diagnose."
                   }
                 },
                 "required": [
@@ -56,7 +62,24 @@
         },
         "responses": {
           "200": {
-            "description": "Succesvol PROMATI orchestrator-antwoord"
+            "description": "Succesvol compact PROMATI orchestrator-antwoord",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string"},
+                    "answer": {"type": "string", "maxLength": 8024},
+                    "response_profile": {"type": "string", "enum": ["compact"]},
+                    "domains": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+                    "tasks": {"type": "array", "maxItems": 12, "items": {"type": "object"}},
+                    "coverage": {"type": "object"},
+                    "clarification": {}
+                  },
+                  "required": ["status", "answer", "response_profile", "domains", "tasks", "coverage"]
+                }
+              }
+            }
           },
           "422": {
             "description": "Ongeldige request"

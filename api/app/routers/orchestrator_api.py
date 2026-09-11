@@ -3,7 +3,7 @@ from fastapi import APIRouter, BackgroundTasks
 from app.orchestrator.error_taxonomy import (
     build_exception_run_response,
 )
-from app.orchestrator.models import OrchestratorAskRequest
+from app.orchestrator.models_cp1 import OrchestratorAskRequest
 from app.orchestrator.run_logging import persist_orchestrator_run
 from app.orchestrator.response_shaping import shape_orchestrator_response
 from app.orchestrator.service import run_orchestrator
