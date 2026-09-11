@@ -65,7 +65,7 @@ class SpecialistRegistryV1Tests(unittest.TestCase):
             contract.research_fields,
         )
 
-    def test_rfq_planner_intent_remains_unresolved(self):
+    def test_rfq_direct_planner_contract(self):
         contract = get_specialist_contract(
             "rfq_assistant"
         )
@@ -74,12 +74,15 @@ class SpecialistRegistryV1Tests(unittest.TestCase):
 
         self.assertEqual(
             contract.direct_planner,
-            "NO_UNRESOLVED_INTENT",
+            "YES",
         )
 
         self.assertEqual(
             contract.planner_fields,
-            (),
+            (
+                "vraag",
+                "mode",
+            ),
         )
 
     def test_fallback_policy_is_not_invented(self):

@@ -193,6 +193,7 @@ NEGATED_DOMAIN_PATTERNS = {
     Domain.INSPECTION: r"\b(?:inspectie(?:analyse|advies|rapport)?|inspecties?)\b",
     Domain.TECHNICAL: r"\b(?:techniek|technisch(?:e)?|cema)\b",
     Domain.ORG: r"\b(?:org|organisatie(?:analyse|advies)?)\b",
+    Domain.RFQ: r"\b(?:rfq(?:-?vraag)?|offerte(?:vraag)?)\b",
 }
 
 NEGATED_RFQ_PATTERN = r"\b(?:rfq(?:-?vraag)?|offerte(?:vraag)?)\b"
@@ -1724,17 +1725,19 @@ def _score_domain(
     band: DetectedEntity | None,
     line: DetectedEntity | None,
     scope: DetectedEntity | None,
-) -> tuple[float, float, float, float]:
+) -> tuple[float, float, float, float, float]:
     q = question or ""
 
     product_score = 0.0
     inspection_score = 0.0
     technical_score = 0.0
+    rfq_score = 0.0
     org_score = 0.0
 
     product_negated = _domain_is_negated(q, Domain.PRODUCT)
     inspection_negated = _domain_is_negated(q, Domain.INSPECTION)
     technical_negated = _domain_is_negated(q, Domain.TECHNICAL)
+    rfq_negated = _domain_is_negated(q, Domain.RFQ)
     org_negated = _domain_is_negated(q, Domain.ORG)
 
     if family and not product_negated:
@@ -1833,9 +1836,57 @@ def _score_domain(
             "transportbandberekeningen",
             "transportband formule",
             "formule voor transportband",
+            "technische punten",
         )
     ):
         technical_score += 0.75
+
+    # CP5: RFQ is a first-class business domain. Explicit RFQ/offerte
+    # terminology is sufficient; readiness and data-quality terminology is
+    # deliberately bounded to RFQ context to avoid hijacking generic status
+    # or diagnostics questions.
+    if not rfq_negated:
+        has_explicit_rfq = any(
+            term in q
+            for term in (
+                "rfq",
+                "offerte",
+                "offertevraag",
+                "offerte vraag",
+                "offerte-aanvraag",
+                "offerteaanvraag",
+                "request for quotation",
+            )
+        )
+        if has_explicit_rfq:
+            rfq_score += 0.85
+
+        # Readiness is an established RFQ-specialist mode and can therefore
+        # route without repeating the acronym in the same question.
+        if any(
+            term in q
+            for term in (
+                "readiness",
+                "rfq-ready",
+                "rfq ready",
+            )
+        ):
+            rfq_score += 0.65
+
+        if has_explicit_rfq and any(
+            term in q
+            for term in (
+                "readiness",
+                "ready",
+                "datakwaliteit",
+                "data kwaliteit",
+                "status",
+                "bestaande",
+                "record",
+                "records",
+            )
+        ):
+            rfq_score += 0.15
 
     # Conservatieve organisatie-routering.
     # PROMATI_ORG_ROLE_ROUTING_V2
@@ -1923,6 +1974,7 @@ def _score_domain(
         min(product_score, 1.0),
         min(inspection_score, 1.0),
         min(technical_score, 1.0),
+        min(rfq_score, 1.0),
         min(org_score, 1.0),
     )
 
@@ -2043,6 +2095,25 @@ def detect_intent(
 
     if primary_domain == Domain.TECHNICAL:
         return "technical_lookup"
+
+    if primary_domain == Domain.RFQ:
+        if any(
+            term in q
+            for term in (
+                "readiness",
+                "ready",
+                "datakwaliteit",
+                "data kwaliteit",
+                "vrijgeven",
+                "klaar",
+            )
+        ):
+            return "rfq_readiness"
+
+        if "status" in q:
+            return "rfq_status"
+
+        return "rfq_lookup"
 
     if primary_domain == Domain.DIAGNOSTICS:
         return (
@@ -3097,6 +3168,7 @@ def understand_query(
         product_score,
         inspection_score,
         technical_score,
+        rfq_score,
         org_score,
     ) = _score_domain(
         normalized,
@@ -3134,6 +3206,7 @@ def understand_query(
         (Domain.PRODUCT, product_score),
         (Domain.INSPECTION, inspection_score),
         (Domain.TECHNICAL, technical_score),
+        (Domain.RFQ, rfq_score),
         (Domain.ORG, org_score),
         (Domain.DIAGNOSTICS, diagnostics_score),
     ]
@@ -3158,6 +3231,7 @@ def understand_query(
         product_score,
         inspection_score,
         technical_score,
+        rfq_score,
         org_score,
         diagnostics_score,
     )

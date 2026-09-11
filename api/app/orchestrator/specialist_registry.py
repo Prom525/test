@@ -153,7 +153,10 @@ SPECIALIST_CONTRACTS: dict[str, SpecialistContract] = {
             "mode",
             "limit",
         ),
-        planner_fields=(),
+        planner_fields=(
+            "vraag",
+            "mode",
+        ),
         research_fields=(
             "vraag",
             "rfq_id",
@@ -165,8 +168,8 @@ SPECIALIST_CONTRACTS: dict[str, SpecialistContract] = {
             "mode",
             "limit",
         ),
-        direct_planner="NO_UNRESOLVED_INTENT",
-        legacy_fallback_allowed=None,
+        direct_planner="YES",
+        legacy_fallback_allowed=True,
         fallback_policy=FallbackPolicy.UNRESOLVED,
         status_contract_state="STATIC_PARTIAL_ERROR_ONLY",
         status_map={

@@ -256,6 +256,23 @@ def _build_org_step(
     )
 
 
+def _build_rfq_step(
+    plan: QueryPlan,
+    step_no: int,
+) -> ExecutionStep:
+    return ExecutionStep(
+        step_id=f"step_{step_no}_rfq",
+        domain=Domain.RFQ,
+        action="rfq_assistant",
+        params={
+            "vraag": plan.original_question,
+            "mode": "auto",
+        },
+        required=True,
+        fallback_allowed=True,
+    )
+
+
 
 # PROMATI_DIAGNOSTICS_PLANNER_V1
 def _build_diagnostics_step(
@@ -413,6 +430,16 @@ def build_execution_plan(
         elif domain == Domain.TECHNICAL:
             plan.execution_steps.append(
                 _build_technical_step(
+                    plan,
+                    next_step_no,
+                )
+            )
+
+            next_step_no += 1
+
+        elif domain == Domain.RFQ:
+            plan.execution_steps.append(
+                _build_rfq_step(
                     plan,
                     next_step_no,
                 )
