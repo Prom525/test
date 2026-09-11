@@ -43,6 +43,24 @@ def _coverage(results: Any) -> dict[str, int]:
     }
 
 
+def _task_execution_shadow_summary(response: dict[str, Any]) -> dict[str, Any] | None:
+    shadow = response.get("task_execution_shadow")
+    if not isinstance(shadow, dict) or not isinstance(shadow.get("summary"), dict):
+        return None
+    summary = shadow["summary"]
+    return {
+        key: summary[key]
+        for key in (
+            "required_total",
+            "required_planned",
+            "required_executed",
+            "required_missing",
+            "missing_required_tasks",
+        )
+        if key in summary
+    }
+
+
 def compact_orchestrator_response(response: Any) -> Any:
     """Return the bounded, high-signal response used by public GPT Actions."""
     if not isinstance(response, dict):
@@ -62,6 +80,9 @@ def compact_orchestrator_response(response: Any) -> Any:
             compact[key] = response[key]
     if response.get("clarification"):
         compact["clarification"] = response["clarification"]
+    shadow_summary = _task_execution_shadow_summary(response)
+    if shadow_summary is not None:
+        compact["task_execution_shadow_summary"] = shadow_summary
     return compact
 
 

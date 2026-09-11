@@ -78,6 +78,7 @@ from app.orchestrator.task_planner import (
     build_task_execution_plans_shadow,
     compare_task_execution_plans_shadow,
 )
+from app.orchestrator.task_execution_shadow import build_task_execution_shadow
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -7440,6 +7441,13 @@ def run_orchestrator(
         ),
     )
 
+    # CP8 observer only: never feeds planning, execution or answer selection.
+    task_execution_shadow = None
+    try:
+        task_execution_shadow = build_task_execution_shadow(plan, trace)
+    except Exception:
+        task_execution_shadow = None
+
     attempts = _observability_get(
         trace,
         "attempts",
@@ -8489,6 +8497,9 @@ def run_orchestrator(
             "results": public_results,
             "evidence_pipeline": (
                 public_evidence_pipeline
+            ),
+            "task_execution_shadow": (
+                task_execution_shadow
             ),
         }
 
