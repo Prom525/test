@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -84,10 +84,17 @@ class IntentTask(BaseModel):
 
     primary: bool = False
 
+    # CP7 additive task-coverage metadata. Requested tasks remain the only
+    # executable/shadow-plannable tasks; explicit exclusions live on QueryPlan.
+    required: bool = True
+    polarity: Literal["requested", "excluded"] = "requested"
+
     # PROMATI_MULTI_INTENT_TASK_EVIDENCE_REQUIREMENT_SHADOW_V3
     # Additive metadata only. Runtime Phase C still resolves and executes the
     # legacy QueryPlan.intent requirement set until a later activation step.
     evidence_requirement_set_id: str | None = None
+    coverage_requirement: str | None = None
+    exclusion_reason: str | None = None
 
     source: str = "deterministic_domain_shadow_v1"
 
@@ -109,6 +116,12 @@ class QueryPlan(BaseModel):
 
     # Additive only: not consumed by planner/executor/evidence in V1.
     intent_tasks: list[IntentTask] = Field(
+        default_factory=list
+    )
+
+    # CP7 shadow-only polarity contract. These domains are constraints and are
+    # deliberately absent from intent_tasks and execution_steps.
+    excluded_domains: list[Domain] = Field(
         default_factory=list
     )
 

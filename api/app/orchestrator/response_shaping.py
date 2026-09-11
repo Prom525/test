@@ -17,7 +17,18 @@ def _compact_tasks(query_plan: Any) -> list[dict[str, Any]]:
     if not isinstance(query_plan, dict) or not isinstance(query_plan.get("intent_tasks"), list):
         return []
     return [
-        {key: task[key] for key in ("task_id", "domain", "intent", "primary") if key in task}
+        {
+            key: task[key]
+            for key in (
+                "task_id",
+                "domain",
+                "intent",
+                "primary",
+                "required",
+                "polarity",
+            )
+            if key in task
+        }
         for task in query_plan["intent_tasks"][:MAX_COMPACT_TASKS]
         if isinstance(task, dict)
     ]

@@ -4720,11 +4720,13 @@ def _attach_intent_task_evidence_requirements_shadow(plan: Any) -> Any:
             if task_intent
             else None
         )
-        task.evidence_requirement_set_id = (
+        requirement_set_id = (
             requirement_set.requirement_set_id
             if requirement_set is not None
             else None
         )
+        task.evidence_requirement_set_id = requirement_set_id
+        task.coverage_requirement = requirement_set_id
 
     return plan
 

@@ -12,6 +12,7 @@ from app.orchestrator.models import (
     ExecutionBlockerType,
 )
 from app.orchestrator.normalizer import normalize_question
+from app.orchestrator.evidence_requirement_catalog import get_requirement_set
 from app.services.scope_resolver import (
     get_scope_catalog,
     resolve_scope,
@@ -2558,6 +2559,12 @@ def build_intent_tasks_shadow(
         )
 
         if facet_specs is None:
+            requirement_set = get_requirement_set(task_intent)
+            requirement_set_id = (
+                requirement_set.requirement_set_id
+                if requirement_set is not None
+                else None
+            )
             task_index += 1
             tasks.append(
                 IntentTask(
@@ -2571,6 +2578,10 @@ def build_intent_tasks_shadow(
                     primary=(
                         domain == primary_domain
                     ),
+                    required=True,
+                    polarity="requested",
+                    evidence_requirement_set_id=requirement_set_id,
+                    coverage_requirement=requirement_set_id,
                 )
             )
             continue
@@ -2579,6 +2590,13 @@ def build_intent_tasks_shadow(
             facet_specs,
             start=1,
         ):
+            facet_intent = str(spec["intent"])
+            requirement_set = get_requirement_set(facet_intent)
+            requirement_set_id = (
+                requirement_set.requirement_set_id
+                if requirement_set is not None
+                else spec.get("requirement_set_id")
+            )
             task_index += 1
             tasks.append(
                 IntentTask(
@@ -2587,7 +2605,7 @@ def build_intent_tasks_shadow(
                         f"{spec['label']}"
                     ),
                     domain=spec.get("domain", domain),
-                    intent=str(spec["intent"]),
+                    intent=facet_intent,
                     requested_information=list(
                         spec["requested_information"]
                     ),
@@ -2596,6 +2614,10 @@ def build_intent_tasks_shadow(
                         domain == primary_domain
                         and facet_position == 1
                     ),
+                    required=True,
+                    polarity="requested",
+                    evidence_requirement_set_id=requirement_set_id,
+                    coverage_requirement=requirement_set_id,
                     source=(
                         "deterministic_same_domain_facet_shadow_v2"
                     ),
@@ -3615,6 +3637,11 @@ def understand_query(
         entities=entities,
         product_families=product_families,
     )
+    excluded_domains = [
+        domain
+        for domain in NEGATED_DOMAIN_PATTERNS
+        if _domain_is_negated(normalized, domain)
+    ]
 
     return QueryPlan(
         original_question=question,
@@ -3624,6 +3651,7 @@ def understand_query(
         domains=domains,
         intent=intent,
         intent_tasks=intent_tasks,
+        excluded_domains=excluded_domains,
         multi_intent=(len(intent_tasks) >= 2),
         entities=entities,
         product_families=product_families,

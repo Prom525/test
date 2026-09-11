@@ -789,6 +789,10 @@ INTENT_REQUIREMENT_ALIASES = MappingProxyType(
     {
         "org_lookup": "person_role_lookup",
 
+        # CP7 shadow task coverage metadata. Readiness uses the existing RFQ
+        # status/readiness evidence contract; this does not activate a gate.
+        "rfq_readiness": "rfq_status",
+
         # PROMATI_MULTI_PRODUCT_REQUIREMENT_ALIASES_P4_5B4
         # Product comparison/advantages still require the same
         # controlled PRODUCT_RECORD evidence as product_lookup.
