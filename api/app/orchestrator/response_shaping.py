@@ -4,16 +4,9 @@ import json
 from typing import Any
 
 from app.orchestrator.inspection_public_repair import compose_mv1_inspection_answer
+from app.orchestrator.task_concise_composer import compose_concise_public_answer
 
-MAX_COMPACT_ANSWER_CHARS = 8_000
 MAX_COMPACT_TASKS = 12
-
-
-def _compact_answer(value: Any) -> str:
-    answer = str(value or "")
-    if len(answer) <= MAX_COMPACT_ANSWER_CHARS:
-        return answer
-    return answer[:MAX_COMPACT_ANSWER_CHARS].rstrip() + "\n\n[antwoord ingekort]"
 
 
 def _repair_raw_mv1_inspection_answer(response: dict[str, Any]) -> str | None:
@@ -92,10 +85,15 @@ def compact_orchestrator_response(response: Any) -> Any:
         return response
     query_plan = response.get("query_plan")
     plan = query_plan if isinstance(query_plan, dict) else {}
-    public_answer = _repair_raw_mv1_inspection_answer(response) or response.get("answer")
+    repaired = _repair_raw_mv1_inspection_answer(response)
+    public_answer, _composer_status = compose_concise_public_answer(
+        repaired or response.get("answer"),
+        repaired,
+        response_profile="compact",
+    )
     compact: dict[str, Any] = {
         "status": response.get("status"),
-        "answer": _compact_answer(public_answer),
+        "answer": public_answer,
         "response_profile": "compact",
         "domains": list(plan.get("domains") or [])[:8],
         "tasks": _compact_tasks(plan),

@@ -89,6 +89,7 @@ from app.orchestrator.task_authority_gate import (
 from app.orchestrator.task_relevance_presenter import (
     present_relevant_task_answer,
 )
+from app.orchestrator.task_concise_composer import compose_concise_public_answer
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -8542,6 +8543,30 @@ def run_orchestrator(
         evidence_pipeline[
             "task_public_composition_authority_p4_6f"
         ] = task_public_composition_authority_p4_6f
+
+        # CP12: normalize and bound the selected public prose. The composer
+        # consumes CP10/CP11 status and cannot grant authority of its own.
+        answer, task_concise_composer_cp12 = compose_concise_public_answer(
+            answer,
+            legacy_answer_before_public_composition_canary,
+            response_profile=getattr(payload, "response_profile", "compact"),
+            task_coverage_gate_cp10=task_coverage_gate_cp10,
+            task_presenter_cp11=task_presenter_cp11,
+        )
+        evidence_pipeline["task_concise_composer_cp12"] = (
+            task_concise_composer_cp12
+        )
+        if task_concise_composer_cp12["public_answer_replaced"] is not True:
+            task_public_composition_authority_p4_6f.update({
+                "authoritative": False,
+                "public_answer_authority": False,
+                "public_answer_replaced": False,
+                "blocked": True,
+                "reason": task_concise_composer_cp12["reason"],
+            })
+            evidence_pipeline[
+                "task_public_composition_authority_p4_6f"
+            ] = task_public_composition_authority_p4_6f
 
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.
