@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+
+from app.orchestrator.inspection_public_repair import compose_mv1_inspection_answer
 
 MAX_COMPACT_ANSWER_CHARS = 8_000
 MAX_COMPACT_TASKS = 12
@@ -11,6 +14,28 @@ def _compact_answer(value: Any) -> str:
     if len(answer) <= MAX_COMPACT_ANSWER_CHARS:
         return answer
     return answer[:MAX_COMPACT_ANSWER_CHARS].rstrip() + "\n\n[antwoord ingekort]"
+
+
+def _repair_raw_mv1_inspection_answer(response: dict[str, Any]) -> str | None:
+    """Fail closed at the public boundary when MV1 evidence leaked into answer."""
+    answer = str(response.get("answer") or "")
+    if not any(
+        marker in answer
+        for marker in ("latest_blade_height:", "latest_position_measurement:")
+    ):
+        return None
+
+    try:
+        blob = json.dumps(response, ensure_ascii=False, default=str)
+        composed = compose_mv1_inspection_answer(answer + "\n" + blob)
+        if composed:
+            return composed
+    except Exception:
+        pass
+    return (
+        "De inspectiegegevens konden niet veilig tot een publiek antwoord worden "
+        "samengevat. Bekijk de debugrespons of probeer de vraag opnieuw."
+    )
 
 
 def _compact_tasks(query_plan: Any) -> list[dict[str, Any]]:
@@ -67,9 +92,10 @@ def compact_orchestrator_response(response: Any) -> Any:
         return response
     query_plan = response.get("query_plan")
     plan = query_plan if isinstance(query_plan, dict) else {}
+    public_answer = _repair_raw_mv1_inspection_answer(response) or response.get("answer")
     compact: dict[str, Any] = {
         "status": response.get("status"),
-        "answer": _compact_answer(response.get("answer")),
+        "answer": _compact_answer(public_answer),
         "response_profile": "compact",
         "domains": list(plan.get("domains") or [])[:8],
         "tasks": _compact_tasks(plan),

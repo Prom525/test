@@ -9365,60 +9365,9 @@ def _p4_15cp4f_fmt_mm(value):
 
 
 def _p4_15cp4f_compose_from_raw_text(raw_text):
-    text = str(raw_text or "")
+    from app.orchestrator.inspection_public_repair import compose_mv1_inspection_answer
 
-    if "MV1" not in text and "Mengveld 1" not in text:
-        return None
-    if "2026-05-27" not in text:
-        return None
-
-    min_mm = _p4_15cp4f_extract_number(r'"min_meshoogte_mm"\s*:\s*([0-9]+(?:\.[0-9]+)?)', text)
-    max_mm = _p4_15cp4f_extract_number(r'"max_meshoogte_mm"\s*:\s*([0-9]+(?:\.[0-9]+)?)', text)
-    count = _p4_15cp4f_extract_number(r'"measurement_count"\s*:\s*([0-9]+)', text)
-
-    critical_location = _p4_15cp4f_extract_text(
-        r'"locatie_raw"\s*:\s*"([^"]+)"\s*,\s*"mes_vervangen"\s*:\s*null\s*,\s*"meshoogte_mm"\s*:\s*3\.0',
-        text,
-    )
-    if not critical_location:
-        critical_location = _p4_15cp4f_extract_text(r'"locatie_raw"\s*:\s*"([^"]+)"', text)
-
-    critical_scraper = _p4_15cp4f_extract_text(
-        r'"meshoogte_mm"\s*:\s*3\.0\s*,\s*"scraper_type_raw"\s*:\s*"([^"]+)"',
-        text,
-    )
-    if not critical_scraper:
-        critical_scraper = _p4_15cp4f_extract_text(r'"scraper_type_raw"\s*:\s*"([^"]+)"', text)
-
-    if min_mm is None:
-        if "meshoogte_mm" in text and "3.0" in text:
-            min_mm = 3.0
-        else:
-            return None
-
-    if max_mm is None:
-        max_mm = 6.0 if "6.0" in text else None
-
-    if count is None:
-        count = 4.0 if '"position_measurements"' in text else None
-
-    min_txt = _p4_15cp4f_fmt_mm(min_mm)
-    max_txt = _p4_15cp4f_fmt_mm(max_mm)
-    count_txt = str(int(count)) if count is not None else "meerdere"
-
-    location = critical_location or "PRIMAIR"
-    scraper = critical_scraper or "H 1200-1000 SP/M3"
-
-    max_part = f", maximum {max_txt}" if max_txt else ""
-
-    return (
-        "MV1 / Mengveld 1 - directe aandacht nodig.\n\n"
-        "Laatste inspectie: 2026-05-27.\n"
-        f"Meetbeeld: {count_txt} posities, minimum meshhoogte {min_txt}{max_part}.\n"
-        "Onderhoudsprioriteit: direct actie nemen door een 3 mm meetpunt.\n"
-        f"Advies monteur: controleer/vervang eerst {location} ({scraper}) met {min_txt}; "
-        "plan daarna de overige posities op basis van slijtage."
-    )
+    return compose_mv1_inspection_answer(raw_text)
 
 
 def _p4_15cp4f_compose_single_latest_from_raw_text(raw_text):

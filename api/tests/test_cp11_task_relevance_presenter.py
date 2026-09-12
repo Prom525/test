@@ -166,6 +166,59 @@ def test_cp11_compact_omits_presenter_debug():
     assert "evidence_pipeline" not in compact
 
 
+def test_cp11_compact_repairs_raw_mv1_inspection_answer_at_public_boundary():
+    raw = (
+        'Inspection: MV1 / Mengveld 1 latest_blade_height: '
+        '{"document_date": "2026-05-27", "measurement_count": 4, '
+        '"min_meshoogte_mm": 3.0, "max_meshoogte_mm": 6.0, '
+        '"position_measurements": [{"locatie_raw": "PRIMAIR", '
+        '"mes_vervangen": null, "meshoogte_mm": 3.0, '
+        '"scraper_type_raw": "H 1200-1000 SP/M3"}]} '
+        'latest_position_measurement: {"status_3mm": "DIRECT_ACTIE_3MM_OVERDUE"}'
+    )
+    response = {
+        "status": "ok",
+        "answer": raw,
+        "query_plan": {"domains": ["inspection"], "intent_tasks": []},
+        "results": [],
+        "evidence_pipeline": {
+            "task_presenter_cp11": {"authoritative": True},
+        },
+    }
+
+    compact = compact_orchestrator_response(response)
+    answer = compact["answer"]
+
+    for expected in (
+        "2026-05-27",
+        "4 posities",
+        "3.0 mm",
+        "6.0 mm",
+        "directe aandacht",
+        "PRIMAIR",
+        "H 1200-1000 SP/M3",
+    ):
+        assert expected in answer
+    assert "latest_blade_height:" not in answer
+    assert "latest_position_measurement:" not in answer
+    assert len(answer.encode("utf-8")) < 2_000
+    assert "task_presenter_cp11" not in compact
+    assert response["answer"] == raw
+
+
+def test_cp11_compact_never_exposes_unparseable_raw_inspection_evidence():
+    compact = compact_orchestrator_response({
+        "status": "ok",
+        "answer": "latest_blade_height: {malformed machine evidence}",
+        "query_plan": {},
+        "results": [],
+    })
+
+    assert "latest_blade_height:" not in compact["answer"]
+    assert "malformed machine evidence" not in compact["answer"]
+    assert "niet veilig" in compact["answer"]
+
+
 if __name__ == "__main__":
     for name, value in sorted(globals().items()):
         if name.startswith("test_cp11_") and callable(value):
