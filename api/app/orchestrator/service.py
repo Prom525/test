@@ -86,6 +86,9 @@ from app.orchestrator.task_authority_gate import (
     guard_public_composition_canary,
     guard_task_coverage_authority,
 )
+from app.orchestrator.task_relevance_presenter import (
+    present_relevant_task_answer,
+)
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -8492,6 +8495,47 @@ def run_orchestrator(
             )
         )
         evidence_pipeline["task_coverage_gate_cp10"] = task_coverage_gate_cp10
+
+        # CP11: once CP10 permits authority, present only grounded units for
+        # required, requested tasks outside the explicit exclusion set.
+        try:
+            answer, task_presenter_cp11, task_public_composition_authority_p4_6f = (
+                present_relevant_task_answer(
+                    plan,
+                    legacy_answer_before_public_composition_canary,
+                    task_coverage_gate_cp10,
+                    evidence_pipeline.get(
+                        "task_grounded_synthesis_coverage_authority_p4_6e3"
+                    ),
+                    task_public_composition_authority_p4_6f,
+                )
+            )
+        except Exception:
+            answer = legacy_answer_before_public_composition_canary
+            task_presenter_cp11 = {
+                "contract_version": (
+                    "promati.orchestrator.task_relevance_presenter.cp11.v1"
+                ),
+                "evaluated": False,
+                "authoritative": False,
+                "public_answer_replaced": False,
+                "reason": "internal_error_fail_closed",
+            }
+            task_public_composition_authority_p4_6f = dict(
+                task_public_composition_authority_p4_6f or {}
+            )
+            task_public_composition_authority_p4_6f.update({
+                "authoritative": False,
+                "public_answer_authority": False,
+                "public_answer_replaced": False,
+                "blocked": True,
+                "reason": "presenter_internal_error",
+                "task_presenter_cp11": task_presenter_cp11,
+            })
+        evidence_pipeline["task_presenter_cp11"] = task_presenter_cp11
+        evidence_pipeline[
+            "task_public_composition_authority_p4_6f"
+        ] = task_public_composition_authority_p4_6f
 
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.
