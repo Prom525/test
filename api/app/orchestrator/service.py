@@ -79,6 +79,7 @@ from app.orchestrator.task_planner import (
     compare_task_execution_plans_shadow,
 )
 from app.orchestrator.task_execution_shadow import build_task_execution_shadow
+from app.orchestrator.task_planner_canary import build_task_planner_canary
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -7448,6 +7449,14 @@ def run_orchestrator(
     except Exception:
         task_execution_shadow = None
 
+    # CP9 task-driven planner canary: comparison only. The executor above still
+    # receives the unchanged legacy plan.execution_steps.
+    task_planner_canary = None
+    try:
+        task_planner_canary = build_task_planner_canary(plan)
+    except Exception:
+        task_planner_canary = None
+
     attempts = _observability_get(
         trace,
         "attempts",
@@ -8500,6 +8509,9 @@ def run_orchestrator(
             ),
             "task_execution_shadow": (
                 task_execution_shadow
+            ),
+            "task_planner_canary": (
+                task_planner_canary
             ),
         }
 
