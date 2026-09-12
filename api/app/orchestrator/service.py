@@ -80,6 +80,10 @@ from app.orchestrator.task_planner import (
 )
 from app.orchestrator.task_execution_shadow import build_task_execution_shadow
 from app.orchestrator.task_planner_canary import build_task_planner_canary
+from app.orchestrator.task_authority_gate import (
+    guard_public_composition_authority,
+    guard_public_composition_canary,
+)
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -8429,9 +8433,31 @@ def run_orchestrator(
             answer = answer_before_p4_6f_public_composition
             task_public_composition_authority_p4_6f = None
 
+        # CP9: public composition authority is conditional on CP8 proving that
+        # every required intent task was executed. A missing or unavailable
+        # shadow fails closed and restores the pre-authority answer.
+        (
+            answer,
+            task_public_composition_authority_p4_6f,
+            task_authority_gate_cp9,
+        ) = guard_public_composition_authority(
+            answer,
+            legacy_answer_before_public_composition_canary,
+            task_public_composition_authority_p4_6f,
+            task_execution_shadow,
+        )
+
+        evidence_pipeline["public_composition_canary_shadow"] = (
+            guard_public_composition_canary(
+                evidence_pipeline.get("public_composition_canary_shadow"),
+                task_authority_gate_cp9,
+            )
+        )
+
         evidence_pipeline[
             "task_public_composition_authority_p4_6f"
         ] = task_public_composition_authority_p4_6f
+        evidence_pipeline["task_authority_gate_cp9"] = task_authority_gate_cp9
 
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.
