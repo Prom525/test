@@ -81,8 +81,10 @@ from app.orchestrator.task_planner import (
 from app.orchestrator.task_execution_shadow import build_task_execution_shadow
 from app.orchestrator.task_planner_canary import build_task_planner_canary
 from app.orchestrator.task_authority_gate import (
+    build_task_coverage_gate_status,
     guard_public_composition_authority,
     guard_public_composition_canary,
+    guard_task_coverage_authority,
 )
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
@@ -8417,6 +8419,16 @@ def run_orchestrator(
     # the answer from the pre-existing presentation/public-canary path.
     answer_before_p4_6f_public_composition = answer
     task_public_composition_authority_p4_6f = None
+    task_coverage_gate_cp10 = build_task_coverage_gate_status(
+        task_execution_shadow,
+        (
+            evidence_pipeline.get(
+                "task_grounded_synthesis_coverage_authority_p4_6e3"
+            )
+            if isinstance(evidence_pipeline, dict)
+            else None
+        ),
+    )
     if isinstance(evidence_pipeline, dict):
         try:
             (
@@ -8459,6 +8471,28 @@ def run_orchestrator(
         ] = task_public_composition_authority_p4_6f
         evidence_pipeline["task_authority_gate_cp9"] = task_authority_gate_cp9
 
+        # CP10: authority additionally requires complete authoritative evidence
+        # coverage. This gate is a small, stable debug contract and also revokes
+        # the older public-composition canary when coverage is not sufficient.
+        answer, task_public_composition_authority_p4_6f = (
+            guard_task_coverage_authority(
+                answer,
+                legacy_answer_before_public_composition_canary,
+                task_public_composition_authority_p4_6f,
+                task_coverage_gate_cp10,
+            )
+        )
+        evidence_pipeline[
+            "task_public_composition_authority_p4_6f"
+        ] = task_public_composition_authority_p4_6f
+        evidence_pipeline["public_composition_canary_shadow"] = (
+            guard_public_composition_canary(
+                evidence_pipeline.get("public_composition_canary_shadow"),
+                task_coverage_gate_cp10,
+            )
+        )
+        evidence_pipeline["task_coverage_gate_cp10"] = task_coverage_gate_cp10
+
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.
     try:
@@ -8494,9 +8528,17 @@ def run_orchestrator(
         # geprojecteerd.
         # Debug/include_trace behoudt het volledige
         # Phase-C object voor regressie en audit.
+        debug_response = (
+            getattr(payload, "response_profile", None) == "debug"
+        )
+        if debug_response and not isinstance(evidence_pipeline, dict):
+            evidence_pipeline = {
+                "task_coverage_gate_cp10": task_coverage_gate_cp10,
+            }
+
         public_evidence_pipeline = (
             evidence_pipeline
-            if payload.include_trace
+            if payload.include_trace or debug_response
             else (
                 _compact_evidence_pipeline_for_public_response(
                     evidence_pipeline
