@@ -43,7 +43,10 @@ def _claim_text(claim: dict[str, Any]) -> str:
         payload.get("item_id") or payload.get("family_code")
     )
     if not body:
-        return raw
+        # Structured evidence without a human-readable summary is an internal
+        # evidence contract, not suitable public answer text. Treat the task as
+        # uncovered so the presenter fails closed to the legacy/golden answer.
+        return ""
     return f"{rendered_label}: {body}" if rendered_label else body
 
 
@@ -86,16 +89,41 @@ def present_relevant_task_answer(
         "excluded_domains": sorted(excluded_domains),
         "task_decisions": [],
         "reason": None,
+        "missing_required_tasks": [],
     }
 
     if gate.get("blocked") is True or gate.get("authoritative") is not True:
-        status["reason"] = "coverage_blocked"
+        gate_reason = _value(gate.get("reason")) or "coverage_blocked"
+        missing_required_tasks = [
+            _value(task_id)
+            for task_id in list(gate.get("missing_required_tasks") or [])
+            if _value(task_id)
+        ]
+        status["reason"] = gate_reason
+        status["missing_required_tasks"] = missing_required_tasks
+        for task in list(getattr(plan, "intent_tasks", None) or []):
+            task_id = _value(getattr(task, "task_id", None))
+            domain = _value(getattr(task, "domain", None))
+            polarity = _value(getattr(task, "polarity", "requested")) or "requested"
+            reason = (
+                "excluded_domain"
+                if domain in excluded_domains or polarity == "excluded"
+                else gate_reason
+            )
+            status["excluded_task_ids"].append(task_id)
+            status["task_decisions"].append({
+                "task_id": task_id,
+                "domain": domain,
+                "included": False,
+                "reason": reason,
+            })
         authority.update({
             "authoritative": False,
             "public_answer_authority": False,
             "public_answer_replaced": False,
             "blocked": True,
-            "reason": gate.get("reason") or "coverage_blocked",
+            "reason": gate_reason,
+            "missing_required_tasks": missing_required_tasks,
             "task_presenter_cp11": status,
         })
         return legacy_answer, status, authority

@@ -8422,6 +8422,12 @@ def run_orchestrator(
     # the answer from the pre-existing presentation/public-canary path.
     answer_before_p4_6f_public_composition = answer
     task_public_composition_authority_p4_6f = None
+    cp11_debug_response = getattr(payload, "response_profile", None) == "debug"
+    if cp11_debug_response and not isinstance(evidence_pipeline, dict):
+        # Diagnostics-only requests can legitimately have no Phase-C evidence
+        # pipeline. Give debug mode a container so CP9-CP11 still evaluate and
+        # expose their fail-closed status contracts.
+        evidence_pipeline = {}
     task_coverage_gate_cp10 = build_task_coverage_gate_status(
         task_execution_shadow,
         (
@@ -8572,9 +8578,7 @@ def run_orchestrator(
         # geprojecteerd.
         # Debug/include_trace behoudt het volledige
         # Phase-C object voor regressie en audit.
-        debug_response = (
-            getattr(payload, "response_profile", None) == "debug"
-        )
+        debug_response = cp11_debug_response
         if debug_response and not isinstance(evidence_pipeline, dict):
             evidence_pipeline = {
                 "task_coverage_gate_cp10": task_coverage_gate_cp10,

@@ -77,12 +77,68 @@ def test_cp11_cp10_blocked_preserves_legacy_and_revokes_authority():
         _plan([_task("task_org", Domain.ORG)]),
         "legacy", _gate(True, "missing_required_tasks"),
         {"units": [_unit("task_org", Domain.ORG, "org", "e-org")]},
-        {"authoritative": True, "public_answer_replaced": True},
+        None,
     )
 
     assert answer == "legacy"
-    assert status["reason"] == "coverage_blocked"
+    assert status["evaluated"] is True
+    assert status["authoritative"] is False
+    assert status["public_answer_replaced"] is False
+    assert status["reason"] == "missing_required_tasks"
+    assert status["missing_required_tasks"] == []
+    assert status["included_task_ids"] == []
+    assert status["task_decisions"] == [{
+        "task_id": "task_org", "domain": "org", "included": False,
+        "reason": "missing_required_tasks",
+    }]
     assert authority["reason"] == "missing_required_tasks"
+    assert authority["public_answer_replaced"] is False
+
+
+def test_cp11_blocked_propagates_missing_tasks_without_composition_authority():
+    gate = _gate(True, "missing_required_tasks")
+    gate["missing_required_tasks"] = ["task_2_org"]
+    answer, status, authority = present_relevant_task_answer(
+        _plan([_task("task_2_org", Domain.ORG)]),
+        "legacy diagnostics", gate, None, None,
+    )
+
+    assert answer == "legacy diagnostics"
+    assert status["reason"] == "missing_required_tasks"
+    assert status["missing_required_tasks"] == ["task_2_org"]
+    assert authority["task_presenter_cp11"] == status
+    assert authority["authoritative"] is False
+    assert authority["public_answer_replaced"] is False
+
+
+def test_cp11_structured_raw_evidence_fails_closed_to_legacy_answer():
+    raw = (
+        'latest_position_measurement: {"document_date": "2026-05-27", '
+        '"measurement_count": 4, "min_meshoogte_mm": 3.0, '
+        '"max_meshoogte_mm": 6.0, '
+        '"related_subject": "latest_blade_height:"}'
+    )
+    golden = (
+        "MV1 / Mengveld 1 - directe aandacht nodig.\n"
+        "Laatste inspectie: 2026-05-27.\n"
+        "Meetbeeld: 4 posities, minimum meshhoogte 3.0 mm, maximum 6.0 mm.\n"
+        "Onderhoudsprioriteit: direct actie nemen."
+    )
+    answer, status, authority = present_relevant_task_answer(
+        _plan([_task("task_inspection", Domain.INSPECTION)]),
+        golden, _gate(),
+        {"units": [_unit("task_inspection", Domain.INSPECTION, raw, "e-inspection")]},
+        None,
+    )
+
+    assert answer == golden
+    assert len(answer) < 1_200
+    for expected in ("2026-05-27", "4 posities", "3.0 mm", "6.0 mm"):
+        assert expected in answer
+    assert "latest_position_measurement:" not in answer
+    assert "latest_blade_height:" not in answer
+    assert status["authoritative"] is False
+    assert status["public_answer_replaced"] is False
     assert authority["public_answer_replaced"] is False
 
 
