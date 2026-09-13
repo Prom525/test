@@ -1,0 +1,41 @@
+{
+  "schema_version": "promati.orchestrator.pre-refactor-known-gaps.v1",
+  "privacy": "Only stable gap identifiers, synthetic behavior summaries and future contracts.",
+  "gaps": [
+    {
+      "id": "META_QUESTIONS_NOT_DEVELOPMENT_CLASS",
+      "current_observed": "Some development questions are BUSINESS/unknown; others are SYSTEM_META diagnostics.",
+      "desired_future": {"business_routing": false, "classification": "development_or_orchestrator_meta"},
+      "removal_condition": "Remove after all listed meta questions have an approved non-business classification and no business task."
+    },
+    {
+      "id": "GSL_3MM_FALSE_DE3",
+      "current_observed": {"false_band_candidate": "DE3", "threshold_entity": null, "clarification_required": true},
+      "desired_future": {"false_band_candidate": null, "threshold_mm": 3.0, "scope": "GSL"},
+      "removal_condition": "Remove after every documented threshold spelling grounds a threshold and never DE3."
+    },
+    {
+      "id": "MAINTENANCE_FALSE_DOMAIN_EXPANSION",
+      "current_observed": "Maintenance wording can produce PRODUCT or no domain; valid replacement wording produces inspection tasks.",
+      "desired_future": {"domains": ["inspection"], "forbidden_domains": ["product", "org"]},
+      "removal_condition": "Remove after the maintenance routing matrix produces only approved inspection tasks."
+    },
+    {
+      "id": "MAINTENANCE_CAPABILITY_CONTRACT",
+      "current_observed": {"implemented": false, "action": "analysis_assistant"},
+      "desired_future": {
+        "capability_id": "analysis.maintenance_positions.v1",
+        "action": "analysis_maintenance_positions",
+        "method": "GET",
+        "endpoint": "/analysis/maintenance/positions",
+        "result_path": "resultaat",
+        "public_projection": "maintenance_position_public_list_v1",
+        "threshold_rule": "at_or_below_requested_mm",
+        "max_rows": 20,
+        "public_detail_rows": true,
+        "cp10_cp11_cp12_must_preserve_detail_list": true
+      },
+      "removal_condition": "Remove after capability, execution, evidence projection and non-count-only public presentation tests pass."
+    }
+  ]
+}

@@ -63,3 +63,9 @@ The suite locks query classification, negation, dimensions and band scope, plann
 The GSL query currently becomes a clarification for an unresolved false `DE3` band candidate and executes no action. `api/tests/fixtures/gsl_3mm_known_gap.json` separately records the desired future `analysis_maintenance_positions` route to `GET /analysis/maintenance/positions` with public `resultaat` detail rows. This task does not implement that production change.
 
 Before using the suite as a refactor gate, compare the pre/post JSON reports. The acceptable delta is no new failures, with known gaps unchanged or intentionally closed. Existing explicit P4.14c red tests remain baseline failures and must not be mistaken for infrastructure failures.
+
+## Pre-refactor stage-split gate
+
+Before mechanically extracting any stage from `service.py`, run the Task 2B characterization modules for the facade wrapper chain, post-CP12 answer mutations, evidence-adapter wrapper chain, meta/maintenance routing and the existing maintenance endpoint. Future-only capability and projection contracts must remain machine-readable known gaps or strict xfails whose import occurs inside the test function. Treat any XPASS as a review-required contract change.
+
+Then run the canonical failure-set comparison both before and after the candidate change. The gate is green only when `comparison.new_failures` is empty, no XPASS is unexplained, and `git diff -- api/app` is empty for a tests-only characterization change.

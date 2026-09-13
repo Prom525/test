@@ -27,5 +27,10 @@
     "public_answer_detail_rows": true,
     "false_band_candidate": null,
     "authority_requirement": "CP9 through CP12 remain authoritative and non-widening"
-  }
+  },
+  "characterized_variants": [
+    "3 mm", "de 3 mm", "rond de 3mm", "drie millimeter", "op of onder 3 mm"
+  ],
+  "real_band_control": "A319 next to a threshold remains A319",
+  "removal_condition": "All variants ground a threshold without DE3 and route through the approved maintenance capability."
 }

@@ -1,0 +1,17 @@
+# Task 2B pre-refactor coverage matrix
+
+| Area | Tests | Current behavior locked | Refactor risk protected |
+| --- | --- | --- | --- |
+| 1. Exported facade and wrapper order | `test_service_wrapper_chain_characterization.py` | Four top-level definitions; export is definition four; CP4F -> CP4B -> CP3C -> core; each wrapper calls its predecessor once. | A mechanical move cannot silently rebind, omit or reorder a facade wrapper. |
+| 2. Post-CP12 answer mutation matrix | `test_post_cp12_answer_mutations.py` | Positive and negative guards for CP3C, CP4B, CP4F and compact boundary; debug remains the full response. | Post-authority compatibility behavior cannot move or disappear unnoticed. |
+| 3. CP3C | `test_cp3c_replaces_only_single_latest_sufficient_scope_overview` | Only sufficient single-intent latest-inspection scope-overview responses are replaced from accepted evidence; missing renderable evidence fails open; markers are conditional. | Prevents widening CP3C or fabricating an inspection answer. |
+| 4. CP4B | `test_cp4b_guard_matrix_alias_sync_and_cp3c_ownership` | Raw/long inspection+maintenance MV1 shape with priority and golden date is repaired; aliases stay synchronized; CP3C shape remains excluded. | Preserves the narrow multi-intent predicate and legacy aliases. |
+| 5. CP4F | `test_cp4f_raw_and_old_scope_paths_are_narrow_and_lazy_import` | Raw-text multi-intent and old single scope-overview paths depend on MV1/Mengveld 1/2026-05-27; nonmatching assets/dates are unchanged; composition is called only on-path. | Prevents eager coupling and accidental broad repair after extraction. |
+| 6. Compact response boundary | `test_compact_boundary_*` plus existing `test_baseline_contracts.py` and CP12 tests | Compact strips debug/service fields, may repair the answer, invokes the composer again without CP10/CP11 kwargs, preserves trace/schema and blocks raw markers; debug returns the original object. | Protects the actual HTTP-boundary contract while making its current authority gap visible. |
+| 7. Evidence-adapter wrapper chain | `test_evidence_adapter_chain_characterization.py` plus existing Phase-C adapter suites | Ten definitions, nine exact symbolic predecessor bindings, one call per wrapper, stable order/deduplication at the CP3 tail, and registered domain source shapes. Existing adapter suites remain the detailed product/inspection/lifecycle/maintenance/replacement/technical/ORG/RFQ/diagnostics goldens. | No late adapter or alias layer can vanish during a mechanical move. |
+
+Additional coverage from the supplied baseline document is in `test_meta_and_maintenance_routing_characterization.py`, `test_maintenance_endpoint_contract.py`, `gsl_3mm_known_gap.json`, and `pre_refactor_known_gaps.json`. It records current meta classification, all requested 3-mm spellings, the A319 control, false domain/task expansion, the networkless maintenance function contract, and future capability/projection/authority contracts without implementing them.
+
+## Task 3 gate decision
+
+The characterization gate permits only a small, behavior-free first extraction. Extract **observability helpers** first (including their pure metric/count/timing serialization support). Keep the core facade, `_build_user_answer`, CP9-CP12, CP3C/CP4B/CP4F, compact response shaping and the evidence-adapter chain in place for that first change. Run the failure-set comparison and wrapper/boundary tests immediately after the extraction.
