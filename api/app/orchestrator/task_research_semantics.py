@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import Any
 
@@ -19,6 +20,30 @@ def _decision_value(decision: Any, key: str, default: Any = None) -> Any:
     if isinstance(decision, dict):
         return decision.get(key, default)
     return getattr(decision, key, default)
+
+
+_EXPLICIT_RESEARCH_PATTERNS = (
+    re.compile(r"\bresearch\b", re.IGNORECASE),
+    re.compile(r"\bonderzoek\b", re.IGNORECASE),
+    re.compile(r"\bgrondig\s+analyseren\b", re.IGNORECASE),
+    re.compile(r"\bend[\s-]+to[\s-]+end\s+analyse\b", re.IGNORECASE),
+)
+
+
+def _has_explicit_research_request(plan: Any) -> bool:
+    complexity_reasons = {
+        _value(item)
+        for item in (getattr(plan, "complexity_reasons", None) or [])
+        if _value(item)
+    }
+    if "explicit_research_request" in complexity_reasons:
+        return True
+
+    question = " ".join(
+        str(getattr(plan, field, "") or "").strip()
+        for field in ("original_question", "normalized_question")
+    )
+    return any(pattern.search(question) for pattern in _EXPLICIT_RESEARCH_PATTERNS)
 
 
 def build_task_research_semantics(
@@ -56,12 +81,7 @@ def build_task_research_semantics(
         == "intent_task_research_decision_only"
     )
     clarification_required = bool(getattr(plan, "clarification_required", False))
-    complexity_reasons = {
-        _value(item)
-        for item in (getattr(plan, "complexity_reasons", None) or [])
-        if _value(item)
-    }
-    explicit_research_requested = "explicit_research_request" in complexity_reasons
+    explicit_research_requested = _has_explicit_research_request(plan)
     missing_required_tasks = sorted(
         str(item)
         for item in list((task_coverage_gate or {}).get("missing_required_tasks") or [])

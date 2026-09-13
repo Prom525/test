@@ -14,12 +14,14 @@ from app.orchestrator.task_research_semantics import (
 )
 
 
-def _plan(tasks, excluded=(), clarification=False):
+def _plan(tasks, excluded=(), clarification=False, question=""):
     return SimpleNamespace(
         intent_tasks=tasks,
         excluded_domains=list(excluded),
         clarification_required=clarification,
         complexity_reasons=[],
+        original_question=question,
+        normalized_question=question.casefold(),
     )
 
 
@@ -149,6 +151,47 @@ def test_cp13_explicit_research_request_remains_task_scoped_and_fail_closed():
     assert semantics["allowed_task_ids"] == []
     assert rows["task_product"]["reason"] == "missing_required_execution"
     assert rows["task_diagnostics"]["reason"] == "coverage_already_authoritative"
+
+
+def test_cp13_detects_explicit_research_in_question_without_classifier_reason():
+    product = _task("task_product", Domain.PRODUCT)
+    diagnostics = _task("task_diagnostics", Domain.DIAGNOSTICS)
+    plan = _plan(
+        [product, diagnostics],
+        question=(
+            "Voer met OpenAI/research een end-to-end analyse uit voor A319: "
+            "productfit, techniek en diagnostics."
+        ),
+    )
+    semantics = build_task_research_semantics(
+        plan,
+        _shadow((product, False), (diagnostics, True)),
+        None,
+    )
+
+    rows = {row["task_id"]: row for row in semantics["tasks"]}
+    assert plan.complexity_reasons == []
+    assert semantics["explicit_research_requested"] is True
+    assert semantics["research_intent_detected"] is True
+    assert semantics["legacy_generic_research_allowed"] is False
+    assert semantics["public_answer_authority"] is False
+    assert semantics["evidence_authority"] is False
+    assert semantics["synthesis_authority"] is False
+    assert semantics["allowed_task_ids"] == []
+    assert rows["task_product"]["reason"] == "missing_required_execution"
+    assert rows["task_diagnostics"]["reason"] == "research_decision_unavailable"
+
+
+def test_cp13_regular_question_has_no_explicit_research_signal():
+    technical = _task("task_technical", Domain.TECHNICAL)
+    semantics = build_task_research_semantics(
+        _plan([technical], question="Welke lagers horen bij installatie A319?"),
+        _shadow((technical, True)),
+        _authority((technical, False)),
+    )
+
+    assert semantics["explicit_research_requested"] is False
+    assert semantics["research_intent_detected"] is False
 
 
 def test_cp13_clarification_and_sufficient_coverage_block_research():
