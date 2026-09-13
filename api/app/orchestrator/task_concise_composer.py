@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from app.orchestrator.inspection_public_repair import compose_mv1_inspection_answer
+
 
 TASK_CONCISE_COMPOSER_CONTRACT_VERSION = (
     "promati.orchestrator.task_concise_composer.cp12.v1"
@@ -112,9 +114,18 @@ def compose_concise_public_answer(
         authoritative = False
         reason = str(gate.get("reason") or presenter.get("reason") or "authority_blocked")
     if composed is None:
-        composed = _safe_candidate(safe_fallback) or _SAFE_FAILURE
-        reason = "unsafe_or_oversized_answer_fell_back"
-        authoritative = False
+        # CP10/CP11 may have selected a grounded MV1 inspection answer whose
+        # raw evidence makes it too large for publication. Prefer the existing
+        # deterministic inspection repair over an unrelated legacy fallback,
+        # but only when authority was already granted upstream.
+        repaired = compose_mv1_inspection_answer(original) if authoritative else None
+        composed = _safe_candidate(repaired)
+        if composed is not None:
+            reason = "mv1_inspection_answer_repaired"
+        else:
+            composed = _safe_candidate(safe_fallback) or _SAFE_FAILURE
+            reason = "unsafe_or_oversized_answer_fell_back"
+            authoritative = False
 
     status = {
         "contract_version": TASK_CONCISE_COMPOSER_CONTRACT_VERSION,

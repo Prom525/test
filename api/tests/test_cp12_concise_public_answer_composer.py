@@ -41,6 +41,56 @@ def test_cp12_long_bullet_answer_falls_back_to_safe_answer():
     assert status["output_bytes"] < MAX_PUBLIC_ANSWER_BYTES
 
 
+def _oversized_mv1_inspection_source():
+    return (
+        'MV1 / Mengveld 1 Inspection: latest_blade_height: {'
+        '"document_date":"2026-05-27","measurement_count":4,'
+        '"min_meshoogte_mm":3.0,"max_meshoogte_mm":6.0,'
+        '"position_measurements":[{'
+        '"locatie_raw":"PRIMAIR","mes_vervangen":null,'
+        '"meshoogte_mm":3.0,"scraper_type_raw":"H 1200-1000 SP/M3"}]}'
+        + (" raw inspection evidence" * 400)
+    )
+
+
+def test_cp12_mv1_inspection_repair_precedes_wrong_safe_fallback():
+    gate, presenter = _allowed()
+    answer, status = compose_concise_public_answer(
+        _oversized_mv1_inspection_source(),
+        "Mengveld 1: 16 onderhoudsregels in de scope-ranglijst gevonden.",
+        task_coverage_gate_cp10=gate,
+        task_presenter_cp11=presenter,
+    )
+
+    for fragment in ("2026-05-27", "4 posities", "3.0 mm", "6.0 mm", "direct"):
+        assert fragment in answer
+    assert "16 onderhoudsregels" not in answer
+    assert "latest_blade_height:" not in answer
+    assert len(answer.encode("utf-8")) < 2_000
+    assert status["reason"] == "mv1_inspection_answer_repaired"
+    assert status["authoritative"] is True
+
+
+def test_cp12_mv1_repair_cannot_override_blocked_authority():
+    answer, status = compose_concise_public_answer(
+        _oversized_mv1_inspection_source(),
+        "Veilige fail-closed fallback.",
+        task_coverage_gate_cp10={
+            "blocked": True,
+            "authoritative": False,
+            "reason": "missing_required_tasks",
+        },
+        task_presenter_cp11={
+            "authoritative": False,
+            "public_answer_replaced": False,
+        },
+    )
+
+    assert answer == "Veilige fail-closed fallback."
+    assert status["authoritative"] is False
+    assert status["public_answer_replaced"] is False
+
+
 def test_cp12_blocked_cp10_cp11_stays_non_authoritative():
     answer, status = compose_concise_public_answer(
         "Veilige legacytekst.",
