@@ -1,0 +1,157 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "privacy": "Answers and request payloads are not logged.",
+  "passed": 10,
+  "failed": 0,
+  "cases": [
+    {
+      "case": "healthz",
+      "http": 200,
+      "contract": "pass",
+      "bytes": 15,
+      "reasons": []
+    },
+    {
+      "case": "openapi",
+      "http": 200,
+      "contract": "pass",
+      "bytes": 232459,
+      "reasons": []
+    },
+    {
+      "case": "mv1_latest_compact",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "inspection"
+      ],
+      "intents": [
+        "inspection_latest"
+      ],
+      "bytes": 745,
+      "duration_ms": 1895,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "maintenance_compact",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "inspection"
+      ],
+      "intents": [
+        "maintenance_priority",
+        "inspection_latest"
+      ],
+      "bytes": 811,
+      "duration_ms": 105,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "product_compact",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "product"
+      ],
+      "intents": [
+        "product_lookup"
+      ],
+      "bytes": 1194,
+      "duration_ms": 1187,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "product_technical",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "product",
+        "technical"
+      ],
+      "intents": [
+        "product_lookup",
+        "technical_lookup"
+      ],
+      "bytes": 1341,
+      "duration_ms": 1276,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "unknown_band",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "inspection"
+      ],
+      "intents": [
+        "inspection_latest"
+      ],
+      "bytes": 659,
+      "duration_ms": 2521,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "negation",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "product"
+      ],
+      "intents": [
+        "product_lookup"
+      ],
+      "bytes": 559,
+      "duration_ms": 281,
+      "reasons": [],
+      "data_dependent_warnings": []
+    },
+    {
+      "case": "gsl_3mm_characterization",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "inspection"
+      ],
+      "intents": [
+        "product_lookup"
+      ],
+      "bytes": 12238,
+      "duration_ms": 5,
+      "reasons": [],
+      "data_dependent_warnings": [
+        "known_gap:desired maintenance_positions capability is not implemented"
+      ]
+    },
+    {
+      "case": "cp9_cp15_debug",
+      "http": 200,
+      "contract": "pass",
+      "trace_id_present": true,
+      "domains": [
+        "product",
+        "technical"
+      ],
+      "intents": [
+        "product_lookup",
+        "technical_lookup"
+      ],
+      "bytes": 76320,
+      "duration_ms": 925,
+      "reasons": [],
+      "data_dependent_warnings": []
+    }
+  ]
+}

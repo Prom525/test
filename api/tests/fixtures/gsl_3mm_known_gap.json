@@ -1,0 +1,31 @@
+{
+  "schema_version": "promati.orchestrator.known-gap.v1",
+  "id": "GSL_AROUND_3MM_CAPABILITY_ROUTE",
+  "classification": "known_baseline_gap",
+  "question_fingerprint": "gsl-around-3mm-maintenance-list",
+  "current_observed": {
+    "query_class": "business",
+    "domains": [],
+    "excluded_domains": [],
+    "intent": "unknown",
+    "intent_tasks": [],
+    "action": null,
+    "endpoint": null,
+    "false_band_candidate": "DE3",
+    "clarification_required": true,
+    "public_answer_detail_rows": false,
+    "public_answer_count_only": false,
+    "cp9_cp12_authority": "not_evaluated_because_execution_is_blocked"
+  },
+  "desired_future": {
+    "implemented": false,
+    "domain": "inspection",
+    "intent": "maintenance_priority",
+    "action": "analysis_maintenance_positions",
+    "endpoint": "/analysis/maintenance/positions",
+    "result_path": "resultaat",
+    "public_answer_detail_rows": true,
+    "false_band_candidate": null,
+    "authority_requirement": "CP9 through CP12 remain authoritative and non-widening"
+  }
+}

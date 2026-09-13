@@ -1,0 +1,21 @@
+{
+  "schema_version": "promati.orchestrator.regression-run.v1",
+  "label": "targeted-final",
+  "timestamp_utc": "2026-09-13T11:12:27.545461+00:00",
+  "commit_sha": "57fe45e72a3b14149a9bd10dd5c0a655f6878486",
+  "command": "python api/scripts/run_orchestrator_regression.py --label targeted-final --output artifacts\\orchestrator-baseline\\targeted-final-57fe45e.json tests/orchestrator/test_baseline_contracts.py tests/orchestrator/test_regression_matrix_cp0_cp15.py tests/orchestrator/test_gsl_3mm_characterization.py",
+  "selection": [
+    "tests/orchestrator/test_baseline_contracts.py",
+    "tests/orchestrator/test_regression_matrix_cp0_cp15.py",
+    "tests/orchestrator/test_gsl_3mm_characterization.py"
+  ],
+  "result": {
+    "passed": 30,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "failure_names": []
+  },
+  "exit_code": 0,
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}
