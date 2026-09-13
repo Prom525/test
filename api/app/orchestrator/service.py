@@ -117,6 +117,7 @@ from app.orchestrator.serialization_stage import (
     _evidence_pipeline_to_dict,
     _model_to_dict,
 )
+from app.orchestrator.initial_planning_stage import run_initial_planning_stage
 
 
 
@@ -7019,31 +7020,18 @@ def run_orchestrator(
         else None
     )
 
-    plan = _observability_call(
-        timings,
-        "understanding",
-        understand_query,
-        question,
-        conversation_context=conversation_context,
-    )
-
     # PROMATI_ROUTING_SANITY_BEFORE_RESEARCH_P4_5B3
-    # Deterministic/local sanity gate. Geen nieuwe observability timing-key:
-    # promati.orchestrator.observability.v1 blijft backwards-compatible.
-    plan = apply_routing_sanity(plan)
-
-    plan = _observability_call(
+    # Dependencies are resolved here on every call to preserve service-level
+    # monkeypatch contracts. Routing sanity intentionally has no timing key.
+    plan = run_initial_planning_stage(
+        question,
+        conversation_context,
         timings,
-        "research_requirement",
-        assess_research_requirement,
-        plan,
-    )
-
-    plan = _observability_call(
-        timings,
-        "planning",
-        build_execution_plan,
-        plan,
+        observability_call=_observability_call,
+        understand_query=understand_query,
+        apply_routing_sanity=apply_routing_sanity,
+        assess_research_requirement=assess_research_requirement,
+        build_execution_plan=build_execution_plan,
     )
 
     # Shadow-only requirement resolution. No observability key is added and
