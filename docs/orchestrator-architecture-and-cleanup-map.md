@@ -2,6 +2,17 @@
 
 ## Besluit
 
+### Gerealiseerde pure serialisatiegrens (opdracht 3B)
+
+De pure JSON-serialisatiehelpers `_model_to_dict` en
+`_evidence_pipeline_to_dict` staan nu in `serialization_stage.py`.
+`service.py` importeert en bindt exact dezelfde function objects, zodat
+bestaande interne aanroepen en import-/monkeypatchcontracten behouden blijven.
+De compacte publieke projectiehelper
+`_compact_evidence_pipeline_for_public_response` blijft bewust in
+`service.py`: die bevat publiek projectiebeleid en is geen pure serialisatie.
+De nieuwe module is een leaf met uitsluitend minimale stdlib- en type-imports.
+
 ### Gerealiseerde eerste observabilitygrens (opdracht 3A)
 
 De pure primitive access/clamping, timing- en countmap-initialisatie en de twee
