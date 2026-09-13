@@ -7506,6 +7506,7 @@ def run_orchestrator(
     )
 
     evidence_pipeline = None
+    task_research_semantics_cp13 = None
 
     initial_evidence_items = ()
     research_execution = None
@@ -8478,6 +8479,39 @@ def run_orchestrator(
         ),
     )
     if isinstance(evidence_pipeline, dict):
+        # CP13 must also be visible for diagnostics/minimal debug flows that do
+        # not enter Phase-C. Re-evaluate from CP8/CP10 state without granting
+        # research, evidence, synthesis, or public-answer authority.
+        try:
+            task_research_semantics_cp13 = build_task_research_semantics(
+                plan,
+                task_execution_shadow,
+                evidence_pipeline.get("task_research_authority_p4_6d1"),
+                task_coverage_gate_cp10,
+            )
+        except Exception:
+            task_research_semantics_cp13 = {
+                "contract_version": (
+                    "promati.orchestrator.task_research_semantics.cp13.v1"
+                ),
+                "evaluated": False,
+                "authoritative": False,
+                "authority_scope": "intent_task_research_eligibility_only",
+                "public_answer_authority": False,
+                "evidence_authority": False,
+                "synthesis_authority": False,
+                "legacy_generic_research_allowed": False,
+                "explicit_research_requested": (
+                    "explicit_research_request"
+                    in set(getattr(plan, "complexity_reasons", None) or [])
+                ),
+                "allowed_task_ids": [],
+                "tasks": [],
+                "reason": "internal_error_fail_closed",
+            }
+        evidence_pipeline["task_research_semantics_cp13"] = (
+            task_research_semantics_cp13
+        )
         try:
             (
                 answer,

@@ -25,6 +25,7 @@ def build_task_research_semantics(
     plan: Any,
     task_execution_shadow: dict[str, Any] | None,
     task_research_authority: dict[str, Any] | None,
+    task_coverage_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Decide research eligibility per required intent task, fail closed.
 
@@ -55,6 +56,20 @@ def build_task_research_semantics(
         == "intent_task_research_decision_only"
     )
     clarification_required = bool(getattr(plan, "clarification_required", False))
+    complexity_reasons = {
+        _value(item)
+        for item in (getattr(plan, "complexity_reasons", None) or [])
+        if _value(item)
+    }
+    explicit_research_requested = "explicit_research_request" in complexity_reasons
+    missing_required_tasks = sorted(
+        str(item)
+        for item in list((task_coverage_gate or {}).get("missing_required_tasks") or [])
+        if str(item).strip()
+    )
+    coverage_gate_reason = (
+        str((task_coverage_gate or {}).get("reason") or "").strip() or None
+    )
 
     rows: list[dict[str, Any]] = []
     allowed_task_ids: list[str] = []
@@ -117,9 +132,14 @@ def build_task_research_semantics(
         "authority_scope": "intent_task_research_eligibility_only",
         "public_answer_authority": False,
         "evidence_authority": False,
+        "synthesis_authority": False,
         "research_results_require_coverage_authority_pipeline": True,
         "legacy_generic_research_allowed": False if tasks else None,
+        "explicit_research_requested": explicit_research_requested,
+        "research_intent_detected": explicit_research_requested,
         "clarification_required": clarification_required,
+        "task_coverage_gate_reason": coverage_gate_reason,
+        "missing_required_tasks": missing_required_tasks,
         "excluded_domains": sorted(excluded_domains),
         "excluded_domain_decisions": [
             {"domain": domain, "research_allowed": False, "reason": "excluded_domain"}

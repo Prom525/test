@@ -19,6 +19,7 @@ def _plan(tasks, excluded=(), clarification=False):
         intent_tasks=tasks,
         excluded_domains=list(excluded),
         clarification_required=clarification,
+        complexity_reasons=[],
     )
 
 
@@ -106,6 +107,48 @@ def test_cp13_missing_required_execution_cannot_be_repaired_by_research():
 
     assert semantics["tasks"][0]["reason"] == "missing_required_execution"
     assert semantics["tasks"][0]["research_allowed"] is False
+
+
+def test_cp13_diagnostics_gate_exposes_missing_required_execution():
+    org = _task("task_2_org", Domain.ORG)
+    semantics = build_task_research_semantics(
+        _plan([org]),
+        _shadow((org, False)),
+        None,
+        {
+            "blocked": True,
+            "reason": "missing_required_tasks",
+            "missing_required_tasks": ["task_2_org"],
+        },
+    )
+
+    assert semantics["task_coverage_gate_reason"] == "missing_required_tasks"
+    assert semantics["missing_required_tasks"] == ["task_2_org"]
+    assert semantics["allowed_task_ids"] == []
+    assert semantics["tasks"][0]["reason"] == "missing_required_execution"
+    assert semantics["public_answer_authority"] is False
+    assert semantics["evidence_authority"] is False
+    assert semantics["synthesis_authority"] is False
+
+
+def test_cp13_explicit_research_request_remains_task_scoped_and_fail_closed():
+    product = _task("task_product", Domain.PRODUCT)
+    diagnostics = _task("task_diagnostics", Domain.DIAGNOSTICS)
+    plan = _plan([product, diagnostics])
+    plan.complexity_reasons = ["explicit_research_request"]
+    semantics = build_task_research_semantics(
+        plan,
+        _shadow((product, False), (diagnostics, True)),
+        _authority((diagnostics, False)),
+    )
+
+    rows = {row["task_id"]: row for row in semantics["tasks"]}
+    assert semantics["explicit_research_requested"] is True
+    assert semantics["research_intent_detected"] is True
+    assert semantics["legacy_generic_research_allowed"] is False
+    assert semantics["allowed_task_ids"] == []
+    assert rows["task_product"]["reason"] == "missing_required_execution"
+    assert rows["task_diagnostics"]["reason"] == "coverage_already_authoritative"
 
 
 def test_cp13_clarification_and_sufficient_coverage_block_research():
