@@ -1,0 +1,142 @@
+{
+  "schema_version": "promati.orchestrator.cleanup-candidates.v1",
+  "source_commit": "f39ab8b27ad745e14bcc271eca749ee9b9e24676",
+  "privacy": "Static paths, sizes and source-shape findings only.",
+  "classifications": ["safe_to_remove_after_verification", "quarantine_then_remove", "retain_until_replacement"],
+  "candidate_groups": [
+    {
+      "id": "small_legacy_and_backup_files",
+      "classification": "safe_to_remove_after_verification",
+      "items": [
+        {"path":"api/app/ai-plugin.old2","bytes":443},
+        {"path":"api/app/backupopenapi-gpt.txt","bytes":41294},
+        {"path":"api/app/main.oud","bytes":2419},
+        {"path":"api/app/main.py.bak_20260825_144545","bytes":4030},
+        {"path":"api/app/routers/inspecties.old2","bytes":3661},
+        {"path":"api/app/templates/rfq_supplier_package_landscape -backup2.html","bytes":13054}
+      ],
+      "evidence": "Extensions/names are not Python/template production names and api/app/main.py does not include or import them.",
+      "verification_required": ["repository-wide reference search", "confirm no deployment volume/manual recovery process consumes path", "Docker build", "failure-set gate", "OpenAPI route diff"]
+    },
+    {
+      "id": "orchestrator_timestamped_backups",
+      "classification": "safe_to_remove_after_verification",
+      "items": [
+        {"path":"api/app/orchestrator/planner.py.bak_20260825_112108","bytes":6350},
+        {"path":"api/app/orchestrator/planner.py.bak_20260825_112408","bytes":6350},
+        {"path":"api/app/orchestrator/query_classification.py.bak_a1a_v1_1_20260826_092036","bytes":2780},
+        {"path":"api/app/orchestrator/query_classification.py.bak_a1a_v1_2_20260826_092614","bytes":5547},
+        {"path":"api/app/orchestrator/research_agent.py.bak_20260825_112108","bytes":29445},
+        {"path":"api/app/orchestrator/research_agent.py.bak_20260825_112408","bytes":29445},
+        {"path":"api/app/orchestrator/research_agent.py.bak_20260825_165352","bytes":29471},
+        {"path":"api/app/orchestrator/service.py.bak_20260825_112108","bytes":29179},
+        {"path":"api/app/orchestrator/service.py.bak_20260825_112408","bytes":29179},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_112108","bytes":29647},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_112408","bytes":29647},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_112818","bytes":38261},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_113243","bytes":38266},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_124322","bytes":38346},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_125140","bytes":39966},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_132156","bytes":42501},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_133011","bytes":43933},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_133651","bytes":43933},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_145520","bytes":44497},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_165352","bytes":45166},
+        {"path":"api/app/orchestrator/understanding.py.bak_20260825_171512","bytes":48648}
+      ],
+      "evidence": "Timestamped .bak files are not importable modules under normal Python resolution and no source import names them.",
+      "verification_required": ["repository-wide literal-path search", "compare retained history with git availability", "Docker build and gate", "confirm incident recovery does not depend on filesystem backups"]
+    },
+    {
+      "id": "router_timestamped_backups",
+      "classification": "safe_to_remove_after_verification",
+      "items": [
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_114948","bytes":260531},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_120154","bytes":261057},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_122749","bytes":266125},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_123622","bytes":284813},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_130228","bytes":285714},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_131108","bytes":287334},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_131649","bytes":297983},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_134837","bytes":299367},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_152828","bytes":300235},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_154301","bytes":318641},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_154927","bytes":344197},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_155245","bytes":344197},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_160311","bytes":344252},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_160946","bytes":380881},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_170244","bytes":383710},
+        {"path":"api/app/routers/diagnostics_api.py.bak_20260825_171512","bytes":383826},
+        {"path":"api/app/routers/hybrid_api.py.bak_20260825_112108","bytes":54949},
+        {"path":"api/app/routers/hybrid_api.py.bak_20260825_112408","bytes":54949},
+        {"path":"api/app/routers/hybrid_api.py.bak_20260825_165352","bytes":55312},
+        {"path":"api/app/routers/rag.py.bak_20260825_140247","bytes":33788}
+      ],
+      "evidence": "Timestamped .bak files are not included routers and normal imports resolve the .py modules.",
+      "verification_required": ["repository-wide literal-path search", "OpenAPI diff", "Docker build and gate", "confirm no external loader scans backup suffixes"]
+    },
+    {
+      "id": "historical_analysis_routers",
+      "classification": "quarantine_then_remove",
+      "items": [
+        {"path":"api/app/routers/analysis_api_v5.py","lines":1350,"parse_status":"valid","included":false},
+        {"path":"api/app/routers/analysis_api_v6.py","lines":206,"parse_status":"syntax_error_unterminated_triple_quoted_f_string_line_200","included":false},
+        {"path":"api/app/routers/analysis_api_v7.py","lines":1099,"parse_status":"valid","included":false},
+        {"path":"api/app/routers/analysis_api_v8.py","lines":1258,"parse_status":"valid","included":false},
+        {"path":"api/app/routers/analysis_api_v9.py","lines":1467,"parse_status":"valid","included":false}
+      ],
+      "evidence": "api/app/main.py imports/includes only analysis_api_v10. V6 cannot be parsed by Python AST.",
+      "verification_required": ["search scripts/tests/docs for direct imports", "confirm no external uvicorn entrypoint imports older module", "archive checksum outside Docker context if recovery value remains", "OpenAPI diff", "Docker build and gate"]
+    },
+    {
+      "id": "service_run_orchestrator_overrides",
+      "classification": "retain_until_replacement",
+      "items": [
+        {"path":"api/app/orchestrator/service.py","symbol":"run_orchestrator","definitions":[7336,9061,9400,9567],"active_definition":9567}
+      ],
+      "evidence": "Each late definition wraps a stored previous-run reference; the fourth definition is the public export.",
+      "verification_required": ["wrapper-chain import characterization", "answer mutation matrix", "single and multi-intent MV1 goldens", "compact/debug end-to-end tests"]
+    },
+    {
+      "id": "evidence_adapter_overrides",
+      "classification": "retain_until_replacement",
+      "items": [
+        {"path":"api/app/orchestrator/evidence_adapters.py","symbol":"normalize_execution_result_evidence","definitions":[5487,5996,6202,6474,6816,6964,7124,7417,7879,8024],"active_definition":8024},
+        {"path":"api/app/orchestrator/evidence_adapters.py","symbol":"_p4_15bj_alias","definitions":[7223,7566],"active_definition":7566}
+      ],
+      "evidence": "Late wrappers preserve earlier normalizers and add evidence aliases/bridges; removing an earlier block changes the exported evidence set.",
+      "verification_required": ["wrapper-order characterization", "evidence-id and alias-set golden", "Phase-C adapter and presenter tests"]
+    },
+    {
+      "id": "requirement_and_task_evidence_overrides",
+      "classification": "retain_until_replacement",
+      "items": [
+        {"path":"api/app/orchestrator/evidence_requirement_catalog.py","symbol":"get_requirement_set","definitions":[815,1007],"active_definition":1007},
+        {"path":"api/app/orchestrator/task_evidence.py","symbol":"_select_task_evidence","definitions":[72,550],"active_definition":550}
+      ],
+      "evidence": "Late definitions intentionally align requirement sets and bridge replacement task evidence.",
+      "verification_required": ["catalog exactness and per-intent requirement tests", "replacement evidence selection goldens", "CP10 coverage equivalence"]
+    },
+    {
+      "id": "rfq_router_duplicate_symbols",
+      "classification": "retain_until_replacement",
+      "items": [
+        {"path":"api/app/routers/rfq_api.py","symbol":"get_rfq_position_datasheet_pdf","definitions":[1587,6337]},
+        {"path":"api/app/routers/rfq_api.py","symbol":"delete_rfq_position","definitions":[2074,4683,5460]},
+        {"path":"api/app/routers/rfq_api.py","symbol":"list_rfq_artifacts","definitions":[6542,7048]}
+      ],
+      "evidence": "FastAPI decorators register function objects at definition time while later Python names overwrite module globals; name removal can affect direct callers even when routes remain registered.",
+      "verification_required": ["OpenAPI route and operation-id inventory", "direct-call reference search", "route behavior tests for every duplicate", "rename-only migration before deletion"]
+    },
+    {
+      "id": "docker_test_context",
+      "classification": "quarantine_then_remove",
+      "items": [
+        {"path":"api/.dockerignore","state":"missing_or_effectively_empty_for_Dockerfile.test_context"},
+        {"path":"api/Dockerfile.test","state":"build_context_is_entire_api_tree"}
+      ],
+      "evidence": "The canonical build transferred the api context and COPY directives select app/tests, so backup and historical files are sent to the Docker daemon even when not copied into final layers.",
+      "verification_required": ["record current context size and image contents", "add explicit allow/deny rules in a separate change", "clean Docker build", "full failure-set gate"]
+    }
+  ]
+}
