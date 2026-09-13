@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import inspect
 from pathlib import Path
 
 from app.orchestrator import service
@@ -57,7 +56,14 @@ def test_known_inactive_legacy_parse_gap_is_explicit():
 
 def test_public_router_imports_final_run_orchestrator_definition():
     assert orchestrator_api.run_orchestrator is service.run_orchestrator
-    assert inspect.getsourcelines(service.run_orchestrator)[1] == 9567
+    tree = ast.parse(Path(service.__file__).read_text(encoding="utf-8-sig"))
+    definitions = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "run_orchestrator"
+    ]
+    assert len(definitions) == 4
+    assert service.run_orchestrator.__code__.co_firstlineno == definitions[-1].lineno
 
 
 def test_every_planner_action_has_executor_and_specialist_contract():

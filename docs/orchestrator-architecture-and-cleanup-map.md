@@ -2,6 +2,17 @@
 
 ## Besluit
 
+### Gerealiseerde eerste observabilitygrens (opdracht 3A)
+
+De pure primitive access/clamping, timing- en countmap-initialisatie en de twee
+integer-only task/public-composition metricsrecorders staan nu in
+`api/app/orchestrator/observability_stage.py`. `service.py` importeert dezelfde
+symbolen, zodat bestaande imports en monkeypatchpunten behouden blijven. De
+clock-, elapsed- en timingwrapperhelpers blijven bewust in `service.py`, omdat
+de characterizationtests `service._observability_now` patchen; verplaatsing zou
+dat compatibiliteitscontract wijzigen. Pipeline-, answer-, evidence- en
+authoritylogica is niet verplaatst.
+
 Opdracht 3 kan nog niet veilig als brede stage-split starten. Een eerste, mechanische extractie kan wel beginnen nadat de zeven minimale characterizationtests in dit document groen of als expliciete baseline-rood zijn vastgezet. De reden is concreet: de feitelijk geëxporteerde `run_orchestrator` is de vierde definitie in `service.py`; drie post-authority wrappers en de compacte HTTP-response-shaper kunnen het antwoord wijzigen nadat CP12 heeft gedraaid. Zij zijn productiecode, maar vallen niet onder de CP9-CP12-authorityketen.
 
 Deze analyse is read-only voor `api/app`. Zij is gebaseerd op commit `f39ab8b27ad745e14bcc271eca749ee9b9e24676`, die exact de tip is van `codex/orchestrator-baseline-regression`. De analyse-worktree is detached op die commit omdat dezelfde branch al in een andere worktree is uitgecheckt. De pre-gate gaf 803 passed, 56 failed, 5 errors en 17 skipped. De 61 failure/error-namen zijn gelijk aan `post-change-57fe45e.json`; er zijn nul nieuwe failures.
