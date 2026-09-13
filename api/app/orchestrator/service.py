@@ -90,6 +90,10 @@ from app.orchestrator.task_relevance_presenter import (
     present_relevant_task_answer,
 )
 from app.orchestrator.task_concise_composer import compose_concise_public_answer
+from app.orchestrator.task_research_semantics import (
+    build_task_research_semantics,
+    gate_legacy_generic_research,
+)
 from app.orchestrator.product_family_evidence import (
     assess_product_family_coverage,
     recover_missing_product_families,
@@ -7762,6 +7766,29 @@ def run_orchestrator(
             except Exception:
                 task_research_call_guards_shadow = []
 
+            # CP13: research eligibility is explicit per required/requested task.
+            # It consumes CP8 execution state and cannot grant downstream authority.
+            try:
+                task_research_semantics_cp13 = build_task_research_semantics(
+                    plan,
+                    task_execution_shadow,
+                    task_research_authority_p4_6d1,
+                )
+            except Exception:
+                task_research_semantics_cp13 = {
+                    "contract_version": (
+                        "promati.orchestrator.task_research_semantics.cp13.v1"
+                    ),
+                    "evaluated": False,
+                    "authoritative": False,
+                    "authority_scope": "intent_task_research_eligibility_only",
+                    "public_answer_authority": False,
+                    "legacy_generic_research_allowed": False,
+                    "allowed_task_ids": [],
+                    "tasks": [],
+                    "reason": "internal_error_fail_closed",
+                }
+
             # PROMATI_P4_6D2_TASK_RESEARCH_EXECUTION_AUTHORITY_CANARY
             # Bounded task-research execution authority only. Follow-up outputs
             # remain isolated from legacy Phase-C reconciliation/public synthesis.
@@ -7779,6 +7806,7 @@ def run_orchestrator(
                         evidence_observer=(
                             task_research_execution_observations_p4_6d2.append
                         ),
+                        task_research_semantics_cp13=task_research_semantics_cp13,
                     )
                 )
             except Exception:
@@ -7887,6 +7915,13 @@ def run_orchestrator(
                     decide_research_requirement,
                     initial_assessment,
                 )
+            )
+
+            # Whole-question Phase-C research is no longer allowed when intent
+            # tasks exist. Only the CP13-filtered task executor above may call it.
+            research_decision = gate_legacy_generic_research(
+                research_decision,
+                task_research_semantics_cp13,
             )
 
             research_execution = (
@@ -8021,6 +8056,9 @@ def run_orchestrator(
                         ),
                         "task_research_call_guards_shadow": (
                             task_research_call_guards_shadow
+                        ),
+                        "task_research_semantics_cp13": (
+                            task_research_semantics_cp13
                         ),
                         "task_research_execution_canary_shadow": (
                             task_research_execution_canary_shadow

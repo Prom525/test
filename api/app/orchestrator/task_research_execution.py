@@ -447,6 +447,7 @@ def run_task_research_execution_authority_canary_p4_6d2(
     *,
     sender,
     evidence_observer=None,
+    task_research_semantics_cp13: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute bounded task research only inside the isolated task contract.
 
@@ -536,6 +537,21 @@ def run_task_research_execution_authority_canary_p4_6d2(
         )
     }
 
+    allowed_task_ids = {
+        str(item)
+        for item in list(
+            (task_research_semantics_cp13 or {}).get("allowed_task_ids") or []
+        )
+    }
+    if not isinstance(task_research_semantics_cp13, dict):
+        contract["reason"] = "missing_task_research_semantics_cp13"
+        return contract
+    if task_research_semantics_cp13.get("authority_scope") != (
+        "intent_task_research_eligibility_only"
+    ):
+        contract["reason"] = "invalid_task_research_semantics_cp13"
+        return contract
+
     raw_units = _execution_units(
         task_research_contexts,
         task_research_call_guards,
@@ -584,6 +600,8 @@ def run_task_research_execution_authority_canary_p4_6d2(
 
         task_id = context.get("task_id")
         if task_id not in tasks_by_id:
+            continue
+        if str(task_id) not in allowed_task_ids:
             continue
 
         eligible_units.append(
