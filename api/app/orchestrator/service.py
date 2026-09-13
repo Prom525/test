@@ -90,6 +90,7 @@ from app.orchestrator.task_relevance_presenter import (
     present_relevant_task_answer,
 )
 from app.orchestrator.task_concise_composer import compose_concise_public_answer
+from app.orchestrator.release_gate_cp15 import build_release_gate_cp15
 from app.orchestrator.task_research_semantics import (
     build_task_research_semantics,
     gate_legacy_generic_research,
@@ -8639,6 +8640,24 @@ def run_orchestrator(
             evidence_pipeline[
                 "task_public_composition_authority_p4_6f"
             ] = task_public_composition_authority_p4_6f
+
+        # CP15 is a read-only release observer over CP8-CP14. It never changes
+        # the selected answer or widens any upstream authority.
+        try:
+            evidence_pipeline["release_gate_cp15"] = build_release_gate_cp15(
+                task_execution_shadow,
+                evidence_pipeline,
+            )
+        except Exception as exc:
+            evidence_pipeline["release_gate_cp15"] = {
+                "contract_version": "promati.orchestrator.release_gate.cp15.v1",
+                "evaluated": False,
+                "release_allowed": False,
+                "public_authoritative": False,
+                "blocking_reasons": ["cp15_internal_error_fail_closed"],
+                "blocked_gate_ids": ["cp15"],
+                "internal_error_type": type(exc).__name__,
+            }
 
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.
