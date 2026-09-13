@@ -209,7 +209,13 @@ def build_task_grounded_synthesis_coverage_authority_canary_p4_6e3(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     enabled = _enabled()
-    tasks = list(getattr(plan, "intent_tasks", None) or [])
+    tasks = [
+        task
+        for task in list(getattr(plan, "intent_tasks", None) or [])
+        if getattr(task, "required", True) is True
+        and str(getattr(task, "polarity", "requested") or "requested")
+        == "requested"
+    ]
 
     contract: dict[str, Any] = {
         "contract_version": _CONTRACT_VERSION,

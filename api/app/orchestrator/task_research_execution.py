@@ -469,6 +469,7 @@ def run_task_research_execution_authority_canary_p4_6d2(
         "decision_shadow_parity_required": True,
         "legacy_phase_c_authority_unchanged": True,
         "evidence_reconciliation_authority": False,
+        "synthesis_authority": False,
         "public_answer_authority": False,
         "max_total_follow_up_calls": (
             _MAX_TOTAL_FOLLOW_UP_CALLS
@@ -477,6 +478,9 @@ def run_task_research_execution_authority_canary_p4_6d2(
         "executed_unit_count": 0,
         "follow_up_specialist_call_count": 0,
         "accepted_follow_up_result_count": 0,
+        "cp13_allowed_task_ids": [],
+        "raw_execution_unit_count": 0,
+        "eligible_execution_unit_count": 0,
         "executions": [],
         "reason": None,
     }
@@ -537,25 +541,50 @@ def run_task_research_execution_authority_canary_p4_6d2(
         )
     }
 
-    allowed_task_ids = {
-        str(item)
-        for item in list(
-            (task_research_semantics_cp13 or {}).get("allowed_task_ids") or []
-        )
-    }
     if not isinstance(task_research_semantics_cp13, dict):
         contract["reason"] = "missing_task_research_semantics_cp13"
         return contract
-    if task_research_semantics_cp13.get("authority_scope") != (
-        "intent_task_research_eligibility_only"
+    raw_allowed_task_ids = task_research_semantics_cp13.get("allowed_task_ids")
+    semantics_rows = task_research_semantics_cp13.get("tasks")
+    if (
+        task_research_semantics_cp13.get("contract_version")
+        != "promati.orchestrator.task_research_semantics.cp13.v1"
+        or task_research_semantics_cp13.get("evaluated") is not True
+        or task_research_semantics_cp13.get("authority_scope")
+        != "intent_task_research_eligibility_only"
+        or task_research_semantics_cp13.get("legacy_generic_research_allowed")
+        is not False
+        or not isinstance(raw_allowed_task_ids, list)
+        or not isinstance(semantics_rows, list)
+        or any(
+            not isinstance(item, str) or not item.strip()
+            for item in raw_allowed_task_ids
+        )
     ):
         contract["reason"] = "invalid_task_research_semantics_cp13"
         return contract
+
+    allowed_rows = {
+        str(row.get("task_id"))
+        for row in semantics_rows
+        if isinstance(row, dict)
+        and row.get("research_allowed") is True
+        and str(row.get("task_id") or "").strip()
+    }
+    allowed_task_ids = set(raw_allowed_task_ids)
+    if allowed_task_ids != allowed_rows:
+        contract["reason"] = "invalid_task_research_semantics_cp13"
+        return contract
+    if not allowed_task_ids:
+        contract["reason"] = "no_eligible_research_execution_units"
+        return contract
+    contract["cp13_allowed_task_ids"] = sorted(allowed_task_ids)
 
     raw_units = _execution_units(
         task_research_contexts,
         task_research_call_guards,
     )
+    contract["raw_execution_unit_count"] = len(raw_units)
 
     eligible_units = []
     for context, guard_entry in raw_units:
@@ -613,6 +642,8 @@ def run_task_research_execution_authority_canary_p4_6d2(
             "no_eligible_research_execution_units"
         )
         return contract
+
+    contract["eligible_execution_unit_count"] = len(eligible_units)
 
     if (
         len(eligible_units)

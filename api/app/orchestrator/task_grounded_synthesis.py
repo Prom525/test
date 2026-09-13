@@ -194,6 +194,19 @@ def build_task_grounded_synthesis_authority_canary_p4_6e2(
         contract["reason"] = "grounded_unit_without_claims"
         return contract
 
+    if any(
+        not all(
+            isinstance(claim, dict)
+            and bool(str(claim.get("text") or "").strip())
+            and bool(claim.get("evidence_ids"))
+            and bool(claim.get("requirement_ids"))
+            for claim in list(row.get("claims") or [])
+        )
+        for row in grounded_units
+    ):
+        contract["reason"] = "invalid_grounded_claim_contract"
+        return contract
+
     contract["eligible"] = True
     contract["authoritative"] = True
     contract["reason"] = "activated_task_grounded_synthesis_authority"
