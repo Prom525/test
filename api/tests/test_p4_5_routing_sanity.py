@@ -387,7 +387,7 @@ def test_service_places_routing_sanity_immediately_after_understanding():
         .parents[1]
         / "app"
         / "orchestrator"
-        / "service.py"
+        / "initial_planning_stage.py"
     )
 
     source = service.read_text(
@@ -407,7 +407,7 @@ def test_service_places_routing_sanity_immediately_after_understanding():
             ast.FunctionDef,
         )
         and node.name
-        == "run_orchestrator"
+        == "run_initial_planning_stage"
     )
 
     def name(node):
@@ -478,7 +478,7 @@ def test_service_places_routing_sanity_immediately_after_understanding():
 
         if (
             call_name
-            != "_observability_call"
+            not in {"_observability_call", "observability_call"}
         ):
 
             continue

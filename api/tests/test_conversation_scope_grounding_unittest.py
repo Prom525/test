@@ -530,8 +530,17 @@ class ConversationScopeGroundingTests(
         )
 
         self.assertIn(
-            "conversation_context=conversation_context",
+            "run_initial_planning_stage(\n        question,\n        conversation_context,",
             source,
+        )
+
+        stage_source = (
+            SERVICE_PATH.parent
+            / "initial_planning_stage.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "conversation_context=conversation_context",
+            stage_source,
         )
 
 

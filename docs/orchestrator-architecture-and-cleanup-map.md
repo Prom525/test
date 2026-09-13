@@ -2,6 +2,19 @@
 
 ## Besluit
 
+### Gerealiseerde initiële planningsgrens (opdracht 3C)
+
+De bestaande keten understanding, routing sanity, research requirement en
+execution planning wordt nu mechanisch gecoördineerd door
+`initial_planning_stage.py`. Vraagselectie/-trim en serialisatie van
+`conversation_context` blijven in `service.py`. Alle vier bewerkingsfuncties
+en `_observability_call` worden bij iedere core-aanroep expliciet vanuit
+`service.py` aangeleverd. Daardoor blijven de bestaande service-level
+monkeypatchpunten runtime-effectief. De timinglabels en volgorde zijn
+ongewijzigd; routing sanity krijgt bewust geen eigen timinglabel. De stage is
+een leaf met alleen typing-imports en bevat geen uitvoering, evidence,
+research, response- of repairlogica.
+
 ### Gerealiseerde pure serialisatiegrens (opdracht 3B)
 
 De pure JSON-serialisatiehelpers `_model_to_dict` en

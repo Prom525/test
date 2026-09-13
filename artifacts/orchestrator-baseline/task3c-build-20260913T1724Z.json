@@ -1,0 +1,16 @@
+{
+  "schema_version": "promati.orchestrator.production-candidate.v1",
+  "task": "3C initial planning stage extraction",
+  "source_commit": "e199642d1346e2b79f28844426df77e9ca998a5b",
+  "image_tag": "promati-api-task3c:e199642d-20260913t1724",
+  "image_id": "sha256:1f8e2307e41a8dbcb22475c853644c8befa9768201263ce4dc9861c7a9a3b0bc",
+  "checks": {
+    "service_import": "passed_with_synthetic_configuration",
+    "run_orchestrator_callable": true,
+    "initial_planning_stage_import": "passed",
+    "tests_directory_absent": true,
+    "python_bytecode_absent": true,
+    "active_api_replaced": false
+  },
+  "privacy": "No questions, answers, tokens, entities, scopes, payloads, credentials or environment values are stored."
+}
