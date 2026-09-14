@@ -69,3 +69,12 @@ Before using the suite as a refactor gate, compare the pre/post JSON reports. Th
 Before mechanically extracting any stage from `service.py`, run the Task 2B characterization modules for the facade wrapper chain, post-CP12 answer mutations, evidence-adapter wrapper chain, meta/maintenance routing and the existing maintenance endpoint. Future-only capability and projection contracts must remain machine-readable known gaps or strict xfails whose import occurs inside the test function. Treat any XPASS as a review-required contract change.
 
 Then run the canonical failure-set comparison both before and after the candidate change. The gate is green only when `comparison.new_failures` is empty, no XPASS is unexplained, and `git diff -- api/app` is empty for a tests-only characterization change.
+
+For the 3D2 initial-execution extraction, additionally run
+`tests/orchestrator/test_initial_execution_boundary_characterization.py` both
+before and after the edit and run
+`tests/orchestrator/test_initial_execution_stage.py` afterward. The latter
+locks the nine-field return contract, dependency order, object identity,
+ordered observer collection, independent fail-open zones, authoritative
+propagation, minimal imports, single core call site and the unchanged
+CP4F -> CP4B -> CP3C -> core bindings.

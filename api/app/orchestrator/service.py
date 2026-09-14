@@ -118,6 +118,7 @@ from app.orchestrator.serialization_stage import (
     _model_to_dict,
 )
 from app.orchestrator.initial_planning_stage import run_initial_planning_stage
+from app.orchestrator.initial_execution_stage import run_initial_execution_stage
 
 
 
@@ -7034,70 +7035,42 @@ def run_orchestrator(
         build_execution_plan=build_execution_plan,
     )
 
-    # Shadow-only requirement resolution. No observability key is added and
-    # execute_plan continues to consume the same legacy execution_steps.
-    plan = _attach_intent_task_evidence_requirements_shadow(
-        plan
-    )
-
-    # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW
-    # Build detached per-IntentTask execution plans for comparison only.
-    # These plans are never passed to execute_plan in P4.6a.
-    task_execution_plans_shadow = ()
-    task_execution_plan_comparison_shadow = None
-    try:
-        task_execution_plans_shadow = (
-            build_task_execution_plans_shadow(plan)
-        )
-        task_execution_plan_comparison_shadow = (
-            compare_task_execution_plans_shadow(
-                plan,
-                task_execution_plans_shadow,
-            )
-        )
-    except Exception:
-        task_execution_plans_shadow = ()
-        task_execution_plan_comparison_shadow = None
-
-    # PROMATI_P4_6B_TASK_EXECUTION_CANARY
-    # Explicit opt-in, fail-open, observational only.
-    task_execution_canary_p4_6b = None
-    try:
-        task_execution_canary_p4_6b = _run_task_execution_canary_p4_6b(
-            plan,
-            task_execution_plans_shadow,
-            sender=sender,
-        )
-    except Exception:
-        task_execution_canary_p4_6b = None
-
-    typed_execution_results = []
-
-    results, trace = _observability_call(
-        timings,
-        "initial_specialist",
-        execute_plan,
+    initial_execution = run_initial_execution_stage(
         plan,
+        timings,
         sender=sender,
-        shadow_observer=(
-            typed_execution_results.append
+        attach_requirements=(
+            _attach_intent_task_evidence_requirements_shadow
         ),
+        build_task_execution_plans_shadow=(
+            build_task_execution_plans_shadow
+        ),
+        compare_task_execution_plans_shadow=(
+            compare_task_execution_plans_shadow
+        ),
+        run_task_execution_canary=(
+            _run_task_execution_canary_p4_6b
+        ),
+        observability_call=_observability_call,
+        execute_plan=execute_plan,
+        build_task_execution_shadow=build_task_execution_shadow,
+        build_task_planner_canary=build_task_planner_canary,
     )
-
-    # CP8 observer only: never feeds planning, execution or answer selection.
-    task_execution_shadow = None
-    try:
-        task_execution_shadow = build_task_execution_shadow(plan, trace)
-    except Exception:
-        task_execution_shadow = None
-
-    # CP9 task-driven planner canary: comparison only. The executor above still
-    # receives the unchanged legacy plan.execution_steps.
-    task_planner_canary = None
-    try:
-        task_planner_canary = build_task_planner_canary(plan)
-    except Exception:
-        task_planner_canary = None
+    plan = initial_execution.plan
+    task_execution_plans_shadow = (
+        initial_execution.task_execution_plans_shadow
+    )
+    task_execution_plan_comparison_shadow = (
+        initial_execution.task_execution_plan_comparison_shadow
+    )
+    task_execution_canary_p4_6b = (
+        initial_execution.task_execution_canary_p4_6b
+    )
+    typed_execution_results = initial_execution.typed_execution_results
+    results = initial_execution.results
+    trace = initial_execution.trace
+    task_execution_shadow = initial_execution.task_execution_shadow
+    task_planner_canary = initial_execution.task_planner_canary
 
     attempts = _observability_get(
         trace,
