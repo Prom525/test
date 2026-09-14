@@ -124,6 +124,7 @@ from app.orchestrator.phase_c_entry_stage import prepare_phase_c_entry
 from app.orchestrator.product_family_recovery_stage import (
     run_product_family_recovery_stage,
 )
+from app.orchestrator.task_evidence_stage import run_task_evidence_stage
 
 
 
@@ -7153,37 +7154,23 @@ def run_orchestrator(
                 product_family_recovery_stage.working_evidence_items
             )
 
-            # V4 shadow-only per-task evidence assessment. Fail-open: any
-            # shadow defect must not alter the authoritative legacy Phase-C path.
-            task_evidence_assessments_shadow = []
-            try:
-                task_evidence_assessments_shadow = (
-                    _assess_intent_task_evidence_shadow(
-                        plan,
-                        working_evidence_items,
-                        now=retrieved_at,
-                    )
-                )
-            except Exception:
-                task_evidence_assessments_shadow = []
-
-            # PROMATI_P4_6C_TASK_EVIDENCE_AUTHORITY_CANARY
-            # Narrow authority only: IntentTask evidence assessment. Legacy Phase-C
-            # research/reconciliation/synthesis and public answer ownership remain unchanged.
-            task_evidence_authority_p4_6c = None
-            try:
-                task_evidence_authority_p4_6c = (
-                    build_task_evidence_authority_canary_p4_6c(
-                        plan,
-                        tuple(working_evidence_items),
-                        now=retrieved_at,
-                        shadow_assessments=(
-                            task_evidence_assessments_shadow
-                        ),
-                    )
-                )
-            except Exception:
-                task_evidence_authority_p4_6c = None
+            task_evidence_stage = run_task_evidence_stage(
+                plan,
+                working_evidence_items,
+                retrieved_at,
+                assess_intent_task_evidence_shadow=(
+                    _assess_intent_task_evidence_shadow
+                ),
+                build_task_evidence_authority_canary_p4_6c=(
+                    build_task_evidence_authority_canary_p4_6c
+                ),
+            )
+            task_evidence_assessments_shadow = (
+                task_evidence_stage.task_evidence_assessments_shadow
+            )
+            task_evidence_authority_p4_6c = (
+                task_evidence_stage.task_evidence_authority_p4_6c
+            )
 
             # V5 shadow-only research decisions derived from the V4 task
             # assessments. Fail-open and never used for research execution.
