@@ -1,0 +1,13 @@
+{
+  "schema_version": "promati.orchestrator.candidate-build.v1",
+  "source_commit": "067d8e0d20e78b18bfc8a0c736269a5b9aa72090",
+  "tag": "ai-platform-api:3j2-candidate-067d8e0",
+  "image_id": "sha256:4fd41069de684cc80ea0022a237e2aa664c6cb26961f7a81fc21a65df3ee8f73",
+  "service_import": "passed",
+  "stage_import": "passed",
+  "run_orchestrator_callable": true,
+  "tests_present": false,
+  "bytecode_present": false,
+  "active_api_replaced": false,
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

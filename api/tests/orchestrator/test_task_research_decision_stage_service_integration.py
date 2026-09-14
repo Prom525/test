@@ -69,12 +69,20 @@ def test_service_runtime_dependencies_bind_outputs_and_context_gets_shadow_only(
 
     monkeypatch.setattr(service, "run_task_research_decision_stage", stage)
 
-    def context(actual_plan, actual_results, actual_decisions):
+    context_dependency = object()
+    guard_dependency = object()
+    monkeypatch.setattr(service, "_derive_intent_task_research_contexts_shadow",
+                        context_dependency)
+    monkeypatch.setattr(service, "_derive_intent_task_research_call_guards_shadow",
+                        guard_dependency)
+
+    def context_stage(actual_plan, actual_results, actual_decisions, **dependencies):
         frame = __import__("inspect").currentframe().f_back.f_locals
-        calls.append(("context", actual_plan, actual_results, actual_decisions, frame))
+        calls.append(("context", actual_plan, actual_results, actual_decisions,
+                      dependencies, frame))
         raise ContextBoundaryObserved
 
-    monkeypatch.setattr(service, "_derive_intent_task_research_contexts_shadow", context)
+    monkeypatch.setattr(service, "run_task_research_context_stage", context_stage)
     monkeypatch.setattr(service, "has_service_accepted_execution", lambda *a: True)
 
     with pytest.raises(ContextBoundaryObserved):
@@ -89,8 +97,10 @@ def test_service_runtime_dependencies_bind_outputs_and_context_gets_shadow_only(
     assert stage_call[3]["derive_intent_task_research_decisions_shadow"] is shadow_dependency
     assert stage_call[3]["build_task_research_authority_canary_p4_6d1"] is authority_dependency
     assert context_call[1] is plan
-    assert context_call[2] is not results
+    assert context_call[2] is results
     assert all(actual is expected for actual, expected in zip(context_call[2], results))
     assert context_call[3] is decisions_output
-    assert context_call[4]["task_research_decisions_shadow"] is decisions_output
-    assert context_call[4]["task_research_authority_p4_6d1"] is authority_output
+    assert context_call[4]["derive_intent_task_research_contexts_shadow"] is context_dependency
+    assert context_call[4]["derive_intent_task_research_call_guards_shadow"] is guard_dependency
+    assert context_call[5]["task_research_decisions_shadow"] is decisions_output
+    assert context_call[5]["task_research_authority_p4_6d1"] is authority_output

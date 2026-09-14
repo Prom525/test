@@ -54,6 +54,7 @@ def _install(
     authority_error=None,
     raw_results=None,
 ):
+    actual_context_stage = service.run_task_research_context_stage
     calls = []
     frames = []
     context_inputs = []
@@ -150,12 +151,17 @@ def _install(
     monkeypatch.setattr(service, "build_task_research_authority_canary_p4_6d1", authority)
 
     def context(actual_plan, actual_results, actual_shadow):
-        frames.append(dict(inspect.currentframe().f_back.f_locals))
         calls.append(("research_context", actual_plan, actual_results, actual_shadow))
         context_inputs.append((actual_plan, actual_results, actual_shadow))
         raise ContextBoundaryObserved("next research context boundary")
 
     monkeypatch.setattr(service, "_derive_intent_task_research_contexts_shadow", context)
+
+    def context_stage(*args, **dependencies):
+        frames.append(dict(inspect.currentframe().f_back.f_locals))
+        return actual_context_stage(*args, **dependencies)
+
+    monkeypatch.setattr(service, "run_task_research_context_stage", context_stage)
     monkeypatch.setattr(service, "has_service_accepted_execution", lambda *a: True)
     monkeypatch.setattr(
         service,
