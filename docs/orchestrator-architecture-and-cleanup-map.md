@@ -2,6 +2,17 @@
 
 ## Besluit
 
+### Gerealiseerde Phase-C-entrygrens (opdracht 3F2)
+
+Requirementlookup, de bestaande clarificationgate, de ene UTC-timestamp en de
+initiële typed-evidencenormalisatie staan nu in
+`api/app/orchestrator/phase_c_entry_stage.py`. De frozen
+`PhaseCEntryResult` retourneert requirementset, timestamp en de initial/working
+tuples; beide evidencevelden verwijzen bij terugkeer naar exact dezelfde tuple.
+Alle dependencies worden per core-aanroep vanuit `service.py` aangeleverd.
+De bestaande brede Phase-C-`try`, product-family coverage/recovery en alle
+latere Phase-C- en authoritylogica blijven in `service.py`.
+
 ### Gerealiseerde initiële execution-observabilitygrens (opdracht 3E)
 
 De drie bestaande initiële execution-metrics worden nu mechanisch vastgelegd
