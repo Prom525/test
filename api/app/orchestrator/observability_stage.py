@@ -105,6 +105,47 @@ def _new_observability_counts() -> dict[str, int]:
     }
 
 
+def _record_initial_execution_observability(
+    counts: dict[str, int],
+    trace: Any,
+    results: Any,
+) -> None:
+    """Record the established integer-only initial execution metrics."""
+    attempts = _observability_get(
+        trace,
+        "attempts",
+        [],
+    )
+
+    if not isinstance(
+        attempts,
+        (list, tuple),
+    ):
+        attempts = []
+
+    counts["execution_attempts"] = len(
+        attempts
+    )
+
+    # results bevat alleen werkelijk uitgevoerde
+    # specialisttransportcalls. Een ontbrekend endpoint
+    # komt wel in trace.attempts maar niet in results.
+    counts["initial_specialist_calls"] = len(
+        results
+    )
+
+    counts["initial_raw_result_rows"] = sum(
+        _observability_nonnegative_int(
+            _observability_get(
+                attempt,
+                "result_count",
+                0,
+            )
+        )
+        for attempt in attempts
+    )
+
+
 def _record_task_execution_plan_shadow_observability(
     counts: dict[str, int],
     plan: Any,
@@ -239,6 +280,7 @@ __all__ = (
     "_new_observability_timings",
     "_observability_get",
     "_observability_nonnegative_int",
+    "_record_initial_execution_observability",
     "_record_public_composition_canary_release_observability",
     "_record_task_execution_plan_shadow_observability",
 )

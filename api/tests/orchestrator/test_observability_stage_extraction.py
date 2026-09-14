@@ -59,6 +59,7 @@ def test_leaf_module_has_explicit_small_surface_and_no_forbidden_imports():
         "ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION",
         "_new_observability_counts", "_new_observability_timings",
         "_observability_get", "_observability_nonnegative_int",
+        "_record_initial_execution_observability",
         "_record_public_composition_canary_release_observability",
         "_record_task_execution_plan_shadow_observability",
     }
@@ -101,6 +102,65 @@ def test_mapping_and_attribute_access_preserves_missing_defaults():
     assert observability_stage._observability_get({}, "missing", "fallback") == "fallback"
     assert observability_stage._observability_get(SimpleNamespace(value=4), "value") == 4
     assert observability_stage._observability_get(None, "missing", 8) == 8
+
+
+@pytest.mark.parametrize(
+    ("trace", "expected_attempts", "expected_rows"),
+    [
+        ({"attempts": [{"result_count": 3}, SimpleNamespace(result_count="4")]}, 2, 7),
+        (SimpleNamespace(attempts=({"result_count": 2},)), 1, 2),
+        ({"attempts": None}, 0, 0),
+        ({"attempts": "malformed"}, 0, 0),
+        ({}, 0, 0),
+        (None, 0, 0),
+    ],
+)
+def test_initial_execution_metrics_cover_mapping_object_and_attempt_shapes(
+    trace, expected_attempts, expected_rows
+):
+    counts = {"untouched": 91}
+    results = [object(), object()]
+    before = list(results)
+    observability_stage._record_initial_execution_observability(
+        counts, trace, results
+    )
+    assert counts == {
+        "untouched": 91,
+        "execution_attempts": expected_attempts,
+        "initial_specialist_calls": 2,
+        "initial_raw_result_rows": expected_rows,
+    }
+    assert results == before
+
+
+def test_initial_execution_result_count_conversion_and_privacy_are_exact():
+    sentinel = "PRIVATE-question-answer-evidence-entity-scope-specialist-token"
+    attempts = [
+        {"result_count": 5, "payload": sentinel},
+        SimpleNamespace(result_count="6", payload=sentinel),
+        {"result_count": -7},
+        {"result_count": True},
+        {},
+        {"result_count": "invalid"},
+    ]
+    counts = {"preserved": 1}
+    observability_stage._record_initial_execution_observability(
+        counts, {"attempts": attempts, "question": sentinel}, (object(),)
+    )
+    assert counts == {
+        "preserved": 1,
+        "execution_attempts": 6,
+        "initial_specialist_calls": 1,
+        "initial_raw_result_rows": 11,
+    }
+    assert sentinel not in repr(counts)
+
+
+def test_initial_execution_preserves_len_exception_for_unsuitable_results():
+    with pytest.raises(TypeError):
+        observability_stage._record_initial_execution_observability(
+            {}, {"attempts": []}, object()
+        )
 
 
 def test_service_timing_wrapper_records_on_exception_and_remains_patchable(monkeypatch):

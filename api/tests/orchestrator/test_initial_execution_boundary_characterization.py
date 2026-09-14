@@ -117,8 +117,8 @@ def _install_boundary(monkeypatch, *, fail_at=None):
         outputs["task_planner_canary"] = objects["cp9"]
         return objects["cp9"]
 
-    def stop_after_boundary(trace, key, default):
-        calls.append(("post-boundary", trace, key, default))
+    def stop_after_boundary(counts, trace, results):
+        calls.append(("post-boundary", counts, trace, results))
         outputs.setdefault("task_execution_plans_shadow", ())
         outputs.setdefault("task_execution_plan_comparison_shadow", None)
         raise BoundaryStop("controlled stop after initial execution boundary")
@@ -132,7 +132,9 @@ def _install_boundary(monkeypatch, *, fail_at=None):
     monkeypatch.setattr(service, "_observability_call", observed)
     monkeypatch.setattr(service, "build_task_execution_shadow", cp8)
     monkeypatch.setattr(service, "build_task_planner_canary", cp9)
-    monkeypatch.setattr(service, "_observability_get", stop_after_boundary)
+    monkeypatch.setattr(
+        service, "_record_initial_execution_observability", stop_after_boundary
+    )
     return BoundaryHarness(calls, outputs, objects)
 
 
@@ -170,7 +172,8 @@ def test_success_contract_has_exact_order_identity_label_and_output_shape(monkey
     assert calls[6][3] is observed[5]["shadow_observer"]
     assert calls[7][1] is obj["plan"] and calls[7][2] is obj["trace"]
     assert calls[8][1] is obj["plan"]
-    assert calls[9][1] is obj["trace"]
+    assert calls[9][2] is obj["trace"]
+    assert calls[9][3] is obj["results"]
 
     output["shape"] = {
         "plan": output["plan"],

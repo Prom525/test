@@ -2,6 +2,15 @@
 
 ## Besluit
 
+### Gerealiseerde initiële execution-observabilitygrens (opdracht 3E)
+
+De drie bestaande initiële execution-metrics worden nu mechanisch vastgelegd
+door `_record_initial_execution_observability` in
+`api/app/orchestrator/observability_stage.py`. De core roept dezelfde helper
+exact eenmaal aan nadat alle negen 3D2-resultaten lokaal zijn gebonden en vóór
+initialisatie van de evidencepipeline. Mapping-/objecttoegang, attempts-shape,
+integerconversie, `len(results)` en exceptionsemantiek zijn ongewijzigd.
+
 ### Gerealiseerde initiële planningsgrens (opdracht 3C)
 
 De bestaande keten understanding, routing sanity, research requirement en
