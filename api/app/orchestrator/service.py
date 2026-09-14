@@ -120,6 +120,7 @@ from app.orchestrator.serialization_stage import (
 )
 from app.orchestrator.initial_planning_stage import run_initial_planning_stage
 from app.orchestrator.initial_execution_stage import run_initial_execution_stage
+from app.orchestrator.phase_c_entry_stage import prepare_phase_c_entry
 
 
 
@@ -7087,72 +7088,27 @@ def run_orchestrator(
     reconciliation = None
 
     try:
-        requirement_set = (
-            _observability_call(
-                timings,
-                "evidence_requirement_lookup",
-                get_requirement_set,
-                plan.intent,
-            )
+        phase_c_entry = prepare_phase_c_entry(
+            plan,
+            results,
+            typed_execution_results,
+            timings,
+            counts,
+            observability_call=_observability_call,
+            get_requirement_set=get_requirement_set,
+            utc_now=lambda: datetime.now(timezone.utc),
+            observability_now=_observability_now,
+            observability_elapsed_ms=_observability_elapsed_ms,
+            normalize_execution_result_evidence=(
+                normalize_execution_result_evidence
+            ),
         )
 
-        specialist_research_blocked = any(
-            isinstance(
-                item.get("result"),
-                dict,
-            )
-            and str(
-                item["result"].get(
-                    "status",
-                    "",
-                )
-            ).lower()
-            == "clarification_required"
-            for item in results
-            if isinstance(
-                item,
-                dict,
-            )
-        )
-
-        if (
-            requirement_set is not None
-            and not plan.clarification_required
-            and not specialist_research_blocked
-        ):
-            retrieved_at = datetime.now(
-                timezone.utc
-            )
-
-            normalization_started = (
-                _observability_now()
-            )
-
-            try:
-                initial_evidence_items = tuple(
-                    evidence_item
-                    for execution_result
-                    in typed_execution_results
-                    for evidence_item
-                    in normalize_execution_result_evidence(
-                        execution_result,
-                        retrieved_at=retrieved_at,
-                    )
-                )
-            finally:
-                timings[
-                    "evidence_normalization"
-                ] = (
-                    _observability_elapsed_ms(
-                        normalization_started
-                    )
-                )
-
-                counts[
-                    "initial_evidence_items"
-                ] = len(
-                    initial_evidence_items
-                )
+        if phase_c_entry is not None:
+            requirement_set = phase_c_entry.requirement_set
+            retrieved_at = phase_c_entry.retrieved_at
+            initial_evidence_items = phase_c_entry.initial_evidence_items
+            working_evidence_items = phase_c_entry.working_evidence_items
 
             # PROMATI_PRODUCT_FAMILY_RECOVERY_P4_5B4
             #
@@ -7161,10 +7117,6 @@ def run_orchestrator(
             #
             # Recovery itself is deterministic product retrieval.
             # Technical/project synthesis remains a separate path.
-            working_evidence_items = (
-                initial_evidence_items
-            )
-
             product_family_coverage = (
                 assess_product_family_coverage(
                     requirement_set,

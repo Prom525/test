@@ -85,3 +85,11 @@ mapping/object attempts contract, integer-only result-count projection,
 privacy, unchanged `len(results)` failure behavior, exact three-key mutation,
 the single call after all 3D2 bindings and before evidence initialization, and
 the leaf import surface.
+
+For the 3F2 Phase-C-entry extraction, run
+`tests/orchestrator/test_phase_c_entry_boundary_characterization.py` before
+and after the edit and run `tests/orchestrator/test_phase_c_entry_stage.py`
+afterward. These lock the exact lookup/gate/timestamp/normalization boundary,
+exception propagation into the existing service fail-open `try`, tuple
+identity, runtime dependency binding, retained coverage ownership and leaf
+import surface.
