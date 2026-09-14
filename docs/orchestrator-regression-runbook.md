@@ -93,3 +93,11 @@ afterward. These lock the exact lookup/gate/timestamp/normalization boundary,
 exception propagation into the existing service fail-open `try`, tuple
 identity, runtime dependency binding, retained coverage ownership and leaf
 import surface.
+
+For the 3G2 product-family coverage/recovery extraction, run
+`tests/orchestrator/test_product_family_recovery_boundary_characterization.py`
+and `tests/orchestrator/test_product_family_recovery_stage.py`. Together they
+lock the single runtime-resolved service call inside the existing Phase-C
+fail-open boundary, the three-field frozen return contract, the 35 previously
+characterized low-level cases, exact partial count mutations, exception
+propagation and the leaf import surface.
