@@ -2,6 +2,22 @@
 
 ## Besluit
 
+### Gerealiseerde research-decision shadow-/P4.6D1-authoritygrens (opdracht 3I2)
+
+De bestaande research-decision shadow en P4.6D1-authoritycall staan nu
+mechanisch in `api/app/orchestrator/task_research_decision_stage.py`. De frozen
+`TaskResearchDecisionStageResult` retourneert exact de twee onbewerkte
+resultaatobjecten. De onafhankelijke fail-open-zones blijven gelijk: iedere
+stageaanroep begint met een verse shadow-`[]`, authority begint met `None`, en
+alleen `Exception` wordt gevangen zodat `BaseException` propageert.
+
+De core roept de stage exact eenmaal aan na de 3H2-resultaatbinding en bindt
+beide velden vóór de bestaande research-contextzone. Beide servicecallables
+worden per orchestrator-aanroep runtime-resolved doorgegeven. De contextfunctie
+ontvangt ongewijzigd dezelfde planidentiteit, `list(results)` en uitsluitend
+het decisions-shadowobject; P4.6D1-authority, CP13, researchuitvoering,
+evidenceverwerking, responsebouw en de wrapperketen zijn niet verplaatst.
+
 ### Gerealiseerde task-evidence shadow-/P4.6C-authoritygrens (opdracht 3H2)
 
 De exact in 3H1 gekarakteriseerde task-evidencegrens staat nu in

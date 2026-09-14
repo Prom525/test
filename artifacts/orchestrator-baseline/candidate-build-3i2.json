@@ -1,0 +1,24 @@
+{
+  "schema_version": "promati.orchestrator.candidate-build.v1",
+  "source_commit": "aab4f0ee6d41ff41e7403ca7ec9b03887a2c3003",
+  "tag": "promati-api:3i2-candidate-aab4f0e",
+  "image_id": "sha256:0354ee0f77db10ce47693e36193805e27036797603811bd000a01cf1bafe9ac7",
+  "checks": {
+    "service_import": "passed",
+    "task_research_decision_stage_import": "passed",
+    "run_orchestrator_callable": true,
+    "tests_absent": true,
+    "pyc_pyo_absent": true,
+    "pycache_absent": true
+  },
+  "active_api_before": {
+    "container_id": "da6eecdbf9e6ef25893fb72a5acf67e21af8d102adee301e70a8fc0386680d66",
+    "image_id": "sha256:0a783ae72d16e07c207344c9608ce7601d414449e56b1ac7e5da336b78e49bb4"
+  },
+  "active_api_after": {
+    "container_id": "da6eecdbf9e6ef25893fb72a5acf67e21af8d102adee301e70a8fc0386680d66",
+    "image_id": "sha256:0a783ae72d16e07c207344c9608ce7601d414449e56b1ac7e5da336b78e49bb4"
+  },
+  "active_api_unchanged": true,
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}
