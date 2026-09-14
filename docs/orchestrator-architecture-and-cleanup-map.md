@@ -2,6 +2,48 @@
 
 ## Besluit
 
+### Gerealiseerde product-family coverage/recoverygrens (opdracht 3G2)
+
+De exact in 3G1 gekarakteriseerde product-family coverage/recoverygrens staat
+nu in `api/app/orchestrator/product_family_recovery_stage.py`. De frozen
+`ProductFamilyRecoveryResult` retourneert uitsluitend
+`product_family_coverage`, `product_family_recovery` en
+`working_evidence_items`. De service roept de stage eenmaal aan binnen de
+bestaande brede Phase-C-`try`, direct na de 3F2-entry en vóór task-evidence,
+en levert alle vier runtime-resolved dependencies expliciet aan. De stage is
+een leaf en vangt geen exceptions af; de bestaande service-fallback blijft dus
+de enige fail-open grens.
+
+De 35 parametrische 3G1-low-level contractgevallen zijn zonder versoepeling
+verplaatst naar directe tests in
+`api/tests/orchestrator/test_product_family_recovery_stage.py`:
+
+| Oude 3G1-assertiongroep | Nieuwe directe testlocatie |
+| --- | --- |
+| Verse defaultmetadata, exact eerste coveragecall, identity en no-recovery return | `test_no_recovery_exact_call_return_contract_and_fresh_default`; `test_default_dict_and_lists_are_fresh_between_calls` |
+| Letterlijke tuplecoercie voor zeven shapes | `test_missing_codes_use_literal_tuple_coercion` |
+| Truthy applicable-gate voor vier falsey waarden | `test_recovery_requires_truthy_applicable` |
+| Exact één recoverycall, sender/append-observer, raw ongebruikt, metadatareplacement | `test_exact_recovery_call_metadata_replacement_counter_raw_unused_and_max_one` |
+| Zes counterconversies en behoud beginwaarde | `test_counter_uses_supplied_nonnegative_conversion_and_start_value` |
+| Ordered typed normalization, gedeelde timestamp en tuplecompositie | `test_ordered_typed_normalization_timestamp_tuple_composition_and_raw_unused` |
+| Zero-evidence tuple-identity | `test_zero_recovered_evidence_preserves_tuple_identity` |
+| Tweede coveragecall en vervanging eerste resultaat | `test_second_coverage_exact_objects_and_replaces_first` |
+| Zeven failurepunten met exacte partiële countmutatie en propagatie | `test_failure_matrix_propagates_and_preserves_partial_count` |
+| Drie malformed coveragevormen | `test_malformed_coverage_shape_propagates_without_recovery` |
+| Niet-iterable missing codes | `test_noniterable_missing_codes_propagates_before_applicable_lookup` |
+| `None` recoverymetadata vóór countmutatie | `test_none_metadata_propagates_before_counter_mutation` |
+
+De voormalige service-frame-local assertions op
+`missing_product_families`, `recovery_typed_results`,
+`recovered_evidence_items` en het raw recoveryresultaat staan daarmee bij de
+stage die deze locals nu bezit. De resterende 3G1-service-integratietests in
+`test_product_family_recovery_boundary_characterization.py` bewijzen exact één
+stagecall, runtime dependencylookup, binding vóór task-evidence, één initiële
+execution en de bestaande outer fail-open/fallback inclusief partiële count.
+De 3F2-structuurtest is alleen mechanisch aangepast: zijn eerdere assertion dat
+de coveragecall in `service.py` stond, wijst nu naar de 3G2-stagecall na de
+3F2-resultaatbinding.
+
 ### Gerealiseerde Phase-C-entrygrens (opdracht 3F2)
 
 Requirementlookup, de bestaande clarificationgate, de ene UTC-timestamp en de

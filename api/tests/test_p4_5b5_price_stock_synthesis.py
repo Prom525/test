@@ -102,10 +102,18 @@ def test_price_stock_coverage_requires_both_requirements_per_family(monkeypatch)
 
 def test_existing_grounded_synthesizer_remains_service_output_path():
     from pathlib import Path
-    source = (Path(__file__).resolve().parents[1] / "app/orchestrator/service.py").read_text(
+    orchestrator = Path(__file__).resolve().parents[1] / "app/orchestrator"
+    source = (orchestrator / "service.py").read_text(
+        encoding="utf-8-sig"
+    )
+    stage = (orchestrator / "product_family_recovery_stage.py").read_text(
         encoding="utf-8-sig"
     )
     assert "synthesize_grounded_evidence," in source
-    assert source.index("assess_product_family_coverage(") < source.index(
-        "synthesize_grounded_evidence,", source.index("recover_missing_product_families(")
+    assert stage.index("assess_product_family_coverage(") < stage.index(
+        "recover_missing_product_families("
+    )
+    assert source.index("run_product_family_recovery_stage(") < source.index(
+        "synthesize_grounded_evidence,",
+        source.index("run_product_family_recovery_stage("),
     )

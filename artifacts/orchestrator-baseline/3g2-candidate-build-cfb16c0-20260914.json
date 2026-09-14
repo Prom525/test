@@ -1,0 +1,21 @@
+{
+  "schema_version": "promati.orchestrator.candidate-build.v1",
+  "task": "3G2",
+  "source_commit": "cfb16c0ca8c8bde4d3b5f4f99cc43fe05156073c",
+  "ancestor_required": "de084fe75db53d7d9ec35534ddc1ae32be8fee06",
+  "ancestor_verified": true,
+  "image_tag": "promati-api:3g2-candidate-cfb16c0-20260914-1320",
+  "image_id": "sha256:a92ae963da55b083abd556c3e238a8d6107922c234e19882bf856c5db7429ebd",
+  "facade_and_stage_import": "passed with synthetic settings",
+  "image_content": {
+    "tests_present": false,
+    "pyc_present": false,
+    "pyo_present": false,
+    "pycache_present": false
+  },
+  "active_container_replaced": false,
+  "active_container_before": "f734251c700be9751fbed88cdfed103340ae0079aec0b978a7951fda5cb6bf98",
+  "active_container_after": "f734251c700be9751fbed88cdfed103340ae0079aec0b978a7951fda5cb6bf98",
+  "active_image_before_after": "sha256:98131b91ef25a9626c6d309d26a12e5fb2fa6706ef8894a0a857af56242ee62b",
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

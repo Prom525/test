@@ -408,32 +408,34 @@ def test_service_wires_family_coverage_before_generic_research():
     source = service.read_text(
         encoding="utf-8-sig",
     )
+    stage = (
+        service.parent / "product_family_recovery_stage.py"
+    ).read_text(encoding="utf-8-sig")
 
     coverage_position = (
-        source.index(
+        stage.index(
             "assess_product_family_coverage("
         )
     )
 
     recovery_position = (
-        source.index(
+        stage.index(
             "recover_missing_product_families("
         )
     )
 
-    # Zoek de runtime-call, niet de import bovenaan service.py.
+    stage_position = source.index(
+        "run_product_family_recovery_stage("
+    )
     generic_gate_position = (
         source.index(
             "decide_research_requirement,",
-            recovery_position,
+            stage_position,
         )
     )
 
-    assert (
-        coverage_position
-        < recovery_position
-        < generic_gate_position
-    )
+    assert coverage_position < recovery_position
+    assert stage_position < generic_gate_position
 
     assert (
         "working_evidence_items"

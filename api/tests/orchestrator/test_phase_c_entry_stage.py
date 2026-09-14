@@ -186,10 +186,10 @@ def test_leaf_imports_and_single_service_entry_call_with_coverage_retained():
         assert forbidden not in stage.lower()
     assert service.count("prepare_phase_c_entry(") == 1
     assert '"evidence_requirement_lookup"' not in service
-    assert "assess_product_family_coverage(" in service
+    assert "run_product_family_recovery_stage(" in service
     stage_call = service.index("phase_c_entry = prepare_phase_c_entry(")
     bind = service.index("requirement_set = phase_c_entry.requirement_set", stage_call)
-    coverage = service.index("assess_product_family_coverage(", bind)
+    coverage = service.index("run_product_family_recovery_stage(", bind)
     assert stage_call < bind < coverage
     assert "_p4_15cp3c_previous_run_orchestrator = run_orchestrator" in service
     assert "_p4_15cp4b_previous_run_orchestrator = run_orchestrator" in service
