@@ -128,6 +128,9 @@ from app.orchestrator.task_evidence_stage import run_task_evidence_stage
 from app.orchestrator.task_research_decision_stage import (
     run_task_research_decision_stage,
 )
+from app.orchestrator.task_research_context_stage import (
+    run_task_research_context_stage,
+)
 
 
 
@@ -7194,31 +7197,23 @@ def run_orchestrator(
                 task_research_decision_stage.task_research_authority_p4_6d1
             )
 
-            # V6 shadow-only task research input projection. This isolates the
-            # future plan/results context but performs no research call.
-            task_research_contexts_shadow = []
-            try:
-                task_research_contexts_shadow = (
-                    _derive_intent_task_research_contexts_shadow(
-                        plan,
-                        list(results),
-                        task_research_decisions_shadow,
-                    )
-                )
-            except Exception:
-                task_research_contexts_shadow = []
-
-            # V7 shadow-only call/action/scope guard projection. No planner,
-            # research runtime or specialist follow-up is executed here.
-            task_research_call_guards_shadow = []
-            try:
-                task_research_call_guards_shadow = (
-                    _derive_intent_task_research_call_guards_shadow(
-                        task_research_contexts_shadow
-                    )
-                )
-            except Exception:
-                task_research_call_guards_shadow = []
+            task_research_context_stage = run_task_research_context_stage(
+                plan,
+                results,
+                task_research_decisions_shadow,
+                derive_intent_task_research_contexts_shadow=(
+                    _derive_intent_task_research_contexts_shadow
+                ),
+                derive_intent_task_research_call_guards_shadow=(
+                    _derive_intent_task_research_call_guards_shadow
+                ),
+            )
+            task_research_contexts_shadow = (
+                task_research_context_stage.task_research_contexts_shadow
+            )
+            task_research_call_guards_shadow = (
+                task_research_context_stage.task_research_call_guards_shadow
+            )
 
             # CP13: research eligibility is explicit per required/requested task.
             # It consumes CP8 execution state and cannot grant downstream authority.

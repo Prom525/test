@@ -2,6 +2,23 @@
 
 ## Besluit
 
+### Gerealiseerde research-context shadow-/call-guard shadowgrens (opdracht 3J2)
+
+De bestaande research-context- en research-call-guard-shadowzones staan nu
+mechanisch in `api/app/orchestrator/task_research_context_stage.py`. De frozen
+`TaskResearchContextStageResult` retourneert exact de twee onbewerkte
+resultaatobjecten. Iedere stageaanroep begint met twee afzonderlijke verse
+`[]`-defaults. `list(results)` en de contextcall blijven samen in de eerste
+`Exception`-zone; de guardcall blijft in de onafhankelijke tweede zone en
+ontvangt exact het contexts-resultaatobject, inclusief de fallbacklijst.
+`BaseException` blijft overal propageren.
+
+De core roept de stage exact eenmaal aan na de 3I2-resultaatbinding en bindt
+beide velden vóór de ongewijzigde CP13-call. Beide servicecallables worden per
+core-aanroep runtime-resolved doorgegeven. CP13 ontvangt nog steeds uitsluitend
+`plan`, `task_execution_shadow` en `task_research_authority_p4_6d1`; CP13,
+P4.6D2 en alle downstreamlogica en wrappers blijven in `service.py`.
+
 ### Gerealiseerde research-decision shadow-/P4.6D1-authoritygrens (opdracht 3I2)
 
 De bestaande research-decision shadow en P4.6D1-authoritycall staan nu

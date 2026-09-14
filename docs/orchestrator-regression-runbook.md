@@ -121,3 +121,13 @@ afterward. These lock the exact two-field frozen return contract, fresh shadow
 fallback, independent `Exception` zones, `BaseException` propagation, object
 identity and order, runtime service dependency binding, and the unchanged
 research-context inputs.
+
+For the 3J2 research-context/call-guard shadow extraction, run
+`tests/orchestrator/test_task_research_context_guard_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_task_research_context_stage.py` and
+`tests/orchestrator/test_task_research_context_stage_service_integration.py`
+afterward. These lock the frozen exact-two-field return contract, fresh and
+separate list defaults, `list(results)` placement, object identity and order,
+independent `Exception` zones, `BaseException` propagation, runtime service
+dependency binding, the single stage callsite and the unchanged CP13 boundary.
