@@ -64,6 +64,15 @@ Python bindt top-level namen sequentieel. De vier definities zijn:
 
 De import `from app.orchestrator.service import run_orchestrator` exporteert definitie 4. De opgeslagen references vormen een vaste wrapperketen: `CP4F -> CP4B -> CP3C -> core`. Een verplaatsing die één assignment overslaat, verandert productiegedrag.
 
+De initiële executiongrens van de core is mechanisch ondergebracht in
+`app/orchestrator/initial_execution_stage.py`. De core levert per aanroep alle
+productieafhankelijkheden expliciet aan, zodat service-level monkeypatches hun
+runtimebinding behouden. `InitialExecutionStageResult` geeft de negen bestaande
+waarden terug; attempts/counts en de evidenceketen blijven in `service.py` en
+starten pas nadat die waarden onder hun bestaande lokale namen zijn gebonden.
+De stage bezit uitsluitend requirement-attach, P4.6A-shadow, P4.6B-canary, de
+enige authoritative legacy execution, CP8-shadow en CP9-canary.
+
 ## Feitelijke pipelinevolgorde
 
 1. Requestselectie kiest `payload.q`, anders `payload.vraag`, en stript whitespace.
