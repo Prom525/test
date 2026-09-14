@@ -111,3 +111,13 @@ edit. Together these lock the exact two-field frozen return contract, fresh
 shadow fallback, independent `Exception` zones, `BaseException` propagation,
 tuple coercion inside the authority zone, object identity and order, runtime
 service dependency binding, and the rule that research receives shadow only.
+
+For the 3I2 research-decision shadow/P4.6D1 extraction, run
+`tests/orchestrator/test_task_research_decision_p4_6d1_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_task_research_decision_stage.py` and
+`tests/orchestrator/test_task_research_decision_stage_service_integration.py`
+afterward. These lock the exact two-field frozen return contract, fresh shadow
+fallback, independent `Exception` zones, `BaseException` propagation, object
+identity and order, runtime service dependency binding, and the unchanged
+research-context inputs.

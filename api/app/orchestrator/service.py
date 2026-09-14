@@ -125,6 +125,9 @@ from app.orchestrator.product_family_recovery_stage import (
     run_product_family_recovery_stage,
 )
 from app.orchestrator.task_evidence_stage import run_task_evidence_stage
+from app.orchestrator.task_research_decision_stage import (
+    run_task_research_decision_stage,
+)
 
 
 
@@ -7172,31 +7175,24 @@ def run_orchestrator(
                 task_evidence_stage.task_evidence_authority_p4_6c
             )
 
-            # V5 shadow-only research decisions derived from the V4 task
-            # assessments. Fail-open and never used for research execution.
-            task_research_decisions_shadow = []
-            try:
-                task_research_decisions_shadow = (
-                    _derive_intent_task_research_decisions_shadow(
-                        task_evidence_assessments_shadow
-                    )
+            task_research_decision_stage = (
+                run_task_research_decision_stage(
+                    task_evidence_assessments_shadow,
+                    task_evidence_authority_p4_6c,
+                    derive_intent_task_research_decisions_shadow=(
+                        _derive_intent_task_research_decisions_shadow
+                    ),
+                    build_task_research_authority_canary_p4_6d1=(
+                        build_task_research_authority_canary_p4_6d1
+                    ),
                 )
-            except Exception:
-                task_research_decisions_shadow = []
-
-            # PROMATI_P4_6D1_TASK_RESEARCH_DECISION_AUTHORITY_CANARY
-            # Promote only task-scoped research decisions. No research execution,
-            # reconciliation, synthesis or public answer authority changes here.
-            task_research_authority_p4_6d1 = None
-            try:
-                task_research_authority_p4_6d1 = (
-                    build_task_research_authority_canary_p4_6d1(
-                        task_evidence_authority_p4_6c,
-                        task_research_decisions_shadow,
-                    )
-                )
-            except Exception:
-                task_research_authority_p4_6d1 = None
+            )
+            task_research_decisions_shadow = (
+                task_research_decision_stage.task_research_decisions_shadow
+            )
+            task_research_authority_p4_6d1 = (
+                task_research_decision_stage.task_research_authority_p4_6d1
+            )
 
             # V6 shadow-only task research input projection. This isolates the
             # future plan/results context but performs no research call.
