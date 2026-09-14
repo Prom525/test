@@ -145,10 +145,10 @@ def test_stage_imports_are_minimal_and_core_block_is_not_duplicated():
     assert "typed_execution_results.append" not in service_source
 
 
-def test_service_binds_all_outputs_before_attempts_and_preserves_wrappers():
+def test_service_binds_all_outputs_before_observability_and_preserves_wrappers():
     source = Path("app/orchestrator/service.py").read_text(encoding="utf-8")
     stage_call = source.index("initial_execution = run_initial_execution_stage(")
-    attempts = source.index("attempts = _observability_get(", stage_call)
+    metrics = source.index("_record_initial_execution_observability(", stage_call)
     for binding in (
         "plan = initial_execution.plan",
         "task_execution_plans_shadow = (",
@@ -160,7 +160,11 @@ def test_service_binds_all_outputs_before_attempts_and_preserves_wrappers():
         "task_execution_shadow = initial_execution.task_execution_shadow",
         "task_planner_canary = initial_execution.task_planner_canary",
     ):
-        assert stage_call < source.index(binding, stage_call) < attempts
+        assert stage_call < source.index(binding, stage_call) < metrics
+    evidence = source.index("evidence_pipeline = None", metrics)
+    assert metrics < evidence
+    assert source.count("_record_initial_execution_observability(") == 1
+    assert "attempts = _observability_get(" not in source
     assert "_p4_15cp3c_previous_run_orchestrator = run_orchestrator" in source
     assert "_p4_15cp4b_previous_run_orchestrator = run_orchestrator" in source
     assert "_p4_15cp4f_previous_run_orchestrator = run_orchestrator" in source

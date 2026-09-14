@@ -110,6 +110,7 @@ from app.orchestrator.observability_stage import (
     _new_observability_timings,
     _observability_get,
     _observability_nonnegative_int,
+    _record_initial_execution_observability,
     _record_public_composition_canary_release_observability,
     _record_task_execution_plan_shadow_observability,
 )
@@ -7072,38 +7073,10 @@ def run_orchestrator(
     task_execution_shadow = initial_execution.task_execution_shadow
     task_planner_canary = initial_execution.task_planner_canary
 
-    attempts = _observability_get(
+    _record_initial_execution_observability(
+        counts,
         trace,
-        "attempts",
-        [],
-    )
-
-    if not isinstance(
-        attempts,
-        (list, tuple),
-    ):
-        attempts = []
-
-    counts["execution_attempts"] = len(
-        attempts
-    )
-
-    # results bevat alleen werkelijk uitgevoerde
-    # specialisttransportcalls. Een ontbrekend endpoint
-    # komt wel in trace.attempts maar niet in results.
-    counts["initial_specialist_calls"] = len(
-        results
-    )
-
-    counts["initial_raw_result_rows"] = sum(
-        _observability_nonnegative_int(
-            _observability_get(
-                attempt,
-                "result_count",
-                0,
-            )
-        )
-        for attempt in attempts
+        results,
     )
 
     evidence_pipeline = None

@@ -78,3 +78,10 @@ locks the nine-field return contract, dependency order, object identity,
 ordered observer collection, independent fail-open zones, authoritative
 propagation, minimal imports, single core call site and the unchanged
 CP4F -> CP4B -> CP3C -> core bindings.
+
+For the 3E initial execution-observability extraction, also run
+`tests/orchestrator/test_observability_stage_extraction.py`. It locks the
+mapping/object attempts contract, integer-only result-count projection,
+privacy, unchanged `len(results)` failure behavior, exact three-key mutation,
+the single call after all 3D2 bindings and before evidence initialization, and
+the leaf import surface.
