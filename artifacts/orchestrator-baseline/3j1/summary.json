@@ -1,0 +1,38 @@
+{
+  "schema_version": "promati.orchestrator.regression-comparison.3j1.v1",
+  "start_commit": "feec2e1907aa4f1d024a7eeb1dae44208b54a476",
+  "pre": {
+    "passed": 941,
+    "failed": 50,
+    "errors": 5,
+    "skipped": 13,
+    "xfailed": 5,
+    "unexpected_xpass": 0
+  },
+  "post": {
+    "passed": 975,
+    "failed": 50,
+    "errors": 5,
+    "skipped": 13,
+    "xfailed": 5,
+    "unexpected_xpass": 0
+  },
+  "start_commit_comparison": {
+    "new_failure_or_error_names": [],
+    "resolved_failure_or_error_names": [],
+    "unchanged_failure_or_error_count": 55
+  },
+  "post_change_57fe45e_comparison": {
+    "new_failure_or_error_names": [],
+    "resolved_failure_or_error_names": [
+      "tests.test_orchestrator_retention_gate::test_pg_cron_is_not_introduced",
+      "tests.test_orchestrator_retention_gate::test_retention_gate_contract_is_exact",
+      "tests.test_orchestrator_retention_gate::test_retention_gate_is_fixed_to_90_days",
+      "tests.test_orchestrator_retention_gate::test_retention_gate_is_insert_driven_and_daily",
+      "tests.test_orchestrator_retention_gate::test_retention_state_has_no_free_text_error_message",
+      "tests.test_orchestrator_retention_gate::test_trigger_is_fail_open"
+    ],
+    "unchanged_failure_or_error_count": 55
+  },
+  "privacy": "Contains only commit, aggregate test counts, and test node names; no questions, answers, tokens, entities, scopes, payloads, or secrets."
+}
