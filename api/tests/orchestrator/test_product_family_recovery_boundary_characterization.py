@@ -70,7 +70,7 @@ def _install(monkeypatch, *, stage_error=False):
         calls.append(("next_boundary", args, kwargs))
         raise BoundaryObserved("next boundary")
 
-    monkeypatch.setattr(service, "_assess_intent_task_evidence_shadow", next_boundary)
+    monkeypatch.setattr(service, "run_task_evidence_stage", next_boundary)
     monkeypatch.setattr(service, "has_service_accepted_execution", lambda *a: True)
 
     def legacy_answer(*args, **kwargs):

@@ -2,6 +2,25 @@
 
 ## Besluit
 
+### Gerealiseerde task-evidence shadow-/P4.6C-authoritygrens (opdracht 3H2)
+
+De exact in 3H1 gekarakteriseerde task-evidencegrens staat nu in
+`api/app/orchestrator/task_evidence_stage.py`. De frozen
+`TaskEvidenceStageResult` retourneert uitsluitend het onbewerkte
+`task_evidence_assessments_shadow`-object en het onbewerkte
+`task_evidence_authority_p4_6c`-object. De stage houdt de twee bestaande,
+onafhankelijke `Exception`-fail-open-zones intact: een verse shadow-`[]` per
+aanroep en een authoritydefault van `None`. Tuplecoercie blijft binnen de
+authorityzone en `BaseException` propageert.
+
+De service roept de stage eenmaal aan direct na product-family recovery en
+bindt beide velden vóór de bestaande researchdecision. De twee dependencies
+worden per orchestrator-aanroep runtime-resolved doorgegeven, zodat de
+bestaande servicemonkeypatchpunten effectief blijven. De researchdecision
+ontvangt nog steeds uitsluitend het shadowresultaat; P4.6C-authority,
+research/CP13, evidenceverwerking, responsebouw en de wrapperketen blijven op
+hun bestaande plaats.
+
 ### Gerealiseerde product-family coverage/recoverygrens (opdracht 3G2)
 
 De exact in 3G1 gekarakteriseerde product-family coverage/recoverygrens staat

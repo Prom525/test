@@ -101,3 +101,13 @@ lock the single runtime-resolved service call inside the existing Phase-C
 fail-open boundary, the three-field frozen return contract, the 35 previously
 characterized low-level cases, exact partial count mutations, exception
 propagation and the leaf import surface.
+
+For the 3H2 task-evidence shadow/P4.6C extraction, run
+`tests/orchestrator/test_task_evidence_p4_6c_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_task_evidence_stage.py` and
+`tests/orchestrator/test_task_evidence_stage_service_integration.py` after the
+edit. Together these lock the exact two-field frozen return contract, fresh
+shadow fallback, independent `Exception` zones, `BaseException` propagation,
+tuple coercion inside the authority zone, object identity and order, runtime
+service dependency binding, and the rule that research receives shadow only.
