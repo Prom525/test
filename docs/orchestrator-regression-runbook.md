@@ -161,3 +161,14 @@ and `tests/test_cp14_task_research_authority_chain.py`. Together these lock the
 frozen exact-two-field result, fresh unit and fallback lists, object
 identity/order, `Exception`-only fail-open behavior, runtime service dependency
 binding, the single stage callsite and the unchanged P4.6E2 boundary.
+
+For the 3O2 P4.6E3 synthesis-coverage invocation extraction, run both
+unchanged 3O1 files:
+`tests/orchestrator/test_p4_6e3_synthesis_coverage_boundary_characterization.py`
+and `tests/orchestrator/test_p4_6e3_synthesis_coverage_characterization.py`.
+Also run `tests/orchestrator/test_p4_6e3_synthesis_coverage_stage.py`,
+`tests/orchestrator/test_p4_6e3_synthesis_coverage_stage_service_integration.py`
+and `tests/test_cp14_task_research_authority_chain.py`. Together these lock
+the frozen exact-one-field result, tuple coercion inside the `Exception` zone,
+success identity, runtime service dependency binding, the single stage
+callsite and the unchanged following V8 boundary.

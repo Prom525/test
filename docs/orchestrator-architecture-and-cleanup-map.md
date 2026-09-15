@@ -369,3 +369,8 @@ evidence-unitslijst en de bestaande `Exception`-fail-open naar
 per aanroep runtime door en bindt authority plus units vóór de ongewijzigde
 P4.6E2-call. De E1-builder, P4.6E2 en alle latere paden blijven op hun bestaande
 plaats.
+
+3O2 verplaatst uitsluitend de service-owned P4.6E3 synthesis-coverage
+invocation naar `p4_6e3_synthesis_coverage_stage.py`; tuplecoercie en de
+`Exception`-fail-open blijven samen, terwijl de opvolgende V8-canary volledig
+in `service.py` blijft.
