@@ -1,0 +1,15 @@
+{
+  "schema_version": "promati.orchestrator.candidate-build.v1",
+  "source_commit": "82be8c750cc7949063b02d1b8c1924bd54421162",
+  "tag": "ai-platform-api:3k2-candidate-82be8c",
+  "image_id": "sha256:44d691af39587c928df1f6d850df21058296c595ab05abd9bcf88688a3b3956c",
+  "built": true,
+  "service_import": true,
+  "stage_import": true,
+  "run_orchestrator_callable": true,
+  "minimal_leaf_imports": true,
+  "single_stage_callsite": true,
+  "image_contains_tests_or_bytecode_caches": false,
+  "active_api_replaced_or_restarted": false,
+  "privacy": "Contains build and verification metadata only."
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": "promati.orchestrator.regression-run.v1",
+  "label": "post-3k2-targeted",
+  "timestamp_utc": "2026-09-14T18:42:02.791382+00:00",
+  "commit_sha": "82be8c750cc7949063b02d1b8c1924bd54421162",
+  "command": "python api/scripts/run_orchestrator_regression.py --label post-3k2-targeted --output artifacts/orchestrator-baseline/post-3k2-targeted.json -- tests/orchestrator/test_cp13_research_semantics_stage.py tests/orchestrator/test_cp13_research_semantics_stage_service_integration.py tests/orchestrator/test_cp13_research_semantics_boundary_characterization.py",
+  "selection": [
+    "--",
+    "tests/orchestrator/test_cp13_research_semantics_stage.py",
+    "tests/orchestrator/test_cp13_research_semantics_stage_service_integration.py",
+    "tests/orchestrator/test_cp13_research_semantics_boundary_characterization.py"
+  ],
+  "result": {
+    "passed": 20,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "failure_names": []
+  },
+  "pytest_exit_code": 0,
+  "gate_exit_code": 0,
+  "comparison": null,
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

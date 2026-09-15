@@ -349,3 +349,9 @@ Aanvullend vóór capabilityactivatie, maar niet vereist voor een puur mechanisc
 ## Beslisadvies voor opdracht 3
 
 Start opdracht 3 alleen als een beperkte, gedragloze extractie met één stage per wijziging. Begin met observabilityhelpers en pure serialisatiehelpers; verplaats daarna planner/execution orchestration; laat `_build_user_answer`, CP9-CP12 en alle post-authority repairs aanvankelijk op hun plaats. Maak geen capability-, GSL/DE3-, typed-status- of cleanupwijziging in dezelfde reeks. Na iedere extractie: source-shape characterization, behaviorgoldens, Docker failure-set vergelijking en controle dat de wrapperketen en compacte boundary identiek blijven.
+
+3K2 extraheert uitsluitend de CP13-call en zijn bestaande fail-closed fallback
+naar `cp13_research_semantics_stage.py`. De core geeft de service-local callable
+runtime door en bindt het ene resultaatveld vóór de ongewijzigde P4.6D2-call;
+P4.6D2 en alle latere authority-, evidence- en presentatiepaden blijven in
+`service.py`.

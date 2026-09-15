@@ -55,13 +55,13 @@ def test_service_calls_stage_once_with_runtime_dependencies_binds_outputs_before
         calls.append(("stage", args, dependencies))
         return TaskResearchContextStageResult(contexts, guards)
 
-    def cp13(*args):
+    def cp13(*args, **kwargs):
         frame = __import__("inspect").currentframe().f_back.f_locals
         calls.append(("cp13", args, frame))
         raise Cp13Observed
 
     monkeypatch.setattr(service, "run_task_research_context_stage", stage)
-    monkeypatch.setattr(service, "build_task_research_semantics", cp13)
+    monkeypatch.setattr(service, "run_cp13_research_semantics_stage", cp13)
     monkeypatch.setattr(service, "has_service_accepted_execution", lambda *a: True)
 
     with pytest.raises(Cp13Observed):
