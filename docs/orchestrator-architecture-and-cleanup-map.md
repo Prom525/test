@@ -355,3 +355,10 @@ naar `cp13_research_semantics_stage.py`. De core geeft de service-local callable
 runtime door en bindt het ene resultaatveld vóór de ongewijzigde P4.6D2-call;
 P4.6D2 en alle latere authority-, evidence- en presentatiepaden blijven in
 `service.py`.
+
+3L2 extraheert uitsluitend de service-owned P4.6D2-aanroep, de verse interne
+observationslijst en de bestaande `Exception`-fail-open naar
+`p4_6d2_research_execution_stage.py`. De core geeft de service-local D2-callable
+per aanroep runtime door en bindt authority plus observations vóór de
+ongewijzigde P4.6E1-zone. De interne D2-executor, P4.6E1 en alle latere paden
+blijven op hun bestaande plaats.

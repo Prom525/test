@@ -141,3 +141,13 @@ afterward. These lock the frozen exact-one-field return contract, unchanged
 success identity, fresh fail-closed fallback containers, `Exception`-only
 handling, runtime service dependency binding, the single stage callsite and
 the unchanged P4.6D2 boundary.
+
+For the 3L2 P4.6D2 service-invocation extraction, run both unchanged 3L1 files:
+`tests/orchestrator/test_p4_6d2_research_execution_boundary_characterization.py`
+and `tests/orchestrator/test_p4_6d2_research_execution_characterization.py`.
+Also run `tests/orchestrator/test_p4_6d2_research_execution_stage.py`,
+`tests/orchestrator/test_p4_6d2_research_execution_stage_service_integration.py`
+and `tests/test_cp14_task_research_authority_chain.py`. Together these lock the
+frozen exact-two-field result, fresh observation and fallback lists, object
+identity/order, `Exception`-only fail-open behavior, runtime service dependency
+binding, the single stage callsite and the unchanged P4.6E1 boundary.

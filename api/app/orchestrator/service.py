@@ -134,6 +134,9 @@ from app.orchestrator.task_research_context_stage import (
 from app.orchestrator.cp13_research_semantics_stage import (
     run_cp13_research_semantics_stage,
 )
+from app.orchestrator.p4_6d2_research_execution_stage import (
+    run_p4_6d2_research_execution_stage,
+)
 
 
 
@@ -7231,26 +7234,28 @@ def run_orchestrator(
             # PROMATI_P4_6D2_TASK_RESEARCH_EXECUTION_AUTHORITY_CANARY
             # Bounded task-research execution authority only. Follow-up outputs
             # remain isolated from legacy Phase-C reconciliation/public synthesis.
-            task_research_execution_authority_p4_6d2 = None
-            task_research_execution_observations_p4_6d2 = []
-            try:
-                task_research_execution_authority_p4_6d2 = (
-                    run_task_research_execution_authority_canary_p4_6d2(
-                        plan,
-                        list(results),
-                        task_research_authority_p4_6d1,
-                        task_research_contexts_shadow,
-                        task_research_call_guards_shadow,
-                        sender=sender,
-                        evidence_observer=(
-                            task_research_execution_observations_p4_6d2.append
-                        ),
-                        task_research_semantics_cp13=task_research_semantics_cp13,
-                    )
+            p4_6d2_research_execution_stage = (
+                run_p4_6d2_research_execution_stage(
+                    plan,
+                    results,
+                    task_research_authority_p4_6d1,
+                    task_research_contexts_shadow,
+                    task_research_call_guards_shadow,
+                    sender,
+                    task_research_semantics_cp13,
+                    run_task_research_execution_authority_canary_p4_6d2=(
+                        run_task_research_execution_authority_canary_p4_6d2
+                    ),
                 )
-            except Exception:
-                task_research_execution_authority_p4_6d2 = None
-                task_research_execution_observations_p4_6d2 = []
+            )
+            task_research_execution_authority_p4_6d2 = (
+                p4_6d2_research_execution_stage
+                .task_research_execution_authority_p4_6d2
+            )
+            task_research_execution_observations_p4_6d2 = (
+                p4_6d2_research_execution_stage
+                .task_research_execution_observations_p4_6d2
+            )
 
             # PROMATI_P4_6E1_TASK_RESEARCH_EVIDENCE_AUTHORITY_CANARY
             # Normalize accepted P4.6d2 typed follow-up results and reassess only
