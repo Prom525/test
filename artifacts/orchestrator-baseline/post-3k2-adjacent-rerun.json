@@ -1,0 +1,42 @@
+{
+  "schema_version": "promati.orchestrator.regression-run.v1",
+  "label": "post-3k2-adjacent-rerun",
+  "timestamp_utc": "2026-09-14T18:43:08.631454+00:00",
+  "commit_sha": "82be8c750cc7949063b02d1b8c1924bd54421162",
+  "command": "python api/scripts/run_orchestrator_regression.py --label post-3k2-adjacent-rerun --output artifacts/orchestrator-baseline/post-3k2-adjacent-rerun.json -- tests/orchestrator/test_initial_execution_boundary_characterization.py tests/orchestrator/test_initial_execution_stage.py tests/orchestrator/test_observability_stage_extraction.py tests/orchestrator/test_phase_c_entry_boundary_characterization.py tests/orchestrator/test_phase_c_entry_stage.py tests/orchestrator/test_product_family_recovery_boundary_characterization.py tests/orchestrator/test_product_family_recovery_stage.py tests/orchestrator/test_task_evidence_p4_6c_boundary_characterization.py tests/orchestrator/test_task_evidence_stage.py tests/orchestrator/test_task_evidence_stage_service_integration.py tests/orchestrator/test_task_research_decision_p4_6d1_boundary_characterization.py tests/orchestrator/test_task_research_decision_stage.py tests/orchestrator/test_task_research_decision_stage_service_integration.py tests/orchestrator/test_task_research_context_guard_boundary_characterization.py tests/orchestrator/test_task_research_context_stage.py tests/orchestrator/test_task_research_context_stage_service_integration.py tests/orchestrator/test_service_wrapper_chain_characterization.py tests/orchestrator/test_post_cp12_answer_mutations.py tests/orchestrator/test_evidence_adapter_chain_characterization.py tests/test_phase_c8_evidence_pipeline_behavior.py tests/test_phase_c8_evidence_pipeline_hardening.py",
+  "selection": [
+    "--",
+    "tests/orchestrator/test_initial_execution_boundary_characterization.py",
+    "tests/orchestrator/test_initial_execution_stage.py",
+    "tests/orchestrator/test_observability_stage_extraction.py",
+    "tests/orchestrator/test_phase_c_entry_boundary_characterization.py",
+    "tests/orchestrator/test_phase_c_entry_stage.py",
+    "tests/orchestrator/test_product_family_recovery_boundary_characterization.py",
+    "tests/orchestrator/test_product_family_recovery_stage.py",
+    "tests/orchestrator/test_task_evidence_p4_6c_boundary_characterization.py",
+    "tests/orchestrator/test_task_evidence_stage.py",
+    "tests/orchestrator/test_task_evidence_stage_service_integration.py",
+    "tests/orchestrator/test_task_research_decision_p4_6d1_boundary_characterization.py",
+    "tests/orchestrator/test_task_research_decision_stage.py",
+    "tests/orchestrator/test_task_research_decision_stage_service_integration.py",
+    "tests/orchestrator/test_task_research_context_guard_boundary_characterization.py",
+    "tests/orchestrator/test_task_research_context_stage.py",
+    "tests/orchestrator/test_task_research_context_stage_service_integration.py",
+    "tests/orchestrator/test_service_wrapper_chain_characterization.py",
+    "tests/orchestrator/test_post_cp12_answer_mutations.py",
+    "tests/orchestrator/test_evidence_adapter_chain_characterization.py",
+    "tests/test_phase_c8_evidence_pipeline_behavior.py",
+    "tests/test_phase_c8_evidence_pipeline_hardening.py"
+  ],
+  "result": {
+    "passed": 272,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "failure_names": []
+  },
+  "pytest_exit_code": 0,
+  "gate_exit_code": 0,
+  "comparison": null,
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

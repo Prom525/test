@@ -131,6 +131,9 @@ from app.orchestrator.task_research_decision_stage import (
 from app.orchestrator.task_research_context_stage import (
     run_task_research_context_stage,
 )
+from app.orchestrator.cp13_research_semantics_stage import (
+    run_cp13_research_semantics_stage,
+)
 
 
 
@@ -7215,28 +7218,15 @@ def run_orchestrator(
                 task_research_context_stage.task_research_call_guards_shadow
             )
 
-            # CP13: research eligibility is explicit per required/requested task.
-            # It consumes CP8 execution state and cannot grant downstream authority.
-            try:
-                task_research_semantics_cp13 = build_task_research_semantics(
-                    plan,
-                    task_execution_shadow,
-                    task_research_authority_p4_6d1,
-                )
-            except Exception:
-                task_research_semantics_cp13 = {
-                    "contract_version": (
-                        "promati.orchestrator.task_research_semantics.cp13.v1"
-                    ),
-                    "evaluated": False,
-                    "authoritative": False,
-                    "authority_scope": "intent_task_research_eligibility_only",
-                    "public_answer_authority": False,
-                    "legacy_generic_research_allowed": False,
-                    "allowed_task_ids": [],
-                    "tasks": [],
-                    "reason": "internal_error_fail_closed",
-                }
+            cp13_research_semantics_stage = run_cp13_research_semantics_stage(
+                plan,
+                task_execution_shadow,
+                task_research_authority_p4_6d1,
+                build_task_research_semantics=build_task_research_semantics,
+            )
+            task_research_semantics_cp13 = (
+                cp13_research_semantics_stage.task_research_semantics_cp13
+            )
 
             # PROMATI_P4_6D2_TASK_RESEARCH_EXECUTION_AUTHORITY_CANARY
             # Bounded task-research execution authority only. Follow-up outputs

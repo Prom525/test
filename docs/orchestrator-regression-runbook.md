@@ -131,3 +131,13 @@ afterward. These lock the frozen exact-two-field return contract, fresh and
 separate list defaults, `list(results)` placement, object identity and order,
 independent `Exception` zones, `BaseException` propagation, runtime service
 dependency binding, the single stage callsite and the unchanged CP13 boundary.
+
+For the 3K2 CP13 research-semantics extraction, run
+`tests/orchestrator/test_cp13_research_semantics_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_cp13_research_semantics_stage.py` and
+`tests/orchestrator/test_cp13_research_semantics_stage_service_integration.py`
+afterward. These lock the frozen exact-one-field return contract, unchanged
+success identity, fresh fail-closed fallback containers, `Exception`-only
+handling, runtime service dependency binding, the single stage callsite and
+the unchanged P4.6D2 boundary.

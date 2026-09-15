@@ -138,12 +138,12 @@ def _install(monkeypatch, *, context_return=(), guard_return=(), context_error=N
 
     monkeypatch.setattr(service, "_derive_intent_task_research_call_guards_shadow", guard)
 
-    def cp13(*args):
+    def cp13(*args, **kwargs):
         frames.append(dict(inspect.currentframe().f_back.f_locals))
         calls.append(("cp13", *args))
         raise Cp13Observed("controlled stop at CP13")
 
-    monkeypatch.setattr(service, "build_task_research_semantics", cp13)
+    monkeypatch.setattr(service, "run_cp13_research_semantics_stage", cp13)
     monkeypatch.setattr(service, "has_service_accepted_execution", lambda *a: True)
     monkeypatch.setattr(
         service, "_build_user_answer",
