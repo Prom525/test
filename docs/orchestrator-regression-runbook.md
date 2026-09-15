@@ -151,3 +151,13 @@ and `tests/test_cp14_task_research_authority_chain.py`. Together these lock the
 frozen exact-two-field result, fresh observation and fallback lists, object
 identity/order, `Exception`-only fail-open behavior, runtime service dependency
 binding, the single stage callsite and the unchanged P4.6E1 boundary.
+
+For the 3M2 P4.6E1 service-invocation extraction, run both unchanged 3M1 files:
+`tests/orchestrator/test_p4_6e1_research_evidence_boundary_characterization.py`
+and `tests/orchestrator/test_p4_6e1_research_evidence_characterization.py`.
+Also run `tests/orchestrator/test_p4_6e1_research_evidence_stage.py`,
+`tests/orchestrator/test_p4_6e1_research_evidence_stage_service_integration.py`
+and `tests/test_cp14_task_research_authority_chain.py`. Together these lock the
+frozen exact-two-field result, fresh unit and fallback lists, object
+identity/order, `Exception`-only fail-open behavior, runtime service dependency
+binding, the single stage callsite and the unchanged P4.6E2 boundary.

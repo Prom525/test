@@ -137,6 +137,9 @@ from app.orchestrator.cp13_research_semantics_stage import (
 from app.orchestrator.p4_6d2_research_execution_stage import (
     run_p4_6d2_research_execution_stage,
 )
+from app.orchestrator.p4_6e1_research_evidence_stage import (
+    run_p4_6e1_research_evidence_stage,
+)
 
 
 
@@ -7260,24 +7263,26 @@ def run_orchestrator(
             # PROMATI_P4_6E1_TASK_RESEARCH_EVIDENCE_AUTHORITY_CANARY
             # Normalize accepted P4.6d2 typed follow-up results and reassess only
             # their task/family evidence contract. Legacy Phase-C stays unchanged.
-            task_research_evidence_authority_p4_6e1 = None
-            task_research_evidence_units_p4_6e1 = []
-            try:
-                task_research_evidence_authority_p4_6e1 = (
-                    build_task_research_evidence_authority_canary_p4_6e1(
-                        plan,
-                        task_research_execution_authority_p4_6d2,
-                        task_research_execution_observations_p4_6d2,
-                        tuple(working_evidence_items),
-                        now=retrieved_at,
-                        grounded_synthesis_observer=(
-                            task_research_evidence_units_p4_6e1.append
-                        ),
-                    )
+            p4_6e1_research_evidence_stage = (
+                run_p4_6e1_research_evidence_stage(
+                    plan,
+                    task_research_execution_authority_p4_6d2,
+                    task_research_execution_observations_p4_6d2,
+                    working_evidence_items,
+                    retrieved_at,
+                    build_task_research_evidence_authority_canary_p4_6e1=(
+                        build_task_research_evidence_authority_canary_p4_6e1
+                    ),
                 )
-            except Exception:
-                task_research_evidence_authority_p4_6e1 = None
-                task_research_evidence_units_p4_6e1 = []
+            )
+            task_research_evidence_authority_p4_6e1 = (
+                p4_6e1_research_evidence_stage
+                .task_research_evidence_authority_p4_6e1
+            )
+            task_research_evidence_units_p4_6e1 = (
+                p4_6e1_research_evidence_stage
+                .task_research_evidence_units_p4_6e1
+            )
 
             # PROMATI_P4_6E2_TASK_GROUNDED_SYNTHESIS_AUTHORITY_CANARY
             task_grounded_synthesis_authority_p4_6e2 = None

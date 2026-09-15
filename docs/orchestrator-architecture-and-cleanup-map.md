@@ -362,3 +362,10 @@ observationslijst en de bestaande `Exception`-fail-open naar
 per aanroep runtime door en bindt authority plus observations vóór de
 ongewijzigde P4.6E1-zone. De interne D2-executor, P4.6E1 en alle latere paden
 blijven op hun bestaande plaats.
+
+3M2 extraheert uitsluitend de service-owned P4.6E1-aanroep, de verse interne
+evidence-unitslijst en de bestaande `Exception`-fail-open naar
+`p4_6e1_research_evidence_stage.py`. De core geeft de service-local E1-callable
+per aanroep runtime door en bindt authority plus units vóór de ongewijzigde
+P4.6E2-call. De E1-builder, P4.6E2 en alle latere paden blijven op hun bestaande
+plaats.
