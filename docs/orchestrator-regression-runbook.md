@@ -172,3 +172,14 @@ and `tests/test_cp14_task_research_authority_chain.py`. Together these lock
 the frozen exact-one-field result, tuple coercion inside the `Exception` zone,
 success identity, runtime service dependency binding, the single stage
 callsite and the unchanged following V8 boundary.
+
+For the 3P2 V8 candidate research-execution canary extraction, run both
+unchanged 3P1 files:
+`tests/orchestrator/test_v8_research_execution_canary_boundary_characterization.py`
+and `tests/orchestrator/test_v8_research_execution_canary_characterization.py`.
+Also run `tests/orchestrator/test_v8_research_execution_canary_stage.py` and
+`tests/orchestrator/test_v8_research_execution_canary_stage_service_integration.py`.
+Together these lock the frozen exact-three-field result, fresh fallback and
+observer lists, conversion placement, success and element identity,
+`Exception`-only fail-open behavior, runtime service-helper binding, the
+single stage callsite, and the unchanged following initial-assessment inputs.
