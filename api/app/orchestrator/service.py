@@ -143,6 +143,9 @@ from app.orchestrator.p4_6e1_research_evidence_stage import (
 from app.orchestrator.p4_6e2_grounded_synthesis_stage import (
     run_p4_6e2_grounded_synthesis_stage,
 )
+from app.orchestrator.p4_6e3_synthesis_coverage_stage import (
+    run_p4_6e3_synthesis_coverage_stage,
+)
 
 
 
@@ -7306,19 +7309,22 @@ def run_orchestrator(
             # Close the multi-intent synthesis coverage gap before any public
             # composition authority: combine P4.6e2 research-grounded units
             # with tasks that were already sufficient from existing evidence.
-            task_grounded_synthesis_coverage_authority_p4_6e3 = None
-            try:
-                task_grounded_synthesis_coverage_authority_p4_6e3 = (
-                    build_task_grounded_synthesis_coverage_authority_canary_p4_6e3(
-                        plan,
-                        task_evidence_authority_p4_6c,
-                        task_grounded_synthesis_authority_p4_6e2,
-                        tuple(working_evidence_items),
-                        now=retrieved_at,
-                    )
+            p4_6e3_synthesis_coverage_stage = (
+                run_p4_6e3_synthesis_coverage_stage(
+                    plan,
+                    task_evidence_authority_p4_6c,
+                    task_grounded_synthesis_authority_p4_6e2,
+                    working_evidence_items,
+                    retrieved_at,
+                    build_task_grounded_synthesis_coverage_authority_canary_p4_6e3=(
+                        build_task_grounded_synthesis_coverage_authority_canary_p4_6e3
+                    ),
                 )
-            except Exception:
-                task_grounded_synthesis_coverage_authority_p4_6e3 = None
+            )
+            task_grounded_synthesis_coverage_authority_p4_6e3 = (
+                p4_6e3_synthesis_coverage_stage
+                .task_grounded_synthesis_coverage_authority_p4_6e3
+            )
 
             # V8 candidate-oriented task research execution canary. Disabled
             # by default and fail-open. When explicitly enabled it may execute
