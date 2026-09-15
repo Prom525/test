@@ -146,6 +146,9 @@ from app.orchestrator.p4_6e2_grounded_synthesis_stage import (
 from app.orchestrator.p4_6e3_synthesis_coverage_stage import (
     run_p4_6e3_synthesis_coverage_stage,
 )
+from app.orchestrator.v8_research_execution_canary_stage import (
+    run_v8_research_execution_canary_stage,
+)
 
 
 
@@ -7331,31 +7334,32 @@ def run_orchestrator(
             # one guarded secondary technical follow-up, but the observation
             # never enters authoritative Phase-C assessment/reconciliation or
             # public synthesis.
-            task_research_execution_canary_shadow = []
-            task_research_evidence_reassessment_shadow = []
-            task_grounded_synthesis_shadow = []
-            try:
-                task_research_execution_canary_shadow = (
-                    _run_intent_task_research_execution_canary_shadow(
-                        plan,
-                        list(results),
-                        task_research_contexts_shadow,
-                        task_research_call_guards_shadow,
-                        sender=sender,
-                        initial_evidence_items=tuple(working_evidence_items),
-                        reassessment_now=retrieved_at,
-                        evidence_reassessment_observer=(
-                            task_research_evidence_reassessment_shadow.append
-                        ),
-                        grounded_synthesis_observer=(
-                            task_grounded_synthesis_shadow.append
-                        ),
-                    )
+            v8_research_execution_canary_stage = (
+                run_v8_research_execution_canary_stage(
+                    plan,
+                    results,
+                    task_research_contexts_shadow,
+                    task_research_call_guards_shadow,
+                    sender,
+                    working_evidence_items,
+                    retrieved_at,
+                    _run_intent_task_research_execution_canary_shadow=(
+                        _run_intent_task_research_execution_canary_shadow
+                    ),
                 )
-            except Exception:
-                task_research_execution_canary_shadow = []
-                task_research_evidence_reassessment_shadow = []
-                task_grounded_synthesis_shadow = []
+            )
+            task_research_execution_canary_shadow = (
+                v8_research_execution_canary_stage
+                .task_research_execution_canary_shadow
+            )
+            task_research_evidence_reassessment_shadow = (
+                v8_research_execution_canary_stage
+                .task_research_evidence_reassessment_shadow
+            )
+            task_grounded_synthesis_shadow = (
+                v8_research_execution_canary_stage
+                .task_grounded_synthesis_shadow
+            )
 
             initial_assessment = (
                 _observability_call(

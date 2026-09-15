@@ -374,3 +374,11 @@ plaats.
 invocation naar `p4_6e3_synthesis_coverage_stage.py`; tuplecoercie en de
 `Exception`-fail-open blijven samen, terwijl de opvolgende V8-canary volledig
 in `service.py` blijft.
+
+3P2 extraheert uitsluitend de service-owned V8 candidate research execution
+canary-aanroep naar `v8_research_execution_canary_stage.py`. De drie verse
+shadowlijsten, conversies, observers en gezamenlijke `Exception`-fail-open
+blijven één mechanische zone; de interne V8-helper blijft in `service.py` en
+wordt per core-aanroep runtime doorgegeven. De opvolgende initial assessment
+en alle authority-, reconciliation-, synthesis- en responsepaden blijven in
+`service.py`.

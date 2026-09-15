@@ -82,7 +82,7 @@ def _install(monkeypatch, *, returned=None, error=None, evidence=None):
         return returned
 
     def v8(*args, **kwargs):
-        frame = inspect.currentframe().f_back.f_locals
+        frame = inspect.currentframe().f_back.f_back.f_locals
         calls.append(("v8", args, kwargs, frame["task_grounded_synthesis_coverage_authority_p4_6e3"]))
         raise StopAfterE3("controlled following boundary")
 
