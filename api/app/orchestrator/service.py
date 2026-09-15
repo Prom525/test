@@ -140,6 +140,9 @@ from app.orchestrator.p4_6d2_research_execution_stage import (
 from app.orchestrator.p4_6e1_research_evidence_stage import (
     run_p4_6e1_research_evidence_stage,
 )
+from app.orchestrator.p4_6e2_grounded_synthesis_stage import (
+    run_p4_6e2_grounded_synthesis_stage,
+)
 
 
 
@@ -7285,16 +7288,19 @@ def run_orchestrator(
             )
 
             # PROMATI_P4_6E2_TASK_GROUNDED_SYNTHESIS_AUTHORITY_CANARY
-            task_grounded_synthesis_authority_p4_6e2 = None
-            try:
-                task_grounded_synthesis_authority_p4_6e2 = (
-                    build_task_grounded_synthesis_authority_canary_p4_6e2(
-                        task_research_evidence_authority_p4_6e1,
-                        task_research_evidence_units_p4_6e1,
-                    )
+            p4_6e2_grounded_synthesis_stage = (
+                run_p4_6e2_grounded_synthesis_stage(
+                    task_research_evidence_authority_p4_6e1,
+                    task_research_evidence_units_p4_6e1,
+                    build_task_grounded_synthesis_authority_canary_p4_6e2=(
+                        build_task_grounded_synthesis_authority_canary_p4_6e2
+                    ),
                 )
-            except Exception:
-                task_grounded_synthesis_authority_p4_6e2 = None
+            )
+            task_grounded_synthesis_authority_p4_6e2 = (
+                p4_6e2_grounded_synthesis_stage
+                .task_grounded_synthesis_authority_p4_6e2
+            )
 
             # PROMATI_P4_6E3_TASK_SYNTHESIS_COVERAGE_AUTHORITY_CANARY
             # Close the multi-intent synthesis coverage gap before any public
