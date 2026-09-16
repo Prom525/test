@@ -68,7 +68,10 @@ def _install(monkeypatch, *, results=None, evidence=None, v8_return=None, v8_err
         return v8_return
 
     def assess(*args, **kwargs):
-        frame = __import__("inspect").currentframe().f_back.f_back.f_locals
+        frame = __import__("inspect").currentframe().f_back
+        while "task_research_execution_canary_shadow" not in frame.f_locals:
+            frame = frame.f_back
+        frame = frame.f_locals
         calls.append(("assessment", args, kwargs,
             frame["task_research_execution_canary_shadow"],
             frame["task_research_evidence_reassessment_shadow"],

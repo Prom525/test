@@ -149,6 +149,9 @@ from app.orchestrator.p4_6e3_synthesis_coverage_stage import (
 from app.orchestrator.v8_research_execution_canary_stage import (
     run_v8_research_execution_canary_stage,
 )
+from app.orchestrator.phase_c_assessment_gate_stage import (
+    run_phase_c_assessment_gate_stage,
+)
 
 
 
@@ -7361,32 +7364,28 @@ def run_orchestrator(
                 .task_grounded_synthesis_shadow
             )
 
-            initial_assessment = (
-                _observability_call(
+            phase_c_assessment_gate_stage = (
+                run_phase_c_assessment_gate_stage(
                     timings,
-                    "evidence_assessment",
-                    assess_evidence,
                     requirement_set,
                     working_evidence_items,
-                    target_entity_ids=None,
-                    now=retrieved_at,
+                    retrieved_at,
+                    task_research_semantics_cp13,
+                    _observability_call=_observability_call,
+                    assess_evidence=assess_evidence,
+                    decide_research_requirement=(
+                        decide_research_requirement
+                    ),
+                    gate_legacy_generic_research=(
+                        gate_legacy_generic_research
+                    ),
                 )
             )
-
+            initial_assessment = (
+                phase_c_assessment_gate_stage.initial_assessment
+            )
             research_decision = (
-                _observability_call(
-                    timings,
-                    "evidence_research_gate",
-                    decide_research_requirement,
-                    initial_assessment,
-                )
-            )
-
-            # Whole-question Phase-C research is no longer allowed when intent
-            # tasks exist. Only the CP13-filtered task executor above may call it.
-            research_decision = gate_legacy_generic_research(
-                research_decision,
-                task_research_semantics_cp13,
+                phase_c_assessment_gate_stage.research_decision
             )
 
             research_execution = (

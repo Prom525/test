@@ -382,3 +382,10 @@ blijven één mechanische zone; de interne V8-helper blijft in `service.py` en
 wordt per core-aanroep runtime doorgegeven. De opvolgende initial assessment
 en alle authority-, reconciliation-, synthesis- en responsepaden blijven in
 `service.py`.
+
+3Q2 extraheert uitsluitend de initiële Phase-C evidence-assessment, de
+research-decision en de CP13 legacy-gate naar
+`phase_c_assessment_gate_stage.py`. De stage laat successobjecten ongeconverteerd,
+voegt geen exceptionafhandeling toe en ontvangt alle vier service-callables per
+core-aanroep runtime-resolved. Bounded research, inclusief observability,
+`list(results)` en sender, en alle latere Phase-C-paden blijven in `service.py`.

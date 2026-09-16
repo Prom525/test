@@ -31,12 +31,8 @@ def test_stage_order_three_direct_bindings_and_unchanged_assessment_inputs():
              and isinstance(node.func, ast.Name)]
     e3 = next(line for line, name in calls if name == "run_p4_6e3_synthesis_coverage_stage")
     v8 = next(line for line, name in calls if name == "run_v8_research_execution_canary_stage")
-    assessment = next(node.lineno for node in ast.walk(core)
-                      if isinstance(node, ast.Call)
-                      and isinstance(node.func, ast.Name)
-                      and node.func.id == "_observability_call"
-                      and len(node.args) > 2 and isinstance(node.args[2], ast.Name)
-                      and node.args[2].id == "assess_evidence")
+    assessment = next(line for line, name in calls
+                      if name == "run_phase_c_assessment_gate_stage")
     assert e3 < v8 < assessment
     assignments = {target.id: node.value for node in ast.walk(core)
                    if isinstance(node, ast.Assign) and len(node.targets) == 1
@@ -53,10 +49,10 @@ def test_stage_order_three_direct_bindings_and_unchanged_assessment_inputs():
         assert value.value.id == "v8_research_execution_canary_stage"
         assert value.attr == name
     assess_call = next(node for node in ast.walk(core) if isinstance(node, ast.Call)
-                       and isinstance(node.func, ast.Name) and node.func.id == "_observability_call"
-                       and len(node.args) > 2 and isinstance(node.args[2], ast.Name)
-                       and node.args[2].id == "assess_evidence")
-    assert [arg.id for arg in assess_call.args[3:] if isinstance(arg, ast.Name)] == [
+                       and isinstance(node.func, ast.Name)
+                       and node.func.id == "run_phase_c_assessment_gate_stage")
+    assert [arg.id for arg in assess_call.args[1:3] if isinstance(arg, ast.Name)] == [
         "requirement_set", "working_evidence_items"]
-    assert [(kw.arg, kw.value.id if isinstance(kw.value, ast.Name) else None)
-            for kw in assess_call.keywords] == [("target_entity_ids", None), ("now", "retrieved_at")]
+    assert [kw.arg for kw in assess_call.keywords] == [
+        "_observability_call", "assess_evidence", "decide_research_requirement",
+        "gate_legacy_generic_research"]
