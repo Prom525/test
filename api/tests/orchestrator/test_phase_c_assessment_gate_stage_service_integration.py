@@ -99,9 +99,7 @@ def test_leaf_import_surface_single_ordered_callsite_and_direct_bindings():
         assert value.attr == name
     bounded = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
                    and isinstance(node.func, ast.Name)
-                   and node.func.id == "_observability_call"
-                   and len(node.args) > 2 and isinstance(node.args[2], ast.Name)
-                   and node.args[2].id == "execute_bounded_research")
+                   and node.func.id == "run_phase_c_bounded_research_stage")
     assert call.lineno < bounded.lineno
-    assert isinstance(bounded.args[5], ast.Call)
-    assert bounded.args[5].func.id == "list"
+    assert isinstance(bounded.args[4], ast.Name)
+    assert bounded.args[4].id == "results"
