@@ -155,6 +155,9 @@ from app.orchestrator.phase_c_assessment_gate_stage import (
 from app.orchestrator.phase_c_bounded_research_stage import (
     run_phase_c_bounded_research_stage,
 )
+from app.orchestrator.phase_c_reconciliation_stage import (
+    run_phase_c_reconciliation_stage,
+)
 
 
 
@@ -7411,38 +7414,23 @@ def run_orchestrator(
                 phase_c_bounded_research_stage.research_execution
             )
 
-            reconciliation = (
-                _observability_call(
+            phase_c_reconciliation_stage = (
+                run_phase_c_reconciliation_stage(
                     timings,
-                    "reconciliation",
-                    reconcile_evidence,
+                    counts,
                     requirement_set,
                     working_evidence_items,
                     initial_assessment,
                     research_execution,
-                    retrieved_at=retrieved_at,
-                    target_entity_ids=None,
-                    now=retrieved_at,
+                    retrieved_at,
+                    observability_call=_observability_call,
+                    observability_get=_observability_get,
+                    reconcile_evidence_callable=reconcile_evidence,
                 )
             )
-
-            reconciled_items = (
-                _observability_get(
-                    reconciliation,
-                    "reconciled_evidence_items",
-                    (),
-                )
+            reconciliation = (
+                phase_c_reconciliation_stage.reconciliation
             )
-
-            if isinstance(
-                reconciled_items,
-                (list, tuple),
-            ):
-                counts[
-                    "reconciled_evidence_items"
-                ] = len(
-                    reconciled_items
-                )
 
             synthesis = (
                 _observability_call(

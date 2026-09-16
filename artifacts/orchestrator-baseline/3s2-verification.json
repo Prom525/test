@@ -1,0 +1,56 @@
+{
+  "schema_version": "promati.orchestrator.3s2-verification.v1",
+  "start": {
+    "head": "a361e9dab3e0bb1814c38ecc1540a404467bfc71",
+    "branch": null,
+    "detached": true,
+    "required_commit_is_ancestor": true,
+    "worktree_was_clean": true
+  },
+  "protected_file": {
+    "path": "api/tests/orchestrator/test_phase_c_reconciliation_metrics_boundary_characterization.py",
+    "sha256_before": "abfa8945fa975c1314501541eccb9941740778d19740def7797ba38fcb4a492b",
+    "sha256_after": "abfa8945fa975c1314501541eccb9941740778d19740def7797ba38fcb4a492b"
+  },
+  "tests": {
+    "pre_change_3s1": {"passed": 30, "failed": 0, "errors": 0},
+    "direct_and_service_integration_3s2": {"passed": 32, "failed": 0, "errors": 0},
+    "targeted_adjacent": {"passed": 312, "failed": 0, "errors": 0},
+    "canonical": {
+      "passed": 1568,
+      "failed": 56,
+      "errors": 5,
+      "skipped": 13,
+      "junit_skipped_including_xfail": 18,
+      "xfail": 5,
+      "xpass": 0,
+      "new_failure_names": 0,
+      "resolved_failure_names": 0,
+      "unchanged_failure_names": 61,
+      "historical_retention_names": {
+        "count": 6,
+        "status": "unchanged",
+        "resolved": 0
+      }
+    }
+  },
+  "candidate": {
+    "tag": "ai-platform-api:phase-c-3s2-candidate",
+    "image_id": "sha256:77f3b53e80d14f8ab333f56ee3e348a18e1f8a88dcc6ae75d606b95c067e4f9b",
+    "service_import": true,
+    "stage_import": true,
+    "run_orchestrator_callable": true,
+    "forbidden_packaging_entries": 0
+  },
+  "active_api": {
+    "container_id_before": "4d6f523075c822d1a263dbadc3e62cfe2233fc98c5bd265a1733aa9cad32147d",
+    "container_id_after": "4d6f523075c822d1a263dbadc3e62cfe2233fc98c5bd265a1733aa9cad32147d",
+    "image_before": "sha256:4d9ef19da6764fbf71d9a0ab6f3a0cb8a1b40badf6879d0952b241776b7f728f",
+    "image_after": "sha256:4d9ef19da6764fbf71d9a0ab6f3a0cb8a1b40badf6879d0952b241776b7f728f",
+    "started_at_before": "2026-09-16T11:10:33.24321304Z",
+    "started_at_after": "2026-09-16T11:10:33.24321304Z",
+    "restarted": false,
+    "live_smoke_run": false
+  },
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

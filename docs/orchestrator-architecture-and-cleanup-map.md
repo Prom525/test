@@ -396,3 +396,11 @@ en de direct opvolgende agent-metricsverwerking naar
 objectidentiteit, `+=`/`=`-mutaties en exceptionpropagatie en ontvangt alle vier
 service-callables per core-aanroep runtime-resolved. Reconciliation en alle
 latere Phase-C-paden blijven in `service.py`.
+
+3S2 extraheert uitsluitend de service-owned reconciliation-aanroep en de direct
+opvolgende reconciled-evidence-metric naar
+`phase_c_reconciliation_stage.py`. De stage behoudt de ongeconverteerde
+reconciliation-identiteit, het exacte observabilitylabel en de list/tuple-only
+countvervanging en ontvangt de reconcile- en observability-callables per
+core-aanroep runtime-resolved. Synthesis en de outer Phase-C-fail-open blijven
+in `service.py`.

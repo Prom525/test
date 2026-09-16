@@ -206,3 +206,14 @@ Together these lock the frozen exact-one-field result, exact observability
 boundary, fresh ordered results list, success identity, dict-only metric
 updates, partial mutation behavior, exception propagation, runtime service
 dependency binding, one ordered stage callsite and unchanged reconciliation.
+
+For the 3S2 Phase-C reconciliation and immediate evidence-metric extraction,
+run
+`tests/orchestrator/test_phase_c_reconciliation_metrics_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_phase_c_reconciliation_stage.py` and
+`tests/orchestrator/test_phase_c_reconciliation_stage_service_integration.py`.
+Together these lock the frozen exact-one-field result, raw success identity,
+exact observability arguments, list/tuple-only count replacement, partial
+mutation behavior, exception propagation, runtime service dependency binding,
+one ordered stage callsite and synthesis remaining in `service.py`.

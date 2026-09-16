@@ -98,9 +98,6 @@ def test_leaf_import_surface_single_ordered_callsite_and_direct_binding():
     assert direct.attr == "research_execution"
     reconciliations = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
                        and isinstance(node.func, ast.Name)
-                       and node.func.id == "_observability_call"
-                       and len(node.args) > 2
-                       and isinstance(node.args[2], ast.Name)
-                       and node.args[2].id == "reconcile_evidence"]
+                       and node.func.id == "run_phase_c_reconciliation_stage"]
     assert len(reconciliations) == 1
     assert call.lineno < reconciliations[0].lineno
