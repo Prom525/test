@@ -183,3 +183,15 @@ Together these lock the frozen exact-three-field result, fresh fallback and
 observer lists, conversion placement, success and element identity,
 `Exception`-only fail-open behavior, runtime service-helper binding, the
 single stage callsite, and the unchanged following initial-assessment inputs.
+
+For the 3Q2 initial Phase-C assessment/research-decision/CP13 legacy-gate
+extraction, run
+`tests/orchestrator/test_phase_c_assessment_research_gate_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_phase_c_assessment_gate_stage.py` and
+`tests/orchestrator/test_phase_c_assessment_gate_stage_service_integration.py`.
+Together these lock the frozen exact-two-field result, exact observability
+labels and argument identity, unchanged success shapes, exception propagation,
+runtime service dependency binding, one ordered stage callsite and the bounded
+research call remaining in `service.py` with its fresh `list(results)` and
+sender.

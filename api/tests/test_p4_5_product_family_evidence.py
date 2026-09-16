@@ -429,7 +429,7 @@ def test_service_wires_family_coverage_before_generic_research():
     )
     generic_gate_position = (
         source.index(
-            "decide_research_requirement,",
+            "run_phase_c_assessment_gate_stage(",
             stage_position,
         )
     )
