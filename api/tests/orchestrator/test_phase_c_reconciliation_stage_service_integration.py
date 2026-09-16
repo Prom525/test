@@ -136,18 +136,15 @@ def test_leaf_imports_single_ordered_callsite_direct_binding_and_no_duplicates()
         and node.value.value.id == "phase_c_reconciliation_stage"
     )
     assert assignment.value.attr == "reconciliation"
-    synthesis_calls = [
+    synthesis_stage_calls = [
         node for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "_observability_call"
-        and len(node.args) > 2
-        and isinstance(node.args[2], ast.Name)
-        and node.args[2].id == "synthesize_grounded_evidence"
+        and node.func.id == "run_phase_c_synthesis_stage"
     ]
-    assert len(synthesis_calls) == 1
+    assert len(synthesis_stage_calls) == 1
     assert (
         named_calls["run_phase_c_bounded_research_stage"][0].lineno
         < stage_call.lineno
-        < synthesis_calls[0].lineno
+        < synthesis_stage_calls[0].lineno
     )

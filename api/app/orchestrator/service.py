@@ -158,6 +158,9 @@ from app.orchestrator.phase_c_bounded_research_stage import (
 from app.orchestrator.phase_c_reconciliation_stage import (
     run_phase_c_reconciliation_stage,
 )
+from app.orchestrator.phase_c_synthesis_stage import (
+    run_phase_c_synthesis_stage,
+)
 
 
 
@@ -7432,14 +7435,17 @@ def run_orchestrator(
                 phase_c_reconciliation_stage.reconciliation
             )
 
-            synthesis = (
-                _observability_call(
+            phase_c_synthesis_stage = (
+                run_phase_c_synthesis_stage(
                     timings,
-                    "synthesis",
-                    synthesize_grounded_evidence,
                     reconciliation,
+                    observability_call=_observability_call,
+                    synthesize_grounded_evidence_callable=(
+                        synthesize_grounded_evidence
+                    ),
                 )
             )
+            synthesis = phase_c_synthesis_stage.synthesis
 
             evidence_pipeline = (
                 _evidence_pipeline_to_dict(

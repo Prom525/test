@@ -1,0 +1,76 @@
+{
+  "schema_version": "promati.orchestrator.3t2-verification.v1",
+  "start": {
+    "head": "f462972a5a3a11eadecf30c9d692ed28f401741a",
+    "branch": null,
+    "detached": true,
+    "required_commit_is_ancestor": true,
+    "worktree_was_clean": true
+  },
+  "protected_file": {
+    "path": "api/tests/orchestrator/test_phase_c_synthesis_boundary_characterization.py",
+    "sha256_before": "6a4b24bc9e5ca8340fca209a4f39f03f22445776872ed8b78ef6e8fb3ba2e379",
+    "sha256_after": "6a4b24bc9e5ca8340fca209a4f39f03f22445776872ed8b78ef6e8fb3ba2e379"
+  },
+  "tests": {
+    "pre_change_3t1": {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0
+    },
+    "direct_integration_and_unchanged_3t1": {
+      "passed": 33,
+      "failed": 0,
+      "errors": 0
+    },
+    "broad_adjacent": {
+      "passed": 982,
+      "failed": 23,
+      "errors": 5,
+      "xfail": 1,
+      "new_failure_names": 0
+    },
+    "canonical": {
+      "passed": 1597,
+      "failed": 56,
+      "errors": 5,
+      "skipped": 13,
+      "junit_skipped_including_xfail": 18,
+      "xfail": 5,
+      "xpass": 0,
+      "new_failure_names": 0,
+      "resolved_failure_names": 0,
+      "unchanged_failure_names": 61,
+      "historical_retention_names": {
+        "count": 6,
+        "status": "unchanged",
+        "resolved": 0
+      },
+      "start_revision_comparison": {
+        "source": "artifacts/orchestrator-baseline/3s2-candidate.json plus passing-only 3T1 commit",
+        "new_failure_names": 0,
+        "resolved_failure_names": 0,
+        "unchanged_failure_names": 61
+      }
+    }
+  },
+  "candidate": {
+    "tag": "promati-api:3t2-candidate-f462972",
+    "image_id": "sha256:4020c5b73cb351e9699db50c2b17ff041b05caf87ae22a92e02c245da6e2ce8f",
+    "service_import": true,
+    "stage_import": true,
+    "run_orchestrator_callable": true,
+    "forbidden_packaging_entries": 0
+  },
+  "active_api": {
+    "container_id_before": "5cef4dbc7513c2b7c11a62b249470520d71e3047df686b157ec72b124431061b",
+    "container_id_after": "5cef4dbc7513c2b7c11a62b249470520d71e3047df686b157ec72b124431061b",
+    "image_before": "sha256:2ea5ecdab675d08e05a6321ac9961fea4f43156ae1f64773c1cdad1c54e94458",
+    "image_after": "sha256:2ea5ecdab675d08e05a6321ac9961fea4f43156ae1f64773c1cdad1c54e94458",
+    "started_at_before": "2026-09-16T12:07:54.578709716Z",
+    "started_at_after": "2026-09-16T12:07:54.578709716Z",
+    "restarted": false,
+    "live_smoke_run": false
+  },
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

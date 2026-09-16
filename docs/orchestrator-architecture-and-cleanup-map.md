@@ -404,3 +404,10 @@ reconciliation-identiteit, het exacte observabilitylabel en de list/tuple-only
 countvervanging en ontvangt de reconcile- en observability-callables per
 core-aanroep runtime-resolved. Synthesis en de outer Phase-C-fail-open blijven
 in `service.py`.
+
+3T2 extraheert uitsluitend de service-owned grounded-synthesisaanroep naar
+`phase_c_synthesis_stage.py`. De stage behoudt het ongeconverteerde
+synthesisobject, het exacte observabilitylabel, timingmutaties en volledige
+exceptionpropagatie en ontvangt de synthesizer en observability-callable per
+core-aanroep runtime-resolved. Pipeline-assembly en de outer Phase-C-fail-open
+blijven in `service.py`.

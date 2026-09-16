@@ -109,11 +109,15 @@ def test_existing_grounded_synthesizer_remains_service_output_path():
     stage = (orchestrator / "product_family_recovery_stage.py").read_text(
         encoding="utf-8-sig"
     )
-    assert "synthesize_grounded_evidence," in source
+    synthesis_stage = (orchestrator / "phase_c_synthesis_stage.py").read_text(
+        encoding="utf-8-sig"
+    )
+    assert "synthesize_grounded_evidence_callable" in synthesis_stage
     assert stage.index("assess_product_family_coverage(") < stage.index(
         "recover_missing_product_families("
     )
     assert source.index("run_product_family_recovery_stage(") < source.index(
-        "synthesize_grounded_evidence,",
+        "run_phase_c_synthesis_stage(",
         source.index("run_product_family_recovery_stage("),
     )
+    assert source.count("synthesize_grounded_evidence_callable=(") == 1

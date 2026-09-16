@@ -217,3 +217,13 @@ Together these lock the frozen exact-one-field result, raw success identity,
 exact observability arguments, list/tuple-only count replacement, partial
 mutation behavior, exception propagation, runtime service dependency binding,
 one ordered stage callsite and synthesis remaining in `service.py`.
+
+For the 3T2 Phase-C grounded-synthesis extraction, run
+`tests/orchestrator/test_phase_c_synthesis_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_phase_c_synthesis_stage.py` and
+`tests/orchestrator/test_phase_c_synthesis_stage_service_integration.py`.
+Together these lock the frozen exact-one-field result, raw synthesis identity,
+the exact observability boundary, exception propagation and timing mutation,
+runtime service dependency binding, one ordered stage callsite and the
+unchanged pipeline handoff and outer Phase-C fail-open.
