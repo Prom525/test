@@ -195,3 +195,14 @@ labels and argument identity, unchanged success shapes, exception propagation,
 runtime service dependency binding, one ordered stage callsite and the bounded
 research call remaining in `service.py` with its fresh `list(results)` and
 sender.
+
+For the 3R2 bounded Phase-C research and immediate agent-metrics extraction,
+run
+`tests/orchestrator/test_phase_c_bounded_research_metrics_boundary_characterization.py`
+unchanged before and after the edit. Also run
+`tests/orchestrator/test_phase_c_bounded_research_stage.py` and
+`tests/orchestrator/test_phase_c_bounded_research_stage_service_integration.py`.
+Together these lock the frozen exact-one-field result, exact observability
+boundary, fresh ordered results list, success identity, dict-only metric
+updates, partial mutation behavior, exception propagation, runtime service
+dependency binding, one ordered stage callsite and unchanged reconciliation.

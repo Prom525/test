@@ -152,6 +152,9 @@ from app.orchestrator.v8_research_execution_canary_stage import (
 from app.orchestrator.phase_c_assessment_gate_stage import (
     run_phase_c_assessment_gate_stage,
 )
+from app.orchestrator.phase_c_bounded_research_stage import (
+    run_phase_c_bounded_research_stage,
+)
 
 
 
@@ -7388,49 +7391,25 @@ def run_orchestrator(
                 phase_c_assessment_gate_stage.research_decision
             )
 
-            research_execution = (
-                _observability_call(
+            phase_c_bounded_research_stage = (
+                run_phase_c_bounded_research_stage(
                     timings,
-                    "evidence_research",
-                    execute_bounded_research,
+                    counts,
                     research_decision,
                     plan,
-                    list(results),
-                    sender=sender,
+                    results,
+                    sender,
+                    _observability_call=_observability_call,
+                    _observability_get=_observability_get,
+                    _observability_nonnegative_int=(
+                        _observability_nonnegative_int
+                    ),
+                    execute_bounded_research=execute_bounded_research,
                 )
             )
-
-            phase_c_agent_metadata = (
-                _observability_get(
-                    research_execution,
-                    "agent_metadata",
-                    None,
-                )
+            research_execution = (
+                phase_c_bounded_research_stage.research_execution
             )
-
-            if isinstance(
-                phase_c_agent_metadata,
-                dict,
-            ):
-                counts[
-                    "phase_c_research_follow_up_specialist_calls"
-                ] += (
-                    _observability_nonnegative_int(
-                        phase_c_agent_metadata.get(
-                            "follow_up_specialist_calls"
-                        )
-                    )
-                )
-
-                counts[
-                    "phase_c_ai_calls"
-                ] = (
-                    _observability_nonnegative_int(
-                        phase_c_agent_metadata.get(
-                            "total_ai_calls_used"
-                        )
-                    )
-                )
 
             reconciliation = (
                 _observability_call(

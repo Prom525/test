@@ -389,3 +389,10 @@ research-decision en de CP13 legacy-gate naar
 voegt geen exceptionafhandeling toe en ontvangt alle vier service-callables per
 core-aanroep runtime-resolved. Bounded research, inclusief observability,
 `list(results)` en sender, en alle latere Phase-C-paden blijven in `service.py`.
+
+3R2 extraheert uitsluitend de service-owned bounded Phase-C research-aanroep
+en de direct opvolgende agent-metricsverwerking naar
+`phase_c_bounded_research_stage.py`. De stage behoudt de verse `list(results)`,
+objectidentiteit, `+=`/`=`-mutaties en exceptionpropagatie en ontvangt alle vier
+service-callables per core-aanroep runtime-resolved. Reconciliation en alle
+latere Phase-C-paden blijven in `service.py`.
