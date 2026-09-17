@@ -425,3 +425,10 @@ outer Phase-C `except` naar `post_phase_c_status_stage.py`. De frozen result
 bevat alleen `status` en `clarification`; de stage ontvangt `plan`, `results`,
 `typed_execution_results` en de service-local accepted-executionhelper runtime.
 De researchdefault en volledige bounded-researchgate blijven in `service.py`.
+
+3W2 extraheert uitsluitend de direct opvolgende bounded-research-v1-default,
+gate, agent/legacykeuze, `plan_research`-observability en counteraggregatie naar
+`phase_c_bounded_research_v1_stage.py`. De frozen result bevat in volgorde alleen
+`research` en `plan_research_agent`; alle vijf service-callables worden per
+core-aanroep runtime-resolved doorgegeven. `_build_user_answer`, presentatie en
+alle responsemutaties blijven ongewijzigd in `service.py`.

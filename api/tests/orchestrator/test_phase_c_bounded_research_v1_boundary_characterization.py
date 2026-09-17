@@ -391,44 +391,69 @@ def test_each_core_call_gets_fresh_research_and_observability_state(monkeypatch)
 
 
 def test_ast_fixes_boundary_order_single_calls_and_runtime_names():
+    ast = __import__("ast")
     path = Path(__file__).parents[2] / "app/orchestrator/service.py"
-    tree = __import__("ast").parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     function = next(
         node for node in tree.body
-        if isinstance(node, __import__("ast").FunctionDef) and node.name == "run_orchestrator"
+        if isinstance(node, ast.FunctionDef) and node.name == "run_orchestrator"
     )
     direct_names = {
-        "run_post_phase_c_status_stage", "_research_agent_enabled", "_build_user_answer",
+        "run_post_phase_c_status_stage",
+        "run_phase_c_bounded_research_v1_stage",
+        "_build_user_answer",
     }
     calls = [
-        node for node in __import__("ast").walk(function)
-        if isinstance(node, __import__("ast").Call)
-        and isinstance(node.func, __import__("ast").Name)
+        node for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
         and node.func.id in direct_names
     ]
-    status_line = min(
-        node.lineno for node in calls
-        if node.func.id == "run_post_phase_c_status_stage"
-    )
-    answer_line = min(
-        node.lineno for node in calls
-        if node.func.id == "_build_user_answer" and node.lineno > status_line
-    )
-    bounded_calls = [node for node in calls if status_line <= node.lineno <= answer_line]
-    grouped = {name: [node for node in bounded_calls if node.func.id == name]
-               for name in direct_names}
-    assert all(len(nodes) == 1 for nodes in grouped.values())
-    observed = [
-        node for node in __import__("ast").walk(function)
-        if isinstance(node, __import__("ast").Call)
-        and isinstance(node.func, __import__("ast").Name)
-        and node.func.id == "_observability_call"
-        and status_line < node.lineno < answer_line
-    ]
-    assert len(observed) == 2
-    assert {node.args[2].id for node in observed} == {
-        "run_bounded_research_agent", "run_bounded_research"
+    grouped = {
+        name: [node for node in calls if node.func.id == name]
+        for name in direct_names
     }
-    assert grouped["run_post_phase_c_status_stage"][0].lineno < grouped["_research_agent_enabled"][0].lineno
-    assert grouped["_research_agent_enabled"][0].lineno < grouped["_build_user_answer"][0].lineno
-    assert all(node.lineno < grouped["_build_user_answer"][0].lineno for node in observed)
+    status_calls = grouped["run_post_phase_c_status_stage"]
+    stage_calls = grouped["run_phase_c_bounded_research_v1_stage"]
+    assert len(status_calls) == len(stage_calls) == 1
+
+    status_call = status_calls[0]
+    stage_call = stage_calls[0]
+    answer_calls = [
+        node for node in grouped["_build_user_answer"]
+        if node.lineno > stage_call.lineno
+    ]
+    assert len(answer_calls) == 1
+    answer_call = answer_calls[0]
+    assert status_call.lineno < stage_call.lineno < answer_call.lineno
+
+    expected_dependencies = {
+        "_research_agent_enabled",
+        "_observability_call",
+        "_observability_nonnegative_int",
+        "run_bounded_research_agent",
+        "run_bounded_research",
+    }
+    keyword_dependencies = {
+        keyword.arg: keyword.value.id
+        for keyword in stage_call.keywords
+        if keyword.arg in expected_dependencies
+        and isinstance(keyword.value, ast.Name)
+    }
+    assert keyword_dependencies == {
+        name: name for name in expected_dependencies
+    }
+
+    bindings = {
+        target.id: node.lineno
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+        and target.id in {"research", "plan_research_agent"}
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "phase_c_bounded_research_v1_stage"
+    }
+    assert set(bindings) == {"research", "plan_research_agent"}
+    assert all(stage_call.lineno < line < answer_call.lineno for line in bindings.values())

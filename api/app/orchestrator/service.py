@@ -107,6 +107,9 @@ from app.orchestrator.execution_status import has_service_accepted_execution
 from app.orchestrator.post_phase_c_status_stage import (
     run_post_phase_c_status_stage,
 )
+from app.orchestrator.phase_c_bounded_research_v1_stage import (
+    run_phase_c_bounded_research_v1_stage,
+)
 from app.orchestrator.observability_stage import (
     ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION,
     _new_observability_counts,
@@ -7532,152 +7535,27 @@ def run_orchestrator(
     clarification = post_phase_c_status_stage.clarification
 
     # PROMATI_BOUNDED_RESEARCH_V1_GATE
-    # Deterministic specialist execution always happens
-    # first. Only a clear, successful research_required
-    # plan may use one bounded AI synthesis call.
-    research = {
-        "status": "not_required",
-        "required": bool(
-            plan.research_required
-        ),
-        "mode": "bounded_synthesis_v1",
-        "ai_calls_used": 0,
-        "max_ai_calls": 1,
-        "follow_up_rounds_used": 0,
-        "max_follow_up_rounds": 0,
-        "answer": None,
-    }
-
-    if (
-        status == "ok"
-        and plan.research_required
-        and not clarification.get(
-            "required"
+    phase_c_bounded_research_v1_stage = (
+        run_phase_c_bounded_research_v1_stage(
+            plan,
+            results,
+            status,
+            clarification,
+            sender,
+            timings,
+            counts,
+            _research_agent_enabled=_research_agent_enabled,
+            _observability_call=_observability_call,
+            _observability_nonnegative_int=(
+                _observability_nonnegative_int
+            ),
+            run_bounded_research_agent=run_bounded_research_agent,
+            run_bounded_research=run_bounded_research,
         )
-    ):
-        research_agent_enabled = (
-            _research_agent_enabled()
-        )
-
-        if research_agent_enabled:
-            research = (
-                _observability_call(
-                    timings,
-                    "plan_research",
-                    run_bounded_research_agent,
-                    plan,
-                    results,
-                    sender=sender,
-                )
-            )
-        else:
-            research = (
-                _observability_call(
-                    timings,
-                    "plan_research",
-                    run_bounded_research,
-                    plan,
-                    results,
-                )
-            )
-
-    plan_research_agent = None
-
-    if isinstance(
-        research,
-        dict,
-    ):
-        raw_agent = research.get(
-            "agent"
-        )
-
-        if isinstance(
-            raw_agent,
-            dict,
-        ):
-            plan_research_agent = (
-                raw_agent
-            )
-
-    if (
-        plan_research_agent
-        is not None
-    ):
-        counts[
-            "plan_research_follow_up_specialist_calls"
-        ] = (
-            _observability_nonnegative_int(
-                plan_research_agent.get(
-                    "follow_up_specialist_calls"
-                )
-            )
-        )
-
-        if (
-            "total_ai_calls_used"
-            in plan_research_agent
-        ):
-            counts[
-                "plan_research_ai_calls"
-            ] = (
-                _observability_nonnegative_int(
-                    plan_research_agent.get(
-                        "total_ai_calls_used"
-                    )
-                )
-            )
-        else:
-            counts[
-                "plan_research_ai_calls"
-            ] = (
-                _observability_nonnegative_int(
-                    research.get(
-                        "ai_calls_used"
-                    )
-                )
-            )
-
-    elif isinstance(
-        research,
-        dict,
-    ):
-        counts[
-            "plan_research_ai_calls"
-        ] = (
-            _observability_nonnegative_int(
-                research.get(
-                    "ai_calls_used"
-                )
-            )
-        )
-
-    counts[
-        "research_follow_up_specialist_calls"
-    ] = (
-        counts[
-            "phase_c_research_follow_up_specialist_calls"
-        ]
-        + counts[
-            "plan_research_follow_up_specialist_calls"
-        ]
     )
-
-    counts["total_specialist_calls"] = (
-        counts[
-            "initial_specialist_calls"
-        ]
-        + counts[
-            "research_follow_up_specialist_calls"
-        ]
-    )
-
-    counts["total_ai_calls"] = (
-        counts[
-            "phase_c_ai_calls"
-        ]
-        + counts[
-            "plan_research_ai_calls"
-        ]
+    research = phase_c_bounded_research_v1_stage.research
+    plan_research_agent = (
+        phase_c_bounded_research_v1_stage.plan_research_agent
     )
 
     presentation_started = (

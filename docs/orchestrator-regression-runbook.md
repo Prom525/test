@@ -248,3 +248,14 @@ Together these lock the frozen ordered two-field result, exact scan and
 fallback semantics, runtime accepted-helper binding, one service callsite,
 direct result bindings, exception propagation outside the Phase-C fail-open,
 and the unchanged following bounded-research boundary.
+
+For the 3W2 bounded-research-v1 extraction, keep
+`tests/orchestrator/test_phase_c_bounded_research_v1_boundary_characterization.py`
+byte-identical and run it with
+`tests/orchestrator/test_phase_c_bounded_research_v1_stage.py` and
+`tests/orchestrator/test_phase_c_bounded_research_v1_stage_service_integration.py`.
+Together these lock the frozen ordered two-field result, fresh defaults, exact
+gate and agent/legacy arguments, dict-only metadata parsing, counter coercion
+and partial mutation, runtime binding of all five service dependencies, one
+ordered service callsite, direct result bindings, and the unchanged
+`_build_user_answer` boundary.
