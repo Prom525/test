@@ -104,6 +104,9 @@ from app.text_encoding import repair_mojibake_text
 from app.orchestrator.public_results import compact_results_for_public_response
 # PROMATI_TYPED_SERVICE_STATUS_CONSUMER_V1
 from app.orchestrator.execution_status import has_service_accepted_execution
+from app.orchestrator.post_phase_c_status_stage import (
+    run_post_phase_c_status_stage,
+)
 from app.orchestrator.observability_stage import (
     ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION,
     _new_observability_counts,
@@ -7517,115 +7520,16 @@ def run_orchestrator(
         # response path remains authoritative.
         evidence_pipeline = None
 
-    specialist_clarification = None
-
-    for item in results:
-        specialist_result = item.get(
-            "result"
-        )
-
-        if not isinstance(
-            specialist_result,
-            dict,
-        ):
-            continue
-
-        specialist_status = str(
-            specialist_result.get(
-                "status",
-                "",
-            )
-        ).lower()
-
-        if (
-            specialist_status
-            == "clarification_required"
-        ):
-            specialist_clarification = (
-                specialist_result
-            )
-            break
-
-    clarification = {
-        "required": (
-            plan.clarification_required
+    post_phase_c_status_stage = run_post_phase_c_status_stage(
+        plan,
+        results,
+        typed_execution_results,
+        has_service_accepted_execution_callable=(
+            has_service_accepted_execution
         ),
-        "question": (
-            plan.clarification_question
-        ),
-    }
-
-    if plan.clarification_required:
-        # Query-understanding clarification houdt
-        # de hoogste prioriteit.
-        status = "clarification_required"
-
-    elif (
-        specialist_clarification
-        is not None
-    ):
-        # Een specialist kan tijdens uitvoering ontdekken
-        # dat aanvullende context nodig is, bijvoorbeeld
-        # bij een band/installatie-conflict.
-        clarification_question = (
-            specialist_clarification.get(
-                "message"
-            )
-        )
-
-        if not clarification_question:
-            detail = (
-                specialist_clarification.get(
-                    "clarification"
-                )
-            )
-
-            if isinstance(
-                detail,
-                dict,
-            ):
-                clarification_question = (
-                    detail.get(
-                        "question"
-                    )
-                )
-
-            elif isinstance(
-                detail,
-                str,
-            ):
-                clarification_question = (
-                    detail
-                )
-
-        if not clarification_question:
-            clarification_question = (
-                "Kun je de ontbrekende context "
-                "verduidelijken?"
-            )
-
-        clarification = {
-            "required": True,
-            "question": str(
-                clarification_question
-            ),
-        }
-
-        status = (
-            "clarification_required"
-        )
-
-    elif (
-        plan.execution_steps
-        and not has_service_accepted_execution(
-            typed_execution_results,
-            results,
-        )
-    ):
-        status = "error"
-
-    else:
-        status = "ok"
+    )
+    status = post_phase_c_status_stage.status
+    clarification = post_phase_c_status_stage.clarification
 
     # PROMATI_BOUNDED_RESEARCH_V1_GATE
     # Deterministic specialist execution always happens

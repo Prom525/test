@@ -419,3 +419,9 @@ runtime-resolved serializer eenmaal aan. Het ruwe serializerresultaat blijft
 object-identiek; de bestaande outer Phase-C `Exception`-fail-open en alle
 latere specialist-, legacy-, compositie- en responsepaden blijven in
 `service.py`.
+
+3V2 extraheert uitsluitend de clarification- en statusselectie direct na de
+outer Phase-C `except` naar `post_phase_c_status_stage.py`. De frozen result
+bevat alleen `status` en `clarification`; de stage ontvangt `plan`, `results`,
+`typed_execution_results` en de service-local accepted-executionhelper runtime.
+De researchdefault en volledige bounded-researchgate blijven in `service.py`.

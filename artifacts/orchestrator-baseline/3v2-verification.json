@@ -1,0 +1,31 @@
+{
+  "schema_version": "promati.orchestrator.regression-run.v1",
+  "label": "3v2-verification",
+  "commit_sha": "f47a97a8d1e98aec6a99213dcb213027f43c6b12",
+  "selection": "3V2 direct/integration, unchanged 3V1, 3U1/3U2, execution-status, clarification/status/routing, wrappers/post-CP12/Phase-C8/adapters, and full tests excluding integration",
+  "targeted": {"passed": 107, "failed": 0, "errors": 0, "skipped": 0, "xfail": 0, "xpass": 0},
+  "relevant": {"passed": 194, "failed": 0, "errors": 0, "skipped": 0, "xfail": 0, "xpass": 0},
+  "result": {"passed": 1628, "failed": 50, "errors": 5, "skipped": 13, "xfail": 5, "xpass": 7},
+  "comparison": {
+    "baseline": "artifacts/orchestrator-baseline/post-change-57fe45e.json",
+    "new_failures": [],
+    "resolved_failure_count": 6,
+    "unchanged_failure_count": 55,
+    "retention_resolved_count": 6,
+    "retention_unchanged_failure_count": 0
+  },
+  "verified": {
+    "ast_and_syntax": "passed",
+    "leaf_imports": "passed",
+    "single_service_callsite": "passed",
+    "runtime_dependency_binding": "passed",
+    "candidate_imports_and_callable_facade": "passed",
+    "characterization_sha256_before_after": "4294F8988FAD2AC9EC7D987E546E5CD7C9B3FC95E5D0F4060097BC5EDA554C5B"
+  },
+  "candidate": {
+    "tag": "ai-platform-api:3v2-candidate-f47a97a",
+    "image_id": "sha256:91a0b3fe9f2d64c7381cc66119372a2b4cd747be61b666d38f370233213c5f7e",
+    "activated": false
+  },
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

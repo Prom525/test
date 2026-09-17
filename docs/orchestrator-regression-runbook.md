@@ -239,3 +239,12 @@ runtime dependency binding, single ordered service callsite, outer `Exception`
 fail-open, `BaseException` propagation and the unchanged following legacy
 presentation boundary. The 3T2 integration test may only move its final ordering
 boundary from the direct serializer call to the new 3U2 stage call.
+
+For the 3V2 post-Phase-C clarification/status extraction, keep
+`tests/orchestrator/test_post_phase_c_clarification_status_boundary_characterization.py`
+byte-identical and run it with `tests/orchestrator/test_post_phase_c_status_stage.py`
+and `tests/orchestrator/test_post_phase_c_status_stage_service_integration.py`.
+Together these lock the frozen ordered two-field result, exact scan and
+fallback semantics, runtime accepted-helper binding, one service callsite,
+direct result bindings, exception propagation outside the Phase-C fail-open,
+and the unchanged following bounded-research boundary.
