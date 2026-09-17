@@ -1,0 +1,40 @@
+{
+  "schema_version": "promati.orchestrator.regression-run.v1",
+  "label": "3u2-final",
+  "commit_sha": "c21c79b5671c2382c660d49efe4848a9879513aa",
+  "selection": "tests --ignore=tests/integration",
+  "result": {
+    "passed": 1515,
+    "failed": 56,
+    "errors": 5,
+    "skipped": 13,
+    "xfail": 5,
+    "xpass": 0
+  },
+  "subtests_passed": 110,
+  "comparison": {
+    "baseline": "artifacts/orchestrator-baseline/post-change-57fe45e.json",
+    "new_failures": [],
+    "resolved_failures": [],
+    "unchanged_failure_count": 61,
+    "retention_resolution_count": 0,
+    "unchanged_retention_failure_count": 6
+  },
+  "targeted": {
+    "passed": 28,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfail": 0,
+    "xpass": 0
+  },
+  "relevant": {
+    "passed": 223,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfail": 0,
+    "xpass": 0
+  },
+  "privacy": "No questions, answers, tokens, entities, scopes or payloads are stored."
+}

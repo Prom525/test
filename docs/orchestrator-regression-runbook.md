@@ -227,3 +227,15 @@ Together these lock the frozen exact-one-field result, raw synthesis identity,
 the exact observability boundary, exception propagation and timing mutation,
 runtime service dependency binding, one ordered stage callsite and the
 unchanged pipeline handoff and outer Phase-C fail-open.
+
+For the 3U2 Phase-C evidence-pipeline assembly extraction, keep
+`tests/orchestrator/test_phase_c_evidence_pipeline_assembly_boundary_characterization.py`
+byte-identical and run it together with
+`tests/orchestrator/test_phase_c_evidence_pipeline_stage.py` and
+`tests/orchestrator/test_phase_c_evidence_pipeline_stage_service_integration.py`.
+Together these lock the frozen one-field result, exact ordered 25-key plain
+mapping, single requirement-id read, raw runtime-serializer return identity,
+runtime dependency binding, single ordered service callsite, outer `Exception`
+fail-open, `BaseException` propagation and the unchanged following legacy
+presentation boundary. The 3T2 integration test may only move its final ordering
+boundary from the direct serializer call to the new 3U2 stage call.

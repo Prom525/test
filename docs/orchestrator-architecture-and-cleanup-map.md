@@ -411,3 +411,11 @@ synthesisobject, het exacte observabilitylabel, timingmutaties en volledige
 exceptionpropagatie en ontvangt de synthesizer en observability-callable per
 core-aanroep runtime-resolved. Pipeline-assembly en de outer Phase-C-fail-open
 blijven in `service.py`.
+
+3U2 extraheert uitsluitend de Phase-C evidence-pipeline-assembly naar
+`phase_c_evidence_pipeline_stage.py`. De leaf stage bouwt de gewone geordende
+25-key mapping, leest `requirement_set.requirement_set_id` eenmaal en roept de
+runtime-resolved serializer eenmaal aan. Het ruwe serializerresultaat blijft
+object-identiek; de bestaande outer Phase-C `Exception`-fail-open en alle
+latere specialist-, legacy-, compositie- en responsepaden blijven in
+`service.py`.

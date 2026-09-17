@@ -95,7 +95,7 @@ def test_leaf_imports_single_ordered_callsite_direct_binding_and_no_duplicates()
         for name in (
             "run_phase_c_reconciliation_stage",
             "run_phase_c_synthesis_stage",
-            "_evidence_pipeline_to_dict",
+            "run_phase_c_evidence_pipeline_stage",
         )
     }
     assert len(named_calls["run_phase_c_reconciliation_stage"]) == 1
@@ -127,5 +127,5 @@ def test_leaf_imports_single_ordered_callsite_direct_binding_and_no_duplicates()
     assert (
         named_calls["run_phase_c_reconciliation_stage"][0].lineno
         < stage_call.lineno
-        < named_calls["_evidence_pipeline_to_dict"][0].lineno
+        < named_calls["run_phase_c_evidence_pipeline_stage"][0].lineno
     )
