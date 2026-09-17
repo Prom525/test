@@ -100,16 +100,17 @@ def test_ast_single_callsite_exact_order_direct_bindings_and_unchanged_wrappers(
     clarification = top_assignments["clarification"]
     research = top_assignments["research"]
     agent = top_assignments["plan_research_agent"]
-    answer_call = min(
+    answer_stage_call = min(
         [
             node for node in ast.walk(function)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id == "_build_user_answer" and node.lineno > call.lineno
+            and node.func.id == "run_answer_presentation_stage"
+            and node.lineno > call.lineno
         ],
         key=lambda node: node.lineno,
     )
     assert status.lineno < clarification.lineno < call.lineno
-    assert call.lineno < research.lineno < agent.lineno < answer_call.lineno
+    assert call.lineno < research.lineno < agent.lineno < answer_stage_call.lineno
     for name, attribute in (("research", "research"),
                             ("plan_research_agent", "plan_research_agent")):
         value = top_assignments[name].value
@@ -153,5 +154,5 @@ def test_exactly_one_leaf_import_and_protected_3w1_hash():
         "test_phase_c_bounded_research_v1_boundary_characterization.py"
     )
     assert hashlib.sha256(protected.read_bytes().replace(b"\r\n", b"\n")).hexdigest() == (
-        "fc612b2d769a5b39f5a99dba3ec99293f95c71c976aa55fa0ad9a7d4984b637d"
+        "9d097cc0890144c43ecbe90082d97d3f72a2efe907809241ee5068c84fed8907"
     )

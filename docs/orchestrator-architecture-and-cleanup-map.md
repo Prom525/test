@@ -432,3 +432,12 @@ gate, agent/legacykeuze, `plan_research`-observability en counteraggregatie naar
 `research` en `plan_research_agent`; alle vijf service-callables worden per
 core-aanroep runtime-resolved doorgegeven. `_build_user_answer`, presentatie en
 alle responsemutaties blijven ongewijzigd in `service.py`.
+
+3X2 extraheert uitsluitend de legacy antwoordselectie en mojibakepresentatie
+naar `answer_presentation_stage.py`. De frozen result bevat alleen `answer`.
+`results`, een lazy accessor voor `plan.requested_information`, `research` en
+`timings` gaan expliciet naar de stage; clock, answerbuilder, repair en elapsed
+worden per core-aanroep runtime-resolved doorgegeven. De accessor bewaart de
+3X1-volgorde: de clock loopt vóór de `try`, terwijl de property pas binnen de
+`try` als builder-keyword wordt gelezen. Composition, evidence-mutaties,
+responsebouw en wrappers blijven in `service.py`.

@@ -396,37 +396,50 @@ def test_ast_exact_boundary_order_cardinality_and_runtime_names():
     tree = ast.parse(path.read_text(encoding="utf-8"))
     function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                     and node.name == "run_orchestrator")
-    wanted = {
-        "run_phase_c_bounded_research_v1_stage", "_observability_now",
-        "_build_user_answer", "repair_mojibake_text",
-        "_observability_elapsed_ms", "_build_multi_intent_composition_shadow",
-    }
-    all_calls = []
-    for node in ast.walk(function):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id in wanted):
-            all_calls.append(node)
-    stage = next(node for node in all_calls
-                 if node.func.id == "run_phase_c_bounded_research_v1_stage")
-    composition = next(node for node in all_calls
-                       if node.func.id == "_build_multi_intent_composition_shadow")
-    grouped = {
-        name: [node for node in all_calls if node.func.id == name
-               and stage.lineno <= node.lineno <= composition.lineno]
-        for name in wanted
-    }
-    assert all(len(nodes) == 1 for nodes in grouped.values())
-    ordered = [
-        "run_phase_c_bounded_research_v1_stage", "_observability_now",
-        "_build_user_answer", "repair_mojibake_text",
-        "_observability_elapsed_ms", "_build_multi_intent_composition_shadow",
+    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+    named = lambda name: [
+        node for node in calls
+        if isinstance(node.func, ast.Name) and node.func.id == name
     ]
-    assert [grouped[name][0].lineno for name in ordered] == sorted(
-        grouped[name][0].lineno for name in ordered
-    )
-    answer = grouped["_build_user_answer"][0]
-    assert [arg.id for arg in answer.args] == ["results"]
-    assert [keyword.arg for keyword in answer.keywords] == ["requested_information"]
-    assert isinstance(answer.keywords[0].value, ast.Attribute)
-    assert answer.keywords[0].value.value.id == "plan"
-    assert answer.keywords[0].value.attr == "requested_information"
+    bounded = named("run_phase_c_bounded_research_v1_stage")
+    presentation = named("run_answer_presentation_stage")
+    composition = named("_build_multi_intent_composition_shadow")
+    assert len(bounded) == len(presentation) == len(composition) == 1
+    assert bounded[0].lineno < presentation[0].lineno < composition[0].lineno
+
+    answer_bindings = [
+        node for node in function.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "answer"
+                for target in node.targets)
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "answer_presentation_stage_result"
+        and node.value.attr == "answer"
+    ]
+    assert len(answer_bindings) == 1
+
+    stage_call = presentation[0]
+    assert [(keyword.arg, keyword.value.id) for keyword in stage_call.keywords] == [
+        ("observability_now", "_observability_now"),
+        ("build_user_answer", "_build_user_answer"),
+        ("repair_mojibake_text", "repair_mojibake_text"),
+        ("observability_elapsed_ms", "_observability_elapsed_ms"),
+    ]
+    requested_information = stage_call.args[1]
+    assert isinstance(requested_information, ast.Lambda)
+    assert isinstance(requested_information.body, ast.Attribute)
+    assert isinstance(requested_information.body.value, ast.Name)
+    assert requested_information.body.value.id == "plan"
+    assert requested_information.body.attr == "requested_information"
+
+    inline_names = {
+        "_observability_now", "_build_user_answer", "repair_mojibake_text",
+        "_observability_elapsed_ms",
+    }
+    assert not [
+        node for node in calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id in inline_names
+        and bounded[0].lineno < node.lineno < composition[0].lineno
+    ]

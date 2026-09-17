@@ -104,6 +104,8 @@ def _install(monkeypatch, *, requirement=object(), clarification=False, results=
     def legacy_answer(*args, **kwargs):
         import inspect
         frame = inspect.currentframe().f_back
+        while frame.f_code is not service._p4_15cp3c_previous_run_orchestrator.__code__:
+            frame = frame.f_back
         captured.update(frame.f_locals)
         calls.append(("legacy_answer", args, kwargs))
         raise BoundaryObserved("legacy path observed")

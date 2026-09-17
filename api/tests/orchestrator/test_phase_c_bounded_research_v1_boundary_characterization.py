@@ -401,7 +401,7 @@ def test_ast_fixes_boundary_order_single_calls_and_runtime_names():
     direct_names = {
         "run_post_phase_c_status_stage",
         "run_phase_c_bounded_research_v1_stage",
-        "_build_user_answer",
+        "run_answer_presentation_stage",
     }
     calls = [
         node for node in ast.walk(function)
@@ -419,13 +419,13 @@ def test_ast_fixes_boundary_order_single_calls_and_runtime_names():
 
     status_call = status_calls[0]
     stage_call = stage_calls[0]
-    answer_calls = [
-        node for node in grouped["_build_user_answer"]
+    answer_stage_calls = [
+        node for node in grouped["run_answer_presentation_stage"]
         if node.lineno > stage_call.lineno
     ]
-    assert len(answer_calls) == 1
-    answer_call = answer_calls[0]
-    assert status_call.lineno < stage_call.lineno < answer_call.lineno
+    assert len(answer_stage_calls) == 1
+    answer_stage_call = answer_stage_calls[0]
+    assert status_call.lineno < stage_call.lineno < answer_stage_call.lineno
 
     expected_dependencies = {
         "_research_agent_enabled",
@@ -456,4 +456,7 @@ def test_ast_fixes_boundary_order_single_calls_and_runtime_names():
         and node.value.value.id == "phase_c_bounded_research_v1_stage"
     }
     assert set(bindings) == {"research", "plan_research_agent"}
-    assert all(stage_call.lineno < line < answer_call.lineno for line in bindings.values())
+    assert all(
+        stage_call.lineno < line < answer_stage_call.lineno
+        for line in bindings.values()
+    )

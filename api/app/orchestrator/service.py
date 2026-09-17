@@ -6,6 +6,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from app.orchestrator.answer_presentation_stage import (
+    run_answer_presentation_stage,
+)
+
 from app.orchestrator.complexity import assess_research_requirement
 from app.orchestrator.research import run_bounded_research
 from app.orchestrator.research_agent import (
@@ -7558,43 +7562,17 @@ def run_orchestrator(
         phase_c_bounded_research_v1_stage.plan_research_agent
     )
 
-    presentation_started = (
-        _observability_now()
+    answer_presentation_stage_result = run_answer_presentation_stage(
+        results,
+        lambda: plan.requested_information,
+        research,
+        timings,
+        observability_now=_observability_now,
+        build_user_answer=_build_user_answer,
+        repair_mojibake_text=repair_mojibake_text,
+        observability_elapsed_ms=_observability_elapsed_ms,
     )
-
-    try:
-        answer = _build_user_answer(
-            results,
-            requested_information=(
-                plan.requested_information
-            ),
-        )
-
-        if (
-            research.get(
-                "status"
-            )
-            == "ok"
-            and research.get(
-                "answer"
-            )
-        ):
-            answer = str(
-                research["answer"]
-            )
-
-        if answer:
-            answer = (
-                repair_mojibake_text(
-                    answer
-                )
-            )
-    finally:
-        timings["presentation"] = (
-            _observability_elapsed_ms(
-                presentation_started
-            )
-        )
+    answer = answer_presentation_stage_result.answer
 
     # PROMATI_MULTI_INTENT_COMPOSITION_SHADOW_POST_B7
     # Build a non-authoritative composition candidate from the already-final

@@ -23,7 +23,7 @@ class PublicResultsWiringTests(
         )
 
         answer_pos = text.index(
-            "answer = _build_user_answer("
+            "answer = answer_presentation_stage_result.answer"
         )
 
         public_pos = text.index(

@@ -259,3 +259,15 @@ gate and agent/legacy arguments, dict-only metadata parsing, counter coercion
 and partial mutation, runtime binding of all five service dependencies, one
 ordered service callsite, direct result bindings, and the unchanged
 `_build_user_answer` boundary.
+
+For the 3X2 answer-presentation extraction, keep
+`tests/orchestrator/test_answer_presentation_boundary_characterization.py`
+byte-identical and run it with
+`tests/orchestrator/test_answer_presentation_stage.py` and
+`tests/orchestrator/test_answer_presentation_stage_service_integration.py`.
+Together these lock the frozen exact-one-field result, lazy
+`requested_information` evaluation after the clock and inside the existing
+`try`, exact research selection and string conversion, truthy-only mojibake
+repair, timing mutation in `finally`, runtime binding of all four service
+dependencies, one ordered stage callsite, direct answer binding and the
+unchanged composition handoff and wrapper chain.
