@@ -341,7 +341,6 @@ def test_next_authority_failure_does_not_repeat_shadow_or_canary(monkeypatch):
     assert len(_calls(h, "shadow")) == len(_calls(h, "canary")) == 1
 
 
-@pytest.mark.xfail(reason="awaiting_3y2_stage_extraction", strict=True)
 def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
     path = Path(__file__).parents[2] / "app/orchestrator/service.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -376,6 +375,7 @@ def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
     } == {
         "build_multi_intent_composition_shadow": "_build_multi_intent_composition_shadow",
         "maybe_apply_public_composition_canary": "_maybe_apply_public_composition_canary",
+        "public_composition_canary_enabled": "_public_composition_canary_enabled",
     }
 
     stage_assignment = next(

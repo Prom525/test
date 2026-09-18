@@ -403,7 +403,7 @@ def test_ast_exact_boundary_order_cardinality_and_runtime_names():
     ]
     bounded = named("run_phase_c_bounded_research_v1_stage")
     presentation = named("run_answer_presentation_stage")
-    composition = named("_build_multi_intent_composition_shadow")
+    composition = named("run_composition_shadow_canary_stage")
     assert len(bounded) == len(presentation) == len(composition) == 1
     assert bounded[0].lineno < presentation[0].lineno < composition[0].lineno
 

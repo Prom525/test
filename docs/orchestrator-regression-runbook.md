@@ -62,6 +62,12 @@ The suite locks query classification, negation, dimensions and band scope, plann
 
 The GSL query currently becomes a clarification for an unresolved false `DE3` band candidate and executes no action. `api/tests/fixtures/gsl_3mm_known_gap.json` separately records the desired future `analysis_maintenance_positions` route to `GET /analysis/maintenance/positions` with public `resultaat` detail rows. This task does not implement that production change.
 
+Voor de 3Y2 composition-shadow/public-canary-stage draait de pre-gate met 43
+passes en precies één strict xfail (`awaiting_3y2_stage_extraction`). Na extractie
+moeten alle 44 boundary-cases normaal slagen, zonder XPASS. Draai daarnaast de
+leaf-stage- en service-integratietests en de aangrenzende composition-, P4.6F-,
+CP9-, wrapper-, post-CP12-, Phase-C8- en evidence-adapterbundels.
+
 Before using the suite as a refactor gate, compare the pre/post JSON reports. The acceptable delta is no new failures, with known gaps unchanged or intentionally closed. Existing explicit P4.14c red tests remain baseline failures and must not be mistaken for infrastructure failures.
 
 ## Pre-refactor stage-split gate

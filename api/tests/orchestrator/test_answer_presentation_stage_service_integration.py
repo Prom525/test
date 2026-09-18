@@ -22,7 +22,7 @@ def test_one_stage_callsite_direct_answer_binding_and_order():
                           and node.func.id == name]
     stage = named("run_answer_presentation_stage")
     prior = named("run_phase_c_bounded_research_v1_stage")
-    following = named("_build_multi_intent_composition_shadow")
+    following = named("run_composition_shadow_canary_stage")
     assert len(stage) == 1 and len(prior) == 1 and len(following) == 1
     assert prior[0].lineno < stage[0].lineno < following[0].lineno
     assignments = [node for node in function.body if isinstance(node, ast.Assign)]
@@ -57,7 +57,7 @@ def test_service_passes_four_runtime_resolved_dependencies_and_lazy_property():
 def test_composition_receives_direct_bound_answer():
     call = next(node for node in ast.walk(_function_tree()) if isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
-                and node.func.id == "_build_multi_intent_composition_shadow")
+                and node.func.id == "run_composition_shadow_canary_stage")
     assert isinstance(call.args[1], ast.Name) and call.args[1].id == "answer"
 
 

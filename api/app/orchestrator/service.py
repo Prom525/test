@@ -9,6 +9,9 @@ from typing import Any
 from app.orchestrator.answer_presentation_stage import (
     run_answer_presentation_stage,
 )
+from app.orchestrator.composition_shadow_canary_stage import (
+    run_composition_shadow_canary_stage,
+)
 
 from app.orchestrator.complexity import assess_research_requirement
 from app.orchestrator.research import run_bounded_research
@@ -7574,64 +7577,32 @@ def run_orchestrator(
     )
     answer = answer_presentation_stage_result.answer
 
-    # PROMATI_MULTI_INTENT_COMPOSITION_SHADOW_POST_B7
-    # Build a non-authoritative composition candidate from the already-final
-    # legacy/public answer plus grounded secondary task answers. The public
-    # answer itself remains untouched.
-    if isinstance(evidence_pipeline, dict):
-        try:
-            evidence_pipeline["multi_intent_composition_shadow"] = (
-                _build_multi_intent_composition_shadow(
-                    plan,
-                    answer,
-                    evidence_pipeline,
-                )
-            )
-        except Exception:
-            evidence_pipeline["multi_intent_composition_shadow"] = None
-
-    # PROMATI_PUBLIC_COMPOSITION_CANARY_POST_B7
-    # Default-off and fail-open. Only the exact proven product+CEMA shape can
-    # replace the public answer, and only when explicitly enabled.
-    legacy_answer_before_public_composition_canary = answer
-    if isinstance(evidence_pipeline, dict):
-        try:
-            (
-                answer,
-                evidence_pipeline[
-                    "public_composition_canary_shadow"
-                ],
-            ) = _maybe_apply_public_composition_canary(
-                plan,
-                legacy_answer_before_public_composition_canary,
-                evidence_pipeline,
-            )
-        except Exception:
-            answer = legacy_answer_before_public_composition_canary
-            evidence_pipeline[
-                "public_composition_canary_shadow"
-            ] = {
-                "contract_version": (
-                    "promati.multi_intent."
-                    "public_composition_canary.v1"
-                ),
-                "enabled": _public_composition_canary_enabled(),
-                "default_enabled": False,
-                "eligible": False,
-                "activated": False,
-                "public_answer_replaced": False,
-                "target": (
-                    "product_lookup_plus_technical_lookup_"
-                    "cema_definition"
-                ),
-                "release_stage": "narrow_candidate_canary",
-                "fail_open_to_legacy_answer": True,
-                "release_observability_contract_version": (
-                    "promati.multi_intent."
-                    "public_composition_canary_observability.v1"
-                ),
-                "reason": "blocked_internal_error_fail_open",
-            }
+    composition_shadow_canary_stage_result = (
+        run_composition_shadow_canary_stage(
+            plan,
+            answer,
+            evidence_pipeline,
+            build_multi_intent_composition_shadow=(
+                _build_multi_intent_composition_shadow
+            ),
+            maybe_apply_public_composition_canary=(
+                _maybe_apply_public_composition_canary
+            ),
+            public_composition_canary_enabled=(
+                _public_composition_canary_enabled
+            ),
+        )
+    )
+    answer = (
+        composition_shadow_canary_stage_result.answer
+    )
+    legacy_answer_before_public_composition_canary = (
+        composition_shadow_canary_stage_result
+        .legacy_answer_before_public_composition_canary
+    )
+    evidence_pipeline = (
+        composition_shadow_canary_stage_result.evidence_pipeline
+    )
 
     # PROMATI_P4_6F_PUBLIC_MULTI_INTENT_COMPOSITION_AUTHORITY_CANARY
     # Separate default-off authority gate. This consumes only the proven

@@ -207,6 +207,11 @@ enige authoritative legacy execution, CP8-shadow en CP9-canary.
 16. `_build_user_answer` presenteert anders rechtstreeks uit legacy specialistresults. Daarna repareert `repair_mojibake_text` tekst.
 17. Multi-intent composition shadow observeert; een oudere, default-off smalle public-composition canary kan alleen een product+CEMA-shape vervangen.
 18. P4.6F maakt een default-off composition candidate. CP9 trekt authority in wanneer required execution niet bewezen is. CP10 vereist volledige grounded task coverage. CP11 presenteert alleen requested, relevante, covered task-units. CP12 begrenst prose en kan authority niet verlenen.
+
+De 3Y2-grens is een mechanische leaf-stage: `composition_shadow_canary_stage.py`
+bevat uitsluitend de bestaande composition-shadowopslag en de oudere public-canary
+fail-open. De stage ligt direct na answer presentation en vóór de P4.6F/CP10-grens;
+P4.6F, coverage, CP9-CP15, observability en responsebouw blijven service-owned.
 19. CP15 is uitsluitend release-observatie en muteert het antwoord niet.
 20. Response build projecteert results en evidence pipeline, zet `question` opnieuw in de interne/debugresponse en voegt observability toe.
 21. CP3C, CP4B en CP4F draaien na de core return en kunnen `answer`, plus aanwezige `final_answer`/`antwoord`-aliases, wijzigen.
