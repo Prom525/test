@@ -118,7 +118,7 @@ def _run(h, exception=StopAtP46F):
 def _locals(error):
     traceback = error.__traceback__
     while traceback is not None:
-        if traceback.tb_frame.f_code is service._p4_15cp3c_previous_run_orchestrator.__code__:
+        if traceback.tb_frame.f_code is service.run_p4_6f_cp9_authority_entry_stage.__code__:
             return traceback.tb_frame.f_locals
         traceback = traceback.tb_next
     raise AssertionError("service frame absent")
@@ -358,7 +358,7 @@ def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
 
     presentation = named("run_answer_presentation_stage")
     composition = named("run_composition_shadow_canary_stage")
-    boundary = named("build_task_coverage_gate_status")
+    boundary = named("run_p4_6f_cp9_authority_entry_stage")
     release = named("_record_public_composition_canary_release_observability")
     assert all(len(nodes) == 1 for nodes in (presentation, composition, boundary, release))
     assert presentation[0].lineno < composition[0].lineno < boundary[0].lineno

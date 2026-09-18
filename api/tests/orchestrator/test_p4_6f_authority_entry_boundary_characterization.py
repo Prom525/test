@@ -194,7 +194,7 @@ def _run(h, exception=StopAtCP9):
 def _locals(error):
     traceback = error.__traceback__
     while traceback is not None:
-        if traceback.tb_frame.f_code is service._p4_15cp3c_previous_run_orchestrator.__code__:
+        if traceback.tb_frame.f_code is service.run_p4_6f_cp9_authority_entry_stage.__code__:
             return traceback.tb_frame.f_locals
         traceback = traceback.tb_next
     raise AssertionError("service frame absent")
@@ -512,7 +512,7 @@ def test_cp9_ordinary_exception_propagates_without_retry(monkeypatch):
         assert len(_calls(h, name)) == 1
 
 
-def test_ast_exact_order_cardinality_and_cp9_is_next_stop_boundary():
+def test_ast_exact_stage_order_bindings_dependencies_and_cp10_stop_boundary():
     path = Path(service.__file__)
     tree = ast.parse(path.read_text(encoding="utf-8"))
     function = next(
@@ -525,19 +525,37 @@ def test_ast_exact_order_cardinality_and_cp9_is_next_stop_boundary():
         return [node for node in calls
                 if isinstance(node.func, ast.Name) and node.func.id == name]
 
-    stage = named("run_composition_shadow_canary_stage")
-    coverage = named("build_task_coverage_gate_status")
-    cp13 = named("build_task_research_semantics")
-    authority = named("build_public_multi_intent_composition_authority_canary_p4_6f")
-    cp9 = named("guard_public_composition_authority")
-    assert all(len(nodes) == 1 for nodes in (stage, coverage, cp13, authority, cp9))
-    assert stage[0].lineno < coverage[0].lineno < cp13[0].lineno < authority[0].lineno < cp9[0].lineno
-    assert [arg.id for arg in coverage[0].args[:1]] == ["task_execution_shadow"]
-    assert [arg.id for arg in cp13[0].args[:2]] == ["plan", "task_execution_shadow"]
-    assert [arg.id for arg in authority[0].args[:2]] == [
-        "plan", "answer_before_p4_6f_public_composition"
+    stage_3y2 = named("run_composition_shadow_canary_stage")
+    stage_3z2a = named("run_p4_6f_cp9_authority_entry_stage")
+    cp10 = named("guard_task_coverage_authority")
+    assert len(stage_3y2) == len(stage_3z2a) == len(cp10) == 1
+    assert stage_3y2[0].lineno < stage_3z2a[0].lineno < cp10[0].lineno
+    assert [arg.id for arg in stage_3z2a[0].args] == [
+        "plan", "answer", "legacy_answer_before_public_composition_canary",
+        "evidence_pipeline", "task_execution_shadow", "cp11_debug_response",
     ]
-    assert [arg.id for arg in cp9[0].args] == [
-        "answer", "legacy_answer_before_public_composition_canary",
-        "task_public_composition_authority_p4_6f", "task_execution_shadow",
+    assert {keyword.arg for keyword in stage_3z2a[0].keywords} == {
+        "build_task_coverage_gate_status",
+        "build_task_research_semantics",
+        "build_public_multi_intent_composition_authority_canary_p4_6f",
+        "guard_public_composition_authority",
+        "guard_public_composition_canary",
+    }
+    assignments = [
+        node for node in function.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "p4_6f_cp9_authority_entry_stage_result"
+    ]
+    assert [(node.targets[0].id, node.value.attr) for node in assignments] == [
+        ("answer", "answer"),
+        ("evidence_pipeline", "evidence_pipeline"),
+        ("task_research_semantics_cp13", "task_research_semantics_cp13"),
+        ("task_coverage_gate_cp10", "task_coverage_gate_cp10"),
+        (
+            "task_public_composition_authority_p4_6f",
+            "task_public_composition_authority_p4_6f",
+        ),
+        ("task_authority_gate_cp9", "task_authority_gate_cp9"),
     ]

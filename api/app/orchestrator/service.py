@@ -12,6 +12,9 @@ from app.orchestrator.answer_presentation_stage import (
 from app.orchestrator.composition_shadow_canary_stage import (
     run_composition_shadow_canary_stage,
 )
+from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
+    run_p4_6f_cp9_authority_entry_stage,
+)
 
 from app.orchestrator.complexity import assess_research_requirement
 from app.orchestrator.research import run_bounded_research
@@ -7604,102 +7607,42 @@ def run_orchestrator(
         composition_shadow_canary_stage_result.evidence_pipeline
     )
 
-    # PROMATI_P4_6F_PUBLIC_MULTI_INTENT_COMPOSITION_AUTHORITY_CANARY
-    # Separate default-off authority gate. This consumes only the proven
-    # P4.6e3 complete grounded task coverage contract. Fail-open preserves
-    # the answer from the pre-existing presentation/public-canary path.
-    answer_before_p4_6f_public_composition = answer
-    task_public_composition_authority_p4_6f = None
     cp11_debug_response = getattr(payload, "response_profile", None) == "debug"
-    if cp11_debug_response and not isinstance(evidence_pipeline, dict):
-        # Diagnostics-only requests can legitimately have no Phase-C evidence
-        # pipeline. Give debug mode a container so CP9-CP11 still evaluate and
-        # expose their fail-closed status contracts.
-        evidence_pipeline = {}
-    task_coverage_gate_cp10 = build_task_coverage_gate_status(
-        task_execution_shadow,
-        (
-            evidence_pipeline.get(
-                "task_grounded_synthesis_coverage_authority_p4_6e3"
-            )
-            if isinstance(evidence_pipeline, dict)
-            else None
-        ),
-    )
-    if isinstance(evidence_pipeline, dict):
-        # CP13 must also be visible for diagnostics/minimal debug flows that do
-        # not enter Phase-C. Re-evaluate from CP8/CP10 state without granting
-        # research, evidence, synthesis, or public-answer authority.
-        try:
-            task_research_semantics_cp13 = build_task_research_semantics(
-                plan,
-                task_execution_shadow,
-                evidence_pipeline.get("task_research_authority_p4_6d1"),
-                task_coverage_gate_cp10,
-            )
-        except Exception:
-            task_research_semantics_cp13 = {
-                "contract_version": (
-                    "promati.orchestrator.task_research_semantics.cp13.v1"
-                ),
-                "evaluated": False,
-                "authoritative": False,
-                "authority_scope": "intent_task_research_eligibility_only",
-                "public_answer_authority": False,
-                "evidence_authority": False,
-                "synthesis_authority": False,
-                "legacy_generic_research_allowed": False,
-                "explicit_research_requested": (
-                    "explicit_research_request"
-                    in set(getattr(plan, "complexity_reasons", None) or [])
-                ),
-                "allowed_task_ids": [],
-                "tasks": [],
-                "reason": "internal_error_fail_closed",
-            }
-        evidence_pipeline["task_research_semantics_cp13"] = (
-            task_research_semantics_cp13
-        )
-        try:
-            (
-                answer,
-                task_public_composition_authority_p4_6f,
-            ) = build_public_multi_intent_composition_authority_canary_p4_6f(
-                plan,
-                answer_before_p4_6f_public_composition,
-                evidence_pipeline.get(
-                    "task_grounded_synthesis_coverage_authority_p4_6e3"
-                ),
-            )
-        except Exception:
-            answer = answer_before_p4_6f_public_composition
-            task_public_composition_authority_p4_6f = None
-
-        # CP9: public composition authority is conditional on CP8 proving that
-        # every required intent task was executed. A missing or unavailable
-        # shadow fails closed and restores the pre-authority answer.
-        (
-            answer,
-            task_public_composition_authority_p4_6f,
-            task_authority_gate_cp9,
-        ) = guard_public_composition_authority(
+    p4_6f_cp9_authority_entry_stage_result = (
+        run_p4_6f_cp9_authority_entry_stage(
+            plan,
             answer,
             legacy_answer_before_public_composition_canary,
-            task_public_composition_authority_p4_6f,
+            evidence_pipeline,
             task_execution_shadow,
+            cp11_debug_response,
+            build_task_coverage_gate_status=build_task_coverage_gate_status,
+            build_task_research_semantics=build_task_research_semantics,
+            build_public_multi_intent_composition_authority_canary_p4_6f=(
+                build_public_multi_intent_composition_authority_canary_p4_6f
+            ),
+            guard_public_composition_authority=(
+                guard_public_composition_authority
+            ),
+            guard_public_composition_canary=guard_public_composition_canary,
         )
-
-        evidence_pipeline["public_composition_canary_shadow"] = (
-            guard_public_composition_canary(
-                evidence_pipeline.get("public_composition_canary_shadow"),
-                task_authority_gate_cp9,
-            )
-        )
-
-        evidence_pipeline[
-            "task_public_composition_authority_p4_6f"
-        ] = task_public_composition_authority_p4_6f
-        evidence_pipeline["task_authority_gate_cp9"] = task_authority_gate_cp9
+    )
+    answer = p4_6f_cp9_authority_entry_stage_result.answer
+    evidence_pipeline = p4_6f_cp9_authority_entry_stage_result.evidence_pipeline
+    task_research_semantics_cp13 = (
+        p4_6f_cp9_authority_entry_stage_result.task_research_semantics_cp13
+    )
+    task_coverage_gate_cp10 = (
+        p4_6f_cp9_authority_entry_stage_result.task_coverage_gate_cp10
+    )
+    task_public_composition_authority_p4_6f = (
+        p4_6f_cp9_authority_entry_stage_result
+        .task_public_composition_authority_p4_6f
+    )
+    task_authority_gate_cp9 = (
+        p4_6f_cp9_authority_entry_stage_result.task_authority_gate_cp9
+    )
+    if isinstance(evidence_pipeline, dict):
 
         # CP10: authority additionally requires complete authoritative evidence
         # coverage. This gate is a small, stable debug contract and also revokes

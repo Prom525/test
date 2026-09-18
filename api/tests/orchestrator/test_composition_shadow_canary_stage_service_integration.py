@@ -31,13 +31,13 @@ def test_exact_single_callsite_runtime_dependencies_order_and_direct_bindings():
     named = lambda name: [
         node for node in calls if isinstance(node.func, ast.Name) and node.func.id == name
     ]
-    stage, presentation, coverage = (
+    stage, presentation, authority_entry = (
         named("run_composition_shadow_canary_stage"),
         named("run_answer_presentation_stage"),
-        named("build_task_coverage_gate_status"),
+        named("run_p4_6f_cp9_authority_entry_stage"),
     )
-    assert len(stage) == len(presentation) == len(coverage) == 1
-    assert presentation[0].lineno < stage[0].lineno < coverage[0].lineno
+    assert len(stage) == len(presentation) == len(authority_entry) == 1
+    assert presentation[0].lineno < stage[0].lineno < authority_entry[0].lineno
     assert [arg.id for arg in stage[0].args] == ["plan", "answer", "evidence_pipeline"]
     assert {kw.arg: kw.value.id for kw in stage[0].keywords} == {
         "build_multi_intent_composition_shadow": "_build_multi_intent_composition_shadow",
@@ -61,6 +61,5 @@ def test_exact_single_callsite_runtime_dependencies_order_and_direct_bindings():
 def test_p46f_handoff_and_wrapper_chain_remain_in_service():
     source = SERVICE_PATH.read_text(encoding="utf-8")
     assert source.count("run_composition_shadow_canary_stage(") == 1
-    assert "answer_before_p4_6f_public_composition = answer" in source
-    assert "build_public_multi_intent_composition_authority_canary_p4_6f(" in source
+    assert source.count("run_p4_6f_cp9_authority_entry_stage(") == 1
     assert "response = _p4_15cp4f_previous_run_orchestrator(*args, **kwargs)" in source

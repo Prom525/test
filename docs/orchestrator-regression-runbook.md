@@ -68,6 +68,14 @@ moeten alle 44 boundary-cases normaal slagen, zonder XPASS. Draai daarnaast de
 leaf-stage- en service-integratietests en de aangrenzende composition-, P4.6F-,
 CP9-, wrapper-, post-CP12-, Phase-C8- en evidence-adapterbundels.
 
+Voor de 3Z2A P4.6F/CP9-authority-entry-extractie moet de bestaande 3Z1A-suite
+vóór en na de wijziging exact 60 normale passes geven. Draai daarnaast
+`test_p4_6f_cp9_authority_entry_stage.py` en
+`test_p4_6f_cp9_authority_entry_stage_service_integration.py`. Deze borgen het
+zesveldige frozen contract, de vijf runtime-resolved dependencies, de eenmalige
+directe debugprofielbepaling, CP13-fallback, P4.6F fail-open, CP9-opslagvolgorde en de
+servicegrens 3Y2 -> 3Z2A -> CP10.
+
 Before using the suite as a refactor gate, compare the pre/post JSON reports. The acceptable delta is no new failures, with known gaps unchanged or intentionally closed. Existing explicit P4.14c red tests remain baseline failures and must not be mistaken for infrastructure failures.
 
 ## Pre-refactor stage-split gate

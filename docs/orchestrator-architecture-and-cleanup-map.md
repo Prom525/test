@@ -210,8 +210,11 @@ enige authoritative legacy execution, CP8-shadow en CP9-canary.
 
 De 3Y2-grens is een mechanische leaf-stage: `composition_shadow_canary_stage.py`
 bevat uitsluitend de bestaande composition-shadowopslag en de oudere public-canary
-fail-open. De stage ligt direct na answer presentation en vóór de P4.6F/CP10-grens;
-P4.6F, coverage, CP9-CP15, observability en responsebouw blijven service-owned.
+fail-open. Direct daarna bevat de 3Z2A-leaf-stage
+`p4_6f_cp9_authority_entry_stage.py` de P4.6F-entry, CP10-statusopbouw,
+conditionele CP13-status en CP9-guard/canaryopslag. De grens stopt vóór de
+service-owned CP10-authorityguard; CP10-CP15, observability en responsebouw blijven
+in `service.py`.
 19. CP15 is uitsluitend release-observatie en muteert het antwoord niet.
 20. Response build projecteert results en evidence pipeline, zet `question` opnieuw in de interne/debugresponse en voegt observability toe.
 21. CP3C, CP4B en CP4F draaien na de core return en kunnen `answer`, plus aanwezige `final_answer`/`antwoord`-aliases, wijzigen.
