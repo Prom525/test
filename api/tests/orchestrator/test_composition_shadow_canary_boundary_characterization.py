@@ -341,6 +341,7 @@ def test_next_authority_failure_does_not_repeat_shadow_or_canary(monkeypatch):
     assert len(_calls(h, "shadow")) == len(_calls(h, "canary")) == 1
 
 
+@pytest.mark.xfail(reason="awaiting_3y2_stage_extraction", strict=True)
 def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
     path = Path(__file__).parents[2] / "app/orchestrator/service.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -357,10 +358,57 @@ def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
         ]
 
     presentation = named("run_answer_presentation_stage")
-    shadow = named("_build_multi_intent_composition_shadow")
-    canary = named("_maybe_apply_public_composition_canary")
+    composition = named("run_composition_shadow_canary_stage")
     boundary = named("build_task_coverage_gate_status")
     release = named("_record_public_composition_canary_release_observability")
-    assert all(len(nodes) == 1 for nodes in (presentation, shadow, canary, boundary, release))
-    assert presentation[0].lineno < shadow[0].lineno < canary[0].lineno < boundary[0].lineno
+    assert all(len(nodes) == 1 for nodes in (presentation, composition, boundary, release))
+    assert presentation[0].lineno < composition[0].lineno < boundary[0].lineno
     assert boundary[0].lineno < release[0].lineno
+
+    stage_call = composition[0]
+    assert [argument.id for argument in stage_call.args] == [
+        "plan",
+        "answer",
+        "evidence_pipeline",
+    ]
+    assert {
+        keyword.arg: keyword.value.id for keyword in stage_call.keywords
+    } == {
+        "build_multi_intent_composition_shadow": "_build_multi_intent_composition_shadow",
+        "maybe_apply_public_composition_canary": "_maybe_apply_public_composition_canary",
+    }
+
+    stage_assignment = next(
+        node for node in ast.walk(function)
+        if isinstance(node, ast.Assign) and node.value is stage_call
+    )
+    assert len(stage_assignment.targets) == 1
+    stage_result = stage_assignment.targets[0]
+    assert isinstance(stage_result, ast.Name)
+    assert stage_result.id == "composition_shadow_canary_stage_result"
+
+    result_assignments = [
+        node for node in ast.walk(function)
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Attribute)
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == stage_result.id
+        )
+    ]
+    assert len(result_assignments) == 3
+    assert {
+        node.targets[0].id: node.value.attr for node in result_assignments
+    } == {
+        "answer": "answer",
+        "legacy_answer_before_public_composition_canary": (
+            "legacy_answer_before_public_composition_canary"
+        ),
+        "evidence_pipeline": "evidence_pipeline",
+    }
+    assert stage_assignment.lineno < min(
+        node.lineno for node in result_assignments
+    )
+    assert all(node.lineno < boundary[0].lineno for node in result_assignments)
