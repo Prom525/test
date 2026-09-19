@@ -359,7 +359,7 @@ def test_ast_exact_order_cardinality_and_observability_is_beyond_boundary():
     presentation = named("run_answer_presentation_stage")
     composition = named("run_composition_shadow_canary_stage")
     boundary = named("run_p4_6f_cp9_authority_entry_stage")
-    release = named("_record_public_composition_canary_release_observability")
+    release = named("run_post_cp15_observability_stage")
     assert all(len(nodes) == 1 for nodes in (presentation, composition, boundary, release))
     assert presentation[0].lineno < composition[0].lineno < boundary[0].lineno
     assert boundary[0].lineno < release[0].lineno

@@ -24,6 +24,9 @@ from app.orchestrator.cp12_concise_composition_stage import (
 from app.orchestrator.cp15_release_observer_stage import (
     run_cp15_release_observer_stage,
 )
+from app.orchestrator.post_cp15_observability_stage import (
+    run_post_cp15_observability_stage,
+)
 from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
     run_p4_6f_cp9_authority_entry_stage,
 )
@@ -7723,28 +7726,17 @@ def run_orchestrator(
             cp15_release_observer_stage_result.evidence_pipeline
         )
 
-    # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
-    # Best-effort integer-only metrics. Never alter user-visible behavior.
-    try:
-        _record_task_execution_plan_shadow_observability(
-            counts,
-            plan,
-            evidence_pipeline,
-        )
-    except Exception:
-        pass
-
-    # PROMATI_PUBLIC_COMPOSITION_CANARY_RELEASE_OBSERVABILITY_HARDENING
-    # Best-effort metrics only. Any instrumentation error must never alter the
-    # selected user answer or the legacy fail-open behavior.
-    try:
-        _record_public_composition_canary_release_observability(
-            counts,
-            plan,
-            evidence_pipeline,
-        )
-    except Exception:
-        pass
+    run_post_cp15_observability_stage(
+        counts,
+        plan,
+        evidence_pipeline,
+        record_task_execution_plan_shadow_observability=(
+            _record_task_execution_plan_shadow_observability
+        ),
+        record_public_composition_canary_release_observability=(
+            _record_public_composition_canary_release_observability
+        ),
+    )
 
     response_build_started = (
         _observability_now()

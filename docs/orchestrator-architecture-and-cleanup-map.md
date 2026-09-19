@@ -467,5 +467,12 @@ CP15, observability, responsebouw, post-CP12-mutaties en wrappers blijven in
 3Z2E extraheert uitsluitend het CP15 release-observerblok binnen dezelfde
 service-owned dict-gate naar `cp15_release_observer_stage.py`. De leaf behoudt
 de builder- en succeswrite in één `try`, de exacte fail-closed fallback en
-exceptionpropagatie; observability, responsebouw, post-CP12-mutaties en wrappers
-blijven in `service.py`.
+exceptionpropagatie; responsebouw, post-CP12-mutaties en wrappers blijven in
+`service.py`.
+
+3AA2 extraheert uitsluitend de twee opeenvolgende post-CP15
+observabilityzones naar `post_cp15_observability_stage.py`. De leaf behoudt de
+afzonderlijke `Exception`-zones, gedeelde mutable objectidentiteit, genegeerde
+helperreturns en `BaseException`-propagatie. De runtime-resolved helpers en drie
+positionele inputs worden expliciet door de service gebonden; de
+response-buildclock en wrappers blijven service-owned.

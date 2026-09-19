@@ -327,3 +327,14 @@ skip/xfail/XPASS. Run it together with
 These lock the frozen one-field contract, exact builder/write/fallback behavior,
 the service-owned dict gate, one runtime dependency binding, and unchanged
 post-CP15 observability and wrappers.
+
+For the 3AA2 post-CP15 observability extraction, run
+`tests/orchestrator/test_post_cp15_observability_boundary_characterization.py`
+before and after the edit and require exactly 16 normal passes with no
+skip/xfail/XPASS. Run it together with
+`tests/orchestrator/test_post_cp15_observability_stage.py` and
+`tests/orchestrator/test_post_cp15_observability_stage_service_integration.py`.
+These lock the two independent best-effort `Exception` zones, exact shared
+object identity and call order, ignored helperreturns, `BaseException`
+propagation, runtime dependency binding, and the unchanged service-owned
+response-buildclock and wrapper chain.

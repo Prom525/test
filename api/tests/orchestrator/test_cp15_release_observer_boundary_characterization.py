@@ -303,7 +303,7 @@ def test_ast_future_3z2e_boundary_exact_gate_try_call_writes_and_fallback_shape(
 
     cp12 = named("run_cp12_concise_composition_stage")
     cp15 = named("run_cp15_release_observer_stage")
-    after = named("_record_task_execution_plan_shadow_observability")
+    after = named("run_post_cp15_observability_stage")
     assert tuple(map(len, (cp12, cp15, after))) == (1, 1, 1)
     assert cp12[0].lineno < cp15[0].lineno < after[0].lineno
     gate = next(n for n in function.body if isinstance(n, ast.If) and cp15[0] in ast.walk(n))

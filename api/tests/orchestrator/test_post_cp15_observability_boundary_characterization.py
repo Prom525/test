@@ -249,9 +249,8 @@ def test_ast_exact_future_post_cp15_stage_boundary():
                 and node.func.id == name]
 
     cp15 = named("run_cp15_release_observer_stage")
-    first = named("_record_task_execution_plan_shadow_observability")
-    second = named("_record_public_composition_canary_release_observability")
-    assert tuple(map(len, (cp15, first, second))) == (1, 1, 1)
+    stage = named("run_post_cp15_observability_stage")
+    assert tuple(map(len, (cp15, stage))) == (1, 1)
     clocks = [
         node for node in function.body if isinstance(node, ast.Assign)
         and any(ast.unparse(target) == "response_build_started"
@@ -261,25 +260,15 @@ def test_ast_exact_future_post_cp15_stage_boundary():
         and node.value.func.id == "_observability_now"
     ]
     assert len(clocks) == 1
-    assert cp15[0].lineno < first[0].lineno < second[0].lineno < clocks[0].lineno
-
-    zones = []
-    for call in (first[0], second[0]):
-        zone = next(node for node in function.body
-                    if isinstance(node, ast.Try) and call in ast.walk(node))
-        zones.append(zone)
-        assert len(zone.body) == 1 and isinstance(zone.body[0], ast.Expr)
-        assert zone.body[0].value is call
-        assert [ast.unparse(arg) for arg in call.args] == [
-            "counts", "plan", "evidence_pipeline"
-        ]
-        assert call.keywords == []
-        assert len(zone.handlers) == 1
-        handler = zone.handlers[0]
-        assert ast.unparse(handler.type) == "Exception"
-        assert handler.name is None
-        assert len(handler.body) == 1 and isinstance(handler.body[0], ast.Pass)
-        assert zone.orelse == [] and zone.finalbody == []
-    assert zones[0] is not zones[1]
-    positions = [function.body.index(node) for node in (*zones, clocks[0])]
-    assert positions[0] < positions[1] < positions[2]
+    assert cp15[0].lineno < stage[0].lineno < clocks[0].lineno
+    statement = next(node for node in function.body if stage[0] in ast.walk(node))
+    assert isinstance(statement, ast.Expr) and statement.value is stage[0]
+    assert [ast.unparse(arg) for arg in stage[0].args] == [
+        "counts", "plan", "evidence_pipeline"
+    ]
+    assert [(kw.arg, ast.unparse(kw.value)) for kw in stage[0].keywords] == [
+        ("record_task_execution_plan_shadow_observability",
+         "_record_task_execution_plan_shadow_observability"),
+        ("record_public_composition_canary_release_observability",
+         "_record_public_composition_canary_release_observability"),
+    ]

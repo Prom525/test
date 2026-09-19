@@ -40,7 +40,7 @@ def test_one_import_callsite_order_inputs_dependency_binding_and_gate():
                 and node.func.id == name]
     cp12, cp15, after = (named(name) for name in (
         "run_cp12_concise_composition_stage", "run_cp15_release_observer_stage",
-        "_record_task_execution_plan_shadow_observability"))
+        "run_post_cp15_observability_stage"))
     assert tuple(map(len, (cp12, cp15, after))) == (1, 1, 1)
     assert cp12[0].lineno < cp15[0].lineno < after[0].lineno
     assert [arg.id for arg in cp15[0].args] == [
@@ -59,7 +59,7 @@ def test_one_import_callsite_order_inputs_dependency_binding_and_gate():
 def test_observability_wrappers_and_no_inline_duplication():
     source = SERVICE_PATH.read_text(encoding="utf-8")
     stage_source = STAGE_PATH.read_text(encoding="utf-8")
-    assert "_record_task_execution_plan_shadow_observability(" in source
+    assert "run_post_cp15_observability_stage(" in source
     assert "_record_task_execution_plan_shadow_observability(" not in stage_source
     assert "response = _p4_15cp4f_previous_run_orchestrator(*args, **kwargs)" in source
     assert "response = _p4_15cp3c_previous_run_orchestrator(*args, **kwargs)" in source
