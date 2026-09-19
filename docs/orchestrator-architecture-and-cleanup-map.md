@@ -215,8 +215,12 @@ fail-open. Direct daarna bevat de 3Z2A-leaf-stage
 conditionele CP13-status en CP9-guard/canaryopslag. De grens stopt vóór de
 3Z2B-leaf-stage `cp10_authority_rollback_stage.py`. Die stage bezit uitsluitend
 de dict-typegate, CP10-authorityrollback en de drie bestaande pipelinewrites en
-stopt direct vóór CP11. CP11-CP15, observability en responsebouw blijven in
-`service.py`.
+stopt direct vóór CP11. Binnen de service-owned dict-typegate bezit de
+3Z2C-leaf-stage `cp11_presentation_stage.py` uitsluitend de presenter-call, de
+bestaande `Exception`-fallback, authority-update en twee pipelinewrites. Het
+frozen resultaat draagt answer, hetzelfde pipelineobject, presenterstatus en
+composition-authority terug. CP12-CP15, response-profile-evaluatie,
+observability, responsebouw en alle latere mutaties blijven in `service.py`.
 19. CP15 is uitsluitend release-observatie en muteert het antwoord niet.
 20. Response build projecteert results en evidence pipeline, zet `question` opnieuw in de interne/debugresponse en voegt observability toe.
 21. CP3C, CP4B en CP4F draaien na de core return en kunnen `answer`, plus aanwezige `final_answer`/`antwoord`-aliases, wijzigen.

@@ -294,3 +294,15 @@ Together these lock the frozen exact-one-field result, lazy
 repair, timing mutation in `finally`, runtime binding of all four service
 dependencies, one ordered stage callsite, direct answer binding and the
 unchanged composition handoff and wrapper chain.
+
+For the 3Z2C CP11-presentation extraction, run
+`tests/orchestrator/test_cp11_presentation_boundary_characterization.py`
+before and after the edit and require exactly 41 normal passes with no
+skip/xfail/XPASS. Run it together with
+`tests/orchestrator/test_cp11_presentation_stage.py` and
+`tests/orchestrator/test_cp11_presentation_stage_service_integration.py`.
+These lock the frozen ordered four-field contract, exact Python three-value
+unpacking, fresh pipeline lookup, existing `Exception` fallback and
+`BaseException` propagation, authority-copy/update and ordered pipelinewrites,
+the runtime-resolved presenter dependency, the service-owned dict gate, and
+the unchanged CP12 ownership and wrapper chain.

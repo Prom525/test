@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.orchestrator import service
+from app.orchestrator import cp11_presentation_stage, service
 
 
 class StopAtCP12(BaseException):
@@ -330,7 +330,7 @@ def test_fallback_update_failure_preserves_constructed_partial_state(monkeypatch
 
     h = _install(monkeypatch, authority={"preserved": object()},
                  presenter_error=RuntimeError("cp11"))
-    monkeypatch.setitem(service.__dict__, "dict", FailingDict)
+    monkeypatch.setitem(cp11_presentation_stage.__dict__, "dict", FailingDict)
     _run(h, RuntimeError)
     assert list(FailingDict.last) == ["preserved"]
     assert h.pipeline.cp11_set_calls == [] and not _calls(h, "cp12")
@@ -409,7 +409,7 @@ def test_ast_cardinality_order_gate_calls_writes_and_extractable_shape():
                 and node.func.id == name]
 
     rollback = named("run_cp10_authority_rollback_stage")
-    presenter = named("present_relevant_task_answer")
+    presenter = named("run_cp11_presentation_stage")
     composer = named("compose_concise_public_answer")
     assert tuple(map(len, (rollback, presenter, composer))) == (1, 1, 1)
     assert rollback[0].lineno < presenter[0].lineno < composer[0].lineno
@@ -420,13 +420,21 @@ def test_ast_cardinality_order_gate_calls_writes_and_extractable_shape():
     assert [arg.id for arg in gate.test.args if isinstance(arg, ast.Name)] == [
         "evidence_pipeline", "dict"
     ]
-    writes = [node for node in gate.body if isinstance(node, ast.Assign)
-              and isinstance(node.targets[0], ast.Subscript)]
-    assert [ast.literal_eval(node.targets[0].slice) for node in writes[:2]] == [
-        "task_presenter_cp11", "task_public_composition_authority_p4_6f"
-    ]
-    assert [arg.id for arg in presenter[0].args[:3]] == [
+    assert [arg.id for arg in presenter[0].args] == [
         "plan", "legacy_answer_before_public_composition_canary",
-        "task_coverage_gate_cp10",
+        "task_coverage_gate_cp10", "evidence_pipeline",
+        "task_public_composition_authority_p4_6f",
     ]
-    assert len(presenter[0].args) == 5 and presenter[0].keywords == []
+    assert [(keyword.arg, keyword.value.id) for keyword in presenter[0].keywords] == [
+        ("present_relevant_task_answer", "present_relevant_task_answer")
+    ]
+    bindings = [node for node in gate.body if isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "cp11_presentation_stage_result"]
+    assert [(node.targets[0].id, node.value.attr) for node in bindings] == [
+        ("answer", "answer"), ("evidence_pipeline", "evidence_pipeline"),
+        ("task_presenter_cp11", "task_presenter_cp11"),
+        ("task_public_composition_authority_p4_6f",
+         "task_public_composition_authority_p4_6f"),
+    ]

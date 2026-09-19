@@ -412,7 +412,7 @@ def test_ast_cardinality_order_typegate_and_three_writes():
 
     stage = named("run_p4_6f_cp9_authority_entry_stage")
     rollback = named("run_cp10_authority_rollback_stage")
-    cp11 = named("present_relevant_task_answer")
+    cp11 = named("run_cp11_presentation_stage")
     assert tuple(map(len, (stage, rollback, cp11))) == (1, 1, 1)
     assert stage[0].lineno < rollback[0].lineno < cp11[0].lineno
     assert [arg.id for arg in rollback[0].args] == [

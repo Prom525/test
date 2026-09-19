@@ -15,6 +15,9 @@ from app.orchestrator.composition_shadow_canary_stage import (
 from app.orchestrator.cp10_authority_rollback_stage import (
     run_cp10_authority_rollback_stage,
 )
+from app.orchestrator.cp11_presentation_stage import (
+    run_cp11_presentation_stage,
+)
 from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
     run_p4_6f_cp9_authority_entry_stage,
 )
@@ -7662,47 +7665,21 @@ def run_orchestrator(
     )
 
     if isinstance(evidence_pipeline, dict):
-
-        # CP11: once CP10 permits authority, present only grounded units for
-        # required, requested tasks outside the explicit exclusion set.
-        try:
-            answer, task_presenter_cp11, task_public_composition_authority_p4_6f = (
-                present_relevant_task_answer(
-                    plan,
-                    legacy_answer_before_public_composition_canary,
-                    task_coverage_gate_cp10,
-                    evidence_pipeline.get(
-                        "task_grounded_synthesis_coverage_authority_p4_6e3"
-                    ),
-                    task_public_composition_authority_p4_6f,
-                )
-            )
-        except Exception:
-            answer = legacy_answer_before_public_composition_canary
-            task_presenter_cp11 = {
-                "contract_version": (
-                    "promati.orchestrator.task_relevance_presenter.cp11.v1"
-                ),
-                "evaluated": False,
-                "authoritative": False,
-                "public_answer_replaced": False,
-                "reason": "internal_error_fail_closed",
-            }
-            task_public_composition_authority_p4_6f = dict(
-                task_public_composition_authority_p4_6f or {}
-            )
-            task_public_composition_authority_p4_6f.update({
-                "authoritative": False,
-                "public_answer_authority": False,
-                "public_answer_replaced": False,
-                "blocked": True,
-                "reason": "presenter_internal_error",
-                "task_presenter_cp11": task_presenter_cp11,
-            })
-        evidence_pipeline["task_presenter_cp11"] = task_presenter_cp11
-        evidence_pipeline[
-            "task_public_composition_authority_p4_6f"
-        ] = task_public_composition_authority_p4_6f
+        cp11_presentation_stage_result = run_cp11_presentation_stage(
+            plan,
+            legacy_answer_before_public_composition_canary,
+            task_coverage_gate_cp10,
+            evidence_pipeline,
+            task_public_composition_authority_p4_6f,
+            present_relevant_task_answer=present_relevant_task_answer,
+        )
+        answer = cp11_presentation_stage_result.answer
+        evidence_pipeline = cp11_presentation_stage_result.evidence_pipeline
+        task_presenter_cp11 = cp11_presentation_stage_result.task_presenter_cp11
+        task_public_composition_authority_p4_6f = (
+            cp11_presentation_stage_result
+            .task_public_composition_authority_p4_6f
+        )
 
         # CP12: normalize and bound the selected public prose. The composer
         # consumes CP10/CP11 status and cannot grant authority of its own.
