@@ -461,7 +461,7 @@ def test_ast_cp11_cp12_cp15_single_order_gate_bindings_writes_and_rollback_shape
 
     cp11, cp12, cp15 = (named(name) for name in (
         "run_cp11_presentation_stage", "run_cp12_concise_composition_stage",
-        "build_release_gate_cp15"))
+        "run_cp15_release_observer_stage"))
     assert tuple(map(len, (cp11, cp12, cp15))) == (1, 1, 1)
     assert cp11[0].lineno < cp12[0].lineno < cp15[0].lineno
     gate = next(n for n in function.body if isinstance(n, ast.If) and cp12[0] in ast.walk(n))

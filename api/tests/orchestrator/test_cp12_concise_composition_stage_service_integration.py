@@ -36,7 +36,7 @@ def test_one_import_callsite_order_profile_inputs_dependency_and_bindings():
     assert source.count("from app.orchestrator.cp12_concise_composition_stage import") == 1
     cp11, cp12, cp15 = (calls(name) for name in (
         "run_cp11_presentation_stage", "run_cp12_concise_composition_stage",
-        "build_release_gate_cp15"))
+        "run_cp15_release_observer_stage"))
     assert tuple(map(len, (cp11, cp12, cp15))) == (1, 1, 1)
     assert cp11[0].lineno < cp12[0].lineno < cp15[0].lineno
     assert [arg.id for arg in cp12[0].args] == [
@@ -72,8 +72,10 @@ def test_one_import_callsite_order_profile_inputs_dependency_and_bindings():
 
 def test_service_gate_cp15_handoff_wrappers_and_no_inline_duplication():
     source = SERVICE_PATH.read_text(encoding="utf-8")
-    cp15 = calls("build_release_gate_cp15")[0]
+    cp15 = calls("run_cp15_release_observer_stage")[0]
     assert [arg.id for arg in cp15.args] == ["task_execution_shadow", "evidence_pipeline"]
+    assert [(kw.arg, kw.value.id) for kw in cp15.keywords] == [
+        ("build_release_gate_cp15", "build_release_gate_cp15")]
     assert "response = _p4_15cp4f_previous_run_orchestrator(*args, **kwargs)" in source
     assert "response = _p4_15cp3c_previous_run_orchestrator(*args, **kwargs)" in source
     service_body = source[source.index("def run_orchestrator("):]

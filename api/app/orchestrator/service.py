@@ -21,6 +21,9 @@ from app.orchestrator.cp11_presentation_stage import (
 from app.orchestrator.cp12_concise_composition_stage import (
     run_cp12_concise_composition_stage,
 )
+from app.orchestrator.cp15_release_observer_stage import (
+    run_cp15_release_observer_stage,
+)
 from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
     run_p4_6f_cp9_authority_entry_stage,
 )
@@ -7711,23 +7714,14 @@ def run_orchestrator(
             .task_public_composition_authority_p4_6f
         )
 
-        # CP15 is a read-only release observer over CP8-CP14. It never changes
-        # the selected answer or widens any upstream authority.
-        try:
-            evidence_pipeline["release_gate_cp15"] = build_release_gate_cp15(
-                task_execution_shadow,
-                evidence_pipeline,
-            )
-        except Exception as exc:
-            evidence_pipeline["release_gate_cp15"] = {
-                "contract_version": "promati.orchestrator.release_gate.cp15.v1",
-                "evaluated": False,
-                "release_allowed": False,
-                "public_authoritative": False,
-                "blocking_reasons": ["cp15_internal_error_fail_closed"],
-                "blocked_gate_ids": ["cp15"],
-                "internal_error_type": type(exc).__name__,
-            }
+        cp15_release_observer_stage_result = run_cp15_release_observer_stage(
+            task_execution_shadow,
+            evidence_pipeline,
+            build_release_gate_cp15=build_release_gate_cp15,
+        )
+        evidence_pipeline = (
+            cp15_release_observer_stage_result.evidence_pipeline
+        )
 
     # PROMATI_P4_6A_TASK_EXECUTION_PLAN_SHADOW_OBSERVABILITY
     # Best-effort integer-only metrics. Never alter user-visible behavior.

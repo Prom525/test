@@ -302,32 +302,22 @@ def test_ast_future_3z2e_boundary_exact_gate_try_call_writes_and_fallback_shape(
         return [n for n in calls if isinstance(n.func, ast.Name) and n.func.id == name]
 
     cp12 = named("run_cp12_concise_composition_stage")
-    cp15 = named("build_release_gate_cp15")
+    cp15 = named("run_cp15_release_observer_stage")
     after = named("_record_task_execution_plan_shadow_observability")
     assert tuple(map(len, (cp12, cp15, after))) == (1, 1, 1)
     assert cp12[0].lineno < cp15[0].lineno < after[0].lineno
     gate = next(n for n in function.body if isinstance(n, ast.If) and cp15[0] in ast.walk(n))
     assert ast.unparse(gate.test) == "isinstance(evidence_pipeline, dict)"
-    boundary_try = next(n for n in gate.body if isinstance(n, ast.Try) and cp15[0] in ast.walk(n))
-    assert len(boundary_try.body) == 1 and len(boundary_try.handlers) == 1
-    success = boundary_try.body[0]
-    assert isinstance(success, ast.Assign) and ast.unparse(success.targets[0]) == "evidence_pipeline['release_gate_cp15']"
     assert [ast.unparse(arg) for arg in cp15[0].args] == [
         "task_execution_shadow", "evidence_pipeline"
     ]
-    assert cp15[0].keywords == []
-    handler = boundary_try.handlers[0]
-    assert ast.unparse(handler.type) == "Exception" and handler.name == "exc"
-    assert len(handler.body) == 1 and isinstance(handler.body[0], ast.Assign)
-    fallback_write = handler.body[0]
-    assert ast.unparse(fallback_write.targets[0]) == "evidence_pipeline['release_gate_cp15']"
-    fallback = fallback_write.value
-    assert isinstance(fallback, ast.Dict)
-    assert [ast.literal_eval(key) for key in fallback.keys] == [
-        "contract_version", "evaluated", "release_allowed", "public_authoritative",
-        "blocking_reasons", "blocked_gate_ids", "internal_error_type",
+    assert [(kw.arg, ast.unparse(kw.value)) for kw in cp15[0].keywords] == [
+        ("build_release_gate_cp15", "build_release_gate_cp15")
     ]
-    assert [ast.unparse(value) for value in fallback.values] == [
-        "'promati.orchestrator.release_gate.cp15.v1'", "False", "False", "False",
-        "['cp15_internal_error_fail_closed']", "['cp15']", "type(exc).__name__",
-    ]
+    binding = next(n for n in gate.body if isinstance(n, ast.Assign)
+                   and ast.unparse(n.targets[0]) == "evidence_pipeline"
+                   and isinstance(n.value, ast.Attribute)
+                   and isinstance(n.value.value, ast.Name)
+                   and n.value.value.id == "cp15_release_observer_stage_result"
+                   and n.value.attr == "evidence_pipeline")
+    assert binding.lineno > cp15[0].lineno

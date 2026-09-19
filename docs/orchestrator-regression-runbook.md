@@ -317,3 +317,13 @@ These lock the frozen ordered four-field contract, exact two-value unpacking,
 ordered partial mutations, singleton-`True` rollback gate, runtime-resolved
 composer dependency, one response-profile evaluation, the service-owned dict
 gate, and the unchanged CP15 and wrapper boundaries.
+
+For the 3Z2E CP15 release-observer extraction, run
+`tests/orchestrator/test_cp15_release_observer_boundary_characterization.py`
+before and after the edit and require exactly 26 normal passes with no
+skip/xfail/XPASS. Run it together with
+`tests/orchestrator/test_cp15_release_observer_stage.py` and
+`tests/orchestrator/test_cp15_release_observer_stage_service_integration.py`.
+These lock the frozen one-field contract, exact builder/write/fallback behavior,
+the service-owned dict gate, one runtime dependency binding, and unchanged
+post-CP15 observability and wrappers.
