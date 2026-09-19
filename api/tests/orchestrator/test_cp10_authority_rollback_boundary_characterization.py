@@ -411,20 +411,24 @@ def test_ast_cardinality_order_typegate_and_three_writes():
                 and node.func.id == name]
 
     stage = named("run_p4_6f_cp9_authority_entry_stage")
-    authority = named("guard_task_coverage_authority")
-    canary = named("guard_public_composition_canary")
+    rollback = named("run_cp10_authority_rollback_stage")
     cp11 = named("present_relevant_task_answer")
-    assert tuple(map(len, (stage, authority, canary, cp11))) == (1, 1, 1, 1)
-    assert stage[0].lineno < authority[0].lineno < canary[0].lineno < cp11[0].lineno
-    gate = next(node for node in function.body if isinstance(node, ast.If)
-                and any(call is authority[0] for call in ast.walk(node)))
-    assert isinstance(gate.test, ast.Call)
-    assert isinstance(gate.test.func, ast.Name) and gate.test.func.id == "isinstance"
-    assert [getattr(arg, "id", None) for arg in gate.test.args] == [
-        "evidence_pipeline", "dict"
-    ]
-    assert [arg.id for arg in authority[0].args] == [
+    assert tuple(map(len, (stage, rollback, cp11))) == (1, 1, 1)
+    assert stage[0].lineno < rollback[0].lineno < cp11[0].lineno
+    assert [arg.id for arg in rollback[0].args] == [
         "answer", "legacy_answer_before_public_composition_canary",
-        "task_public_composition_authority_p4_6f", "task_coverage_gate_cp10",
+        "evidence_pipeline", "task_public_composition_authority_p4_6f",
+        "task_coverage_gate_cp10",
     ]
-    assert [arg.id for arg in canary[0].args[1:]] == ["task_coverage_gate_cp10"]
+    assert {keyword.arg for keyword in rollback[0].keywords} == {
+        "guard_task_coverage_authority", "guard_public_composition_canary"
+    }
+    assignments = [node for node in function.body if isinstance(node, ast.Assign)
+                   and isinstance(node.value, ast.Attribute)
+                   and isinstance(node.value.value, ast.Name)
+                   and node.value.value.id == "cp10_authority_rollback_stage_result"]
+    assert [(node.targets[0].id, node.value.attr) for node in assignments] == [
+        ("answer", "answer"), ("evidence_pipeline", "evidence_pipeline"),
+        ("task_public_composition_authority_p4_6f",
+         "task_public_composition_authority_p4_6f"),
+    ]

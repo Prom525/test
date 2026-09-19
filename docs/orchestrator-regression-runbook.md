@@ -76,6 +76,15 @@ zesveldige frozen contract, de vijf runtime-resolved dependencies, de eenmalige
 directe debugprofielbepaling, CP13-fallback, P4.6F fail-open, CP9-opslagvolgorde en de
 servicegrens 3Y2 -> 3Z2A -> CP10.
 
+Voor de 3Z2B CP10-authorityrollback-extractie moet de bestaande 3Z1B-suite
+`test_cp10_authority_rollback_boundary_characterization.py` vóór en na de
+wijziging exact 34 normale passes geven. Draai daarnaast
+`test_cp10_authority_rollback_stage.py` en
+`test_cp10_authority_rollback_stage_service_integration.py`. Deze borgen het
+drieveldige frozen contract, de vijf positionele inputs, twee runtime-resolved
+dependencies, exacte get/call/setitem-volgorde en de servicegrens
+3Z2A -> 3Z2B -> CP11.
+
 Before using the suite as a refactor gate, compare the pre/post JSON reports. The acceptable delta is no new failures, with known gaps unchanged or intentionally closed. Existing explicit P4.14c red tests remain baseline failures and must not be mistaken for infrastructure failures.
 
 ## Pre-refactor stage-split gate

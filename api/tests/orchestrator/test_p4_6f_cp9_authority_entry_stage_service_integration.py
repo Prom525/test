@@ -72,9 +72,9 @@ def test_single_callsite_order_inputs_dependencies_and_six_bindings():
     ]
     stage_3y2 = named("run_composition_shadow_canary_stage")
     stage = named("run_p4_6f_cp9_authority_entry_stage")
-    cp10 = named("guard_task_coverage_authority")
-    assert len(stage_3y2) == len(stage) == len(cp10) == 1
-    assert stage_3y2[0].lineno < stage[0].lineno < cp10[0].lineno
+    stage_3z2b = named("run_cp10_authority_rollback_stage")
+    assert len(stage_3y2) == len(stage) == len(stage_3z2b) == 1
+    assert stage_3y2[0].lineno < stage[0].lineno < stage_3z2b[0].lineno
     assert [arg.id for arg in stage[0].args] == [
         "plan", "answer", "legacy_answer_before_public_composition_canary",
         "evidence_pipeline", "task_execution_shadow", "cp11_debug_response",
@@ -135,7 +135,8 @@ def test_single_callsite_order_inputs_dependencies_and_six_bindings():
 def test_cp10_receives_stage_state_and_wrappers_remain():
     source = SERVICE_PATH.read_text(encoding="utf-8")
     assert source.count("run_p4_6f_cp9_authority_entry_stage(") == 1
-    assert "guard_task_coverage_authority(\n                answer," in source
+    assert source.count("run_cp10_authority_rollback_stage(") == 1
+    assert "guard_task_coverage_authority=guard_task_coverage_authority" in source
     assert "task_coverage_gate_cp10," in source
     assert "response = _p4_15cp4f_previous_run_orchestrator(*args, **kwargs)" in source
 

@@ -12,6 +12,9 @@ from app.orchestrator.answer_presentation_stage import (
 from app.orchestrator.composition_shadow_canary_stage import (
     run_composition_shadow_canary_stage,
 )
+from app.orchestrator.cp10_authority_rollback_stage import (
+    run_cp10_authority_rollback_stage,
+)
 from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
     run_p4_6f_cp9_authority_entry_stage,
 )
@@ -7642,29 +7645,23 @@ def run_orchestrator(
     task_authority_gate_cp9 = (
         p4_6f_cp9_authority_entry_stage_result.task_authority_gate_cp9
     )
-    if isinstance(evidence_pipeline, dict):
+    cp10_authority_rollback_stage_result = run_cp10_authority_rollback_stage(
+        answer,
+        legacy_answer_before_public_composition_canary,
+        evidence_pipeline,
+        task_public_composition_authority_p4_6f,
+        task_coverage_gate_cp10,
+        guard_task_coverage_authority=guard_task_coverage_authority,
+        guard_public_composition_canary=guard_public_composition_canary,
+    )
+    answer = cp10_authority_rollback_stage_result.answer
+    evidence_pipeline = cp10_authority_rollback_stage_result.evidence_pipeline
+    task_public_composition_authority_p4_6f = (
+        cp10_authority_rollback_stage_result
+        .task_public_composition_authority_p4_6f
+    )
 
-        # CP10: authority additionally requires complete authoritative evidence
-        # coverage. This gate is a small, stable debug contract and also revokes
-        # the older public-composition canary when coverage is not sufficient.
-        answer, task_public_composition_authority_p4_6f = (
-            guard_task_coverage_authority(
-                answer,
-                legacy_answer_before_public_composition_canary,
-                task_public_composition_authority_p4_6f,
-                task_coverage_gate_cp10,
-            )
-        )
-        evidence_pipeline[
-            "task_public_composition_authority_p4_6f"
-        ] = task_public_composition_authority_p4_6f
-        evidence_pipeline["public_composition_canary_shadow"] = (
-            guard_public_composition_canary(
-                evidence_pipeline.get("public_composition_canary_shadow"),
-                task_coverage_gate_cp10,
-            )
-        )
-        evidence_pipeline["task_coverage_gate_cp10"] = task_coverage_gate_cp10
+    if isinstance(evidence_pipeline, dict):
 
         # CP11: once CP10 permits authority, present only grounded units for
         # required, requested tasks outside the explicit exclusion set.

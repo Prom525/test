@@ -527,9 +527,9 @@ def test_ast_exact_stage_order_bindings_dependencies_and_cp10_stop_boundary():
 
     stage_3y2 = named("run_composition_shadow_canary_stage")
     stage_3z2a = named("run_p4_6f_cp9_authority_entry_stage")
-    cp10 = named("guard_task_coverage_authority")
-    assert len(stage_3y2) == len(stage_3z2a) == len(cp10) == 1
-    assert stage_3y2[0].lineno < stage_3z2a[0].lineno < cp10[0].lineno
+    stage_3z2b = named("run_cp10_authority_rollback_stage")
+    assert len(stage_3y2) == len(stage_3z2a) == len(stage_3z2b) == 1
+    assert stage_3y2[0].lineno < stage_3z2a[0].lineno < stage_3z2b[0].lineno
     assert [arg.id for arg in stage_3z2a[0].args] == [
         "plan", "answer", "legacy_answer_before_public_composition_canary",
         "evidence_pipeline", "task_execution_shadow", "cp11_debug_response",
