@@ -34,7 +34,7 @@ def test_leaf_imports_and_forbidden_code():
 def test_single_callsite_order_inputs_dependency_and_bindings():
     cp10 = calls("run_cp10_authority_rollback_stage")
     cp11 = calls("run_cp11_presentation_stage")
-    cp12 = calls("compose_concise_public_answer")
+    cp12 = calls("run_cp12_concise_composition_stage")
     assert tuple(map(len, (cp10, cp11, cp12))) == (1, 1, 1)
     assert cp10[0].lineno < cp11[0].lineno < cp12[0].lineno
     assert [arg.id for arg in cp11[0].args] == [
@@ -63,16 +63,16 @@ def test_single_callsite_order_inputs_dependency_and_bindings():
     ]
 
 
-def test_cp12_remains_in_service_and_consumes_post_stage_state():
-    cp12 = calls("compose_concise_public_answer")[0]
+def test_cp12_stage_remains_in_service_and_consumes_post_stage_state():
+    cp12 = calls("run_cp12_concise_composition_stage")[0]
     assert [arg.id for arg in cp12.args] == [
-        "answer", "legacy_answer_before_public_composition_canary"
+        "answer", "legacy_answer_before_public_composition_canary",
+        "cp12_response_profile", "task_coverage_gate_cp10",
+        "task_presenter_cp11", "evidence_pipeline",
+        "task_public_composition_authority_p4_6f",
     ]
-    assert {kw.arg: getattr(kw.value, "id", None) for kw in cp12.keywords} == {
-        "response_profile": None,
-        "task_coverage_gate_cp10": "task_coverage_gate_cp10",
-        "task_presenter_cp11": "task_presenter_cp11",
-    }
+    assert [(kw.arg, kw.value.id) for kw in cp12.keywords] == [
+        ("compose_concise_public_answer", "compose_concise_public_answer")]
     source = SERVICE_PATH.read_text(encoding="utf-8")
     assert source.count("run_cp11_presentation_stage(") == 1
     assert "response = _p4_15cp4f_previous_run_orchestrator(*args, **kwargs)" in source

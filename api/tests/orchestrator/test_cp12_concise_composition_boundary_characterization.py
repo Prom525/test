@@ -460,7 +460,8 @@ def test_ast_cp11_cp12_cp15_single_order_gate_bindings_writes_and_rollback_shape
         return [n for n in calls if isinstance(n.func, ast.Name) and n.func.id == name]
 
     cp11, cp12, cp15 = (named(name) for name in (
-        "run_cp11_presentation_stage", "compose_concise_public_answer", "build_release_gate_cp15"))
+        "run_cp11_presentation_stage", "run_cp12_concise_composition_stage",
+        "build_release_gate_cp15"))
     assert tuple(map(len, (cp11, cp12, cp15))) == (1, 1, 1)
     assert cp11[0].lineno < cp12[0].lineno < cp15[0].lineno
     gate = next(n for n in function.body if isinstance(n, ast.If) and cp12[0] in ast.walk(n))
@@ -468,27 +469,23 @@ def test_ast_cp11_cp12_cp15_single_order_gate_bindings_writes_and_rollback_shape
         ast.parse("isinstance(evidence_pipeline, dict)", mode="eval").body,
         include_attributes=False,
     )
-    assign = next(n for n in gate.body if isinstance(n, ast.Assign) and n.value is cp12[0])
-    assert [e.id for e in assign.targets[0].elts] == ["answer", "task_concise_composer_cp12"]
-    assert [a.id for a in cp12[0].args] == ["answer", "legacy_answer_before_public_composition_canary"]
-    assert [k.arg for k in cp12[0].keywords] == [
-        "response_profile", "task_coverage_gate_cp10", "task_presenter_cp11"]
-    writes = [n for n in ast.walk(gate) if isinstance(n, ast.Assign)
-              and isinstance(n.targets[0], ast.Subscript)]
-    keys = [n.targets[0].slice.value for n in writes if isinstance(n.targets[0].slice, ast.Constant)]
-    assert keys.count("task_concise_composer_cp12") == 1
-    assert keys.count("task_public_composition_authority_p4_6f") == 1
-    rollback = next(n for n in gate.body if isinstance(n, ast.If)
-                    and "public_answer_replaced" in ast.unparse(n.test))
-    assert isinstance(rollback.test, ast.Compare)
-    assert isinstance(rollback.test.ops[0], ast.IsNot)
-    assert isinstance(rollback.test.comparators[0], ast.Constant)
-    assert rollback.test.comparators[0].value is True
-    update = next(n for n in ast.walk(rollback) if isinstance(n, ast.Call)
-                  and isinstance(n.func, ast.Attribute) and n.func.attr == "update")
-    assert isinstance(update.func.value, ast.Name)
-    assert update.func.value.id == "task_public_composition_authority_p4_6f"
-    fields = update.args[0]
-    assert isinstance(fields, ast.Dict)
-    assert [k.value for k in fields.keys] == ["authoritative", "public_answer_authority",
-        "public_answer_replaced", "blocked", "reason"]
+    profile = next(n for n in gate.body if isinstance(n, ast.Assign)
+                   and isinstance(n.targets[0], ast.Name)
+                   and n.targets[0].id == "cp12_response_profile")
+    assert profile.lineno < cp12[0].lineno
+    assert ast.unparse(profile.value) == "getattr(payload, 'response_profile', 'compact')"
+    assert [a.id for a in cp12[0].args] == ["answer",
+        "legacy_answer_before_public_composition_canary", "cp12_response_profile",
+        "task_coverage_gate_cp10", "task_presenter_cp11", "evidence_pipeline",
+        "task_public_composition_authority_p4_6f"]
+    assert [(k.arg, k.value.id) for k in cp12[0].keywords] == [
+        ("compose_concise_public_answer", "compose_concise_public_answer")]
+    bindings = [n for n in gate.body if isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Attribute)
+                and isinstance(n.value.value, ast.Name)
+                and n.value.value.id == "cp12_concise_composition_stage_result"]
+    assert [(n.targets[0].id, n.value.attr) for n in bindings] == [
+        ("answer", "answer"), ("evidence_pipeline", "evidence_pipeline"),
+        ("task_concise_composer_cp12", "task_concise_composer_cp12"),
+        ("task_public_composition_authority_p4_6f",
+         "task_public_composition_authority_p4_6f")]

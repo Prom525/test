@@ -18,6 +18,9 @@ from app.orchestrator.cp10_authority_rollback_stage import (
 from app.orchestrator.cp11_presentation_stage import (
     run_cp11_presentation_stage,
 )
+from app.orchestrator.cp12_concise_composition_stage import (
+    run_cp12_concise_composition_stage,
+)
 from app.orchestrator.p4_6f_cp9_authority_entry_stage import (
     run_p4_6f_cp9_authority_entry_stage,
 )
@@ -7681,29 +7684,32 @@ def run_orchestrator(
             .task_public_composition_authority_p4_6f
         )
 
-        # CP12: normalize and bound the selected public prose. The composer
-        # consumes CP10/CP11 status and cannot grant authority of its own.
-        answer, task_concise_composer_cp12 = compose_concise_public_answer(
-            answer,
-            legacy_answer_before_public_composition_canary,
-            response_profile=getattr(payload, "response_profile", "compact"),
-            task_coverage_gate_cp10=task_coverage_gate_cp10,
-            task_presenter_cp11=task_presenter_cp11,
+        cp12_response_profile = getattr(
+            payload, "response_profile", "compact"
         )
-        evidence_pipeline["task_concise_composer_cp12"] = (
-            task_concise_composer_cp12
+        cp12_concise_composition_stage_result = (
+            run_cp12_concise_composition_stage(
+                answer,
+                legacy_answer_before_public_composition_canary,
+                cp12_response_profile,
+                task_coverage_gate_cp10,
+                task_presenter_cp11,
+                evidence_pipeline,
+                task_public_composition_authority_p4_6f,
+                compose_concise_public_answer=compose_concise_public_answer,
+            )
         )
-        if task_concise_composer_cp12["public_answer_replaced"] is not True:
-            task_public_composition_authority_p4_6f.update({
-                "authoritative": False,
-                "public_answer_authority": False,
-                "public_answer_replaced": False,
-                "blocked": True,
-                "reason": task_concise_composer_cp12["reason"],
-            })
-            evidence_pipeline[
-                "task_public_composition_authority_p4_6f"
-            ] = task_public_composition_authority_p4_6f
+        answer = cp12_concise_composition_stage_result.answer
+        evidence_pipeline = (
+            cp12_concise_composition_stage_result.evidence_pipeline
+        )
+        task_concise_composer_cp12 = (
+            cp12_concise_composition_stage_result.task_concise_composer_cp12
+        )
+        task_public_composition_authority_p4_6f = (
+            cp12_concise_composition_stage_result
+            .task_public_composition_authority_p4_6f
+        )
 
         # CP15 is a read-only release observer over CP8-CP14. It never changes
         # the selected answer or widens any upstream authority.

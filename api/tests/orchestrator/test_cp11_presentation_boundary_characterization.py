@@ -410,7 +410,7 @@ def test_ast_cardinality_order_gate_calls_writes_and_extractable_shape():
 
     rollback = named("run_cp10_authority_rollback_stage")
     presenter = named("run_cp11_presentation_stage")
-    composer = named("compose_concise_public_answer")
+    composer = named("run_cp12_concise_composition_stage")
     assert tuple(map(len, (rollback, presenter, composer))) == (1, 1, 1)
     assert rollback[0].lineno < presenter[0].lineno < composer[0].lineno
     gate = next(node for node in function.body if isinstance(node, ast.If)

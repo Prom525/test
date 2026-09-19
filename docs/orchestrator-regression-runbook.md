@@ -306,3 +306,14 @@ unpacking, fresh pipeline lookup, existing `Exception` fallback and
 `BaseException` propagation, authority-copy/update and ordered pipelinewrites,
 the runtime-resolved presenter dependency, the service-owned dict gate, and
 the unchanged CP12 ownership and wrapper chain.
+
+For the 3Z2D CP12 concise-composition extraction, run
+`tests/orchestrator/test_cp12_concise_composition_boundary_characterization.py`
+before and after the edit and require exactly 55 normal passes with no
+skip/xfail/XPASS. Run it together with
+`tests/orchestrator/test_cp12_concise_composition_stage.py` and
+`tests/orchestrator/test_cp12_concise_composition_stage_service_integration.py`.
+These lock the frozen ordered four-field contract, exact two-value unpacking,
+ordered partial mutations, singleton-`True` rollback gate, runtime-resolved
+composer dependency, one response-profile evaluation, the service-owned dict
+gate, and the unchanged CP15 and wrapper boundaries.

@@ -455,3 +455,11 @@ worden per core-aanroep runtime-resolved doorgegeven. De accessor bewaart de
 3X1-volgorde: de clock loopt vóór de `try`, terwijl de property pas binnen de
 `try` als builder-keyword wordt gelezen. Composition, evidence-mutaties,
 responsebouw en wrappers blijven in `service.py`.
+
+3Z2D extraheert uitsluitend de CP12 concise-compositionzone binnen de
+service-owned dict-gate naar `cp12_concise_composition_stage.py`. De service
+evalueert het responseprofiel eenmaal direct vóór de stagecall en bindt de vier
+resultaatvelden direct terug. De leaf behoudt exacte two-value-unpacking, beide
+pipelinewrites, de singleton-`True`-beslissing en de in-place authorityrollback.
+CP15, observability, responsebouw, post-CP12-mutaties en wrappers blijven in
+`service.py`.
