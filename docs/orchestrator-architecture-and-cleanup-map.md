@@ -505,3 +505,10 @@ naar `final_observability_envelope_stage.py`. De leaf behoudt de ene elapsed-cal
 de raw total-write, de exacte dict-copyvolgorde en de ene responsewrite. De service
 bindt vijf positionele inputs en één runtime-afhankelijkheid, neemt dezelfde
 response terug over en behoudt het bestaande `return response` en alle wrappers.
+
+4C2 extraheert uitsluitend de presentatie van de exact geselecteerde
+`diagnostics_assistant`-branch uit `_build_user_answer` naar de dependencyvrije
+leaf `diagnostics_answer_stage.py`. De leaf retourneert direct `str` en behoudt
+alle defaults, prioriteiten, limieten, headings, conversies en exceptiongedrag.
+Assetprescan, resultaatloop, mappinggate, action/context-extractie, exacte
+selector, alle opvolgende branches en de algemene `None` blijven service-owned.

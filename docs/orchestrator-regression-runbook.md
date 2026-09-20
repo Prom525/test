@@ -381,3 +381,12 @@ skip/xfail/XPASS. Run it together with
 frozen one-field contract, raw total timing and failure state, exact shallow-copy
 order, one response write, five positional inputs, one runtime dependency,
 direct response binding, unchanged wrapper chain, and existing final return.
+
+For the 4C2 diagnostics-answer extraction, run
+`tests/orchestrator/test_diagnostics_answer_boundary_characterization.py`
+before and after the edit and require exactly 25 normal passes. Run it with
+`tests/orchestrator/test_diagnostics_answer_stage.py` and
+`tests/orchestrator/test_diagnostics_answer_stage_service_integration.py`.
+Together these lock the direct string contract, dependency-free formatting,
+exact selector, asset priority, first matching entry, following-branch order,
+input immutability, one service callsite, and unchanged exception propagation.

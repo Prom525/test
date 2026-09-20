@@ -54,28 +54,18 @@ def _diagnostics_if_node():
 def test_structure_fixes_selector_position_return_and_absence_of_dependencies():
     branch = _diagnostics_if_node()
     assert ast.unparse(branch.test) == "action == 'diagnostics_assistant'"
-    assert isinstance(branch.body[-1], ast.Return)
-    assert ast.unparse(branch.body[-1].value) == "'\\n'.join(answer_lines)"
+    assert len(branch.body) == 1
+    assert isinstance(branch.body[0], ast.Return)
+    assert ast.unparse(branch.body[0].value) == (
+        "run_diagnostics_answer_stage(specialist_result)"
+    )
 
     calls = [
         ast.unparse(node.func)
         for node in ast.walk(branch)
         if isinstance(node, ast.Call)
     ]
-    assert set(calls) == {
-        "str",
-        "isinstance",
-        "specialist_result.get",
-        "summary.get",
-        "gpt_diagnosis.get",
-        "answer_lines.extend",
-        "answer_lines.append",
-        "finding.get",
-        "str(finding.get('severity') or 'info').upper",
-        "'\\n'.join",
-        "compact_values.append",
-        "'; '.join",
-    }
+    assert calls == ["run_diagnostics_answer_stage"]
 
 
 def test_asset_prescan_has_absolute_priority_and_does_not_execute_diagnostics(monkeypatch):
