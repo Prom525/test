@@ -512,3 +512,11 @@ leaf `diagnostics_answer_stage.py`. De leaf retourneert direct `str` en behoudt
 alle defaults, prioriteiten, limieten, headings, conversies en exceptiongedrag.
 Assetprescan, resultaatloop, mappinggate, action/context-extractie, exacte
 selector, alle opvolgende branches en de algemene `None` blijven service-owned.
+
+4D2 extraheert uitsluitend de presentatie van de exact geselecteerde
+`analysis_scope`-branch uit `_build_user_answer` naar de dependencyvrije leaf
+`analysis_scope_answer_stage.py`. Het frozen resultaat bevat exact `answer`;
+`None` laat de resultaatloop doorlopen en iedere niet-`None` answer wordt direct
+geretourneerd. Assetprescan, mappinggate, action/context-extractie, de exacte
+contextselector en alle diagnostics-, product-, ORG- en technicaldispatch blijven
+service-owned.

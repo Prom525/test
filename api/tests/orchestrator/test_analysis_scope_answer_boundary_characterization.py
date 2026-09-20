@@ -258,7 +258,7 @@ def test_non_dict_mapping_and_malformed_outer_entry_behavior_is_exact():
         service._build_user_answer([object()])
 
 
-def test_ast_proves_branch_order_no_helper_calls_and_downstream_stop_boundary():
+def test_ast_proves_branch_order_stage_call_and_downstream_stop_boundary():
     tree = ast.parse(inspect.getsource(service._build_user_answer))
     function = tree.body[0]
     non_asset_loop = function.body[6]
@@ -278,13 +278,13 @@ def test_ast_proves_branch_order_no_helper_calls_and_downstream_stop_boundary():
         node for node in non_asset_loop.body
         if isinstance(node, ast.If) and ast.unparse(node.test) == "context_type == 'analysis_scope'"
     )
-    named_calls = {
+    named_calls = [
         node.func.id
         for node in ast.walk(scope_if)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert named_calls == {"isinstance", "str"}
+    ]
+    assert named_calls == ["run_analysis_scope_answer_stage"]
     assert not any(isinstance(node, (ast.Try, ast.Raise)) for node in ast.walk(scope_if))
     returns = [node for node in ast.walk(scope_if) if isinstance(node, ast.Return)]
     assert len(returns) == 1
-    assert ast.unparse(returns[0].value) == "'\\n'.join(answer_lines)"
+    assert ast.unparse(returns[0].value) == "analysis_scope_answer_stage_result.answer"

@@ -390,3 +390,12 @@ before and after the edit and require exactly 25 normal passes. Run it with
 Together these lock the direct string contract, dependency-free formatting,
 exact selector, asset priority, first matching entry, following-branch order,
 input immutability, one service callsite, and unchanged exception propagation.
+
+For the 4D2 analysis-scope-answer extraction, run
+`tests/orchestrator/test_analysis_scope_answer_boundary_characterization.py`
+before and after the edit and require exactly 56 normal passes. Run it with
+`tests/orchestrator/test_analysis_scope_answer_stage.py` and
+`tests/orchestrator/test_analysis_scope_answer_stage_service_integration.py`.
+Together these lock the frozen one-field contract, exact presentation and
+separators, throwable propagation, one service callsite, `None` fallthrough,
+and unchanged asset, diagnostics, product and general-`None` behavior.
