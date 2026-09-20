@@ -476,3 +476,10 @@ afzonderlijke `Exception`-zones, gedeelde mutable objectidentiteit, genegeerde
 helperreturns en `BaseException`-propagatie. De runtime-resolved helpers en drie
 positionele inputs worden expliciet door de service gebonden; de
 response-buildclock en wrappers blijven service-owned.
+
+3AB2 extraheert uitsluitend de finale response-buildgrens naar
+`final_response_build_stage.py`. De leaf behoudt de clock-vóór-`try`, de exacte
+projectie- en serialisatievolgorde en de timingmutatie in `finally`. De service
+bindt vijftien inputs en vijf runtime-afhankelijkheden eenmaal, neemt alleen de
+frozen `response` over en blijft eigenaar van total-timing, observability-envelope
+en alle wrappers.

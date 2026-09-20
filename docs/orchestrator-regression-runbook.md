@@ -338,3 +338,13 @@ These lock the two independent best-effort `Exception` zones, exact shared
 object identity and call order, ignored helperreturns, `BaseException`
 propagation, runtime dependency binding, and the unchanged service-owned
 response-buildclock and wrapper chain.
+
+For the 3AB2 final-response-build extraction, run
+`tests/orchestrator/test_final_response_build_boundary_characterization.py`
+before and after the edit and require exactly 30 normal passes with no
+skip/xfail/XPASS. Run it together with `test_final_response_build_stage.py` and
+`test_final_response_build_stage_service_integration.py`. These lock the frozen
+one-field contract, fifteen positional inputs, five runtime dependencies,
+clock/`try`/`finally` behavior, projection and serialization order, one service
+call and direct response binding, with total timing and the observability
+envelope remaining service-owned.

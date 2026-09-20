@@ -240,10 +240,13 @@ def _locals(error):
     traceback = error.__traceback__
     candidate = None
     while traceback is not None:
+        local = traceback.tb_frame.f_locals
         if traceback.tb_frame.f_code.co_filename == service.__file__:
-            local = traceback.tb_frame.f_locals
-            if "response_build_started" in local:
-                candidate = local
+            candidate = local
+        if traceback.tb_frame.f_code.co_filename.endswith(
+            "final_response_build_stage.py"
+        ) and "response_build_started" in local:
+            candidate = local
         traceback = traceback.tb_next
     if candidate is None:
         raise AssertionError("response-build service frame absent")
@@ -321,9 +324,7 @@ def test_truthy_debug_keeps_dict_family_and_same_gate(factory, monkeypatch):
     debug = TruthProbe(True)
     h = _install(monkeypatch, pipeline_factory=factory, debug=debug)
     local = _locals(_run(h))
-    assert local["debug_response"] is debug
-    assert local["public_evidence_pipeline"] is h.pipeline
-    assert local["evidence_pipeline"] is h.pipeline
+    assert local["response"]["evidence_pipeline"] is h.pipeline
     assert not _calls(h, "compact_evidence")
     assert debug.calls == 2
 
@@ -333,11 +334,11 @@ def test_truthy_debug_replaces_non_dict_with_exact_fresh_dict(factory, monkeypat
     original = factory()
     h = _install(monkeypatch, pipeline_factory=original, debug=True)
     local = _locals(_run(h))
-    replacement = local["evidence_pipeline"]
+    replacement = local["response"]["evidence_pipeline"]
     assert type(replacement) is dict
     assert list(replacement) == ["task_coverage_gate_cp10"]
     assert replacement["task_coverage_gate_cp10"] is local["task_coverage_gate_cp10"]
-    assert replacement is local["public_evidence_pipeline"] and replacement is not original
+    assert replacement is not original
 
 
 def test_falsey_debug_compacts_once_and_preserves_raw_return(monkeypatch):
@@ -346,8 +347,7 @@ def test_falsey_debug_compacts_once_and_preserves_raw_return(monkeypatch):
     h = _install(monkeypatch, pipeline_factory=list, debug=debug,
                  evidence_compact_return=returned)
     local = _locals(_run(h))
-    assert local["evidence_pipeline"] is h.pipeline
-    assert local["public_evidence_pipeline"] is returned
+    assert local["response"]["evidence_pipeline"] is returned
     assert _calls(h, "compact_evidence")[0][1][0] is h.pipeline
     assert len(_calls(h, "compact_evidence")) == 1 and debug.calls == 2
 
@@ -365,8 +365,8 @@ def test_include_trace_short_circuits_compactors_requested_information(monkeypat
     include = TruthProbe(True)
     h = _install(monkeypatch, include_trace=include)
     local = _locals(_run(h))
-    assert local["public_evidence_pipeline"] is h.pipeline
-    assert local["public_results"] is h.results
+    assert local["response"]["evidence_pipeline"] is h.pipeline
+    assert local["response"]["results"] is h.results
     assert not _calls(h, "compact_evidence") and not _calls(h, "compact_results")
     assert include.calls == 3 and h.payload.include_trace_calls == 3
     assert local["response"]["trace"] is h.trace_value
@@ -381,7 +381,7 @@ def test_results_property_precedes_one_runtime_helper_and_preserves_identities(m
     assert call[1][0] is h.results
     assert call[2]["requested_information"] is requested
     assert h.events.index("requested_information") < h.events.index("compact_results")
-    assert local["public_results"] is h.results_value
+    assert local["response"]["results"] is h.results_value
 
 
 @pytest.mark.parametrize("error", [RuntimeError("property"), Fatal("property")])
@@ -470,45 +470,28 @@ def test_ast_exact_future_3ab2_boundary_inputs_outputs_and_total_stop():
                 and isinstance(n.func, ast.Name) and n.func.id == name]
 
     post = calls_named("run_post_cp15_observability_stage")
-    evidence = calls_named("_compact_evidence_pipeline_for_public_response")
-    results = calls_named("compact_results_for_public_response")
-    clocks = calls_named("_observability_now")
-    assert tuple(map(len, (post, evidence, results))) == (1, 1, 1)
-    response_clock = next(n for n in body if isinstance(n, ast.Assign)
-                          and ast.unparse(n.targets[0]) == "response_build_started")
-    boundary_try = next(n for n in body if isinstance(n, ast.Try)
-                        and response_clock.lineno < n.lineno)
-    models = [n for n in ast.walk(boundary_try) if isinstance(n, ast.Call)
-              and isinstance(n.func, ast.Name) and n.func.id == "_model_to_dict"]
-    assert len(models) == 2
+    stage = calls_named("run_final_response_build_stage")
+    assert tuple(map(len, (post, stage))) == (1, 1)
     total = next(n for n in body if isinstance(n, ast.Assign)
                  and ast.unparse(n.targets[0]) == "timings['total']")
-    response_dict = next(n for n in ast.walk(boundary_try) if isinstance(n, ast.Assign)
-                         and ast.unparse(n.targets[0]) == "response"
-                         and isinstance(n.value, ast.Dict))
-    assert len(clocks) >= 1
-    assert post[0].lineno < response_clock.lineno < boundary_try.lineno < total.lineno
-    assert response_dict.lineno < boundary_try.finalbody[0].lineno < total.lineno
-    assert ast.unparse(response_clock.value) == "_observability_now()"
-    assert ast.unparse(boundary_try.finalbody[0]) == (
-        "timings['response_build'] = _observability_elapsed_ms(response_build_started)"
-    )
-    assert ast.unparse(total.value) == "_observability_elapsed_ms(run_started)"
-    assert [ast.unparse(k) for k in response_dict.value.keys] == [
-        "'status'", "'answer'", "'context_type'", "'question'", "'query_plan'",
-        "'research'", "'clarification'", "'results'", "'evidence_pipeline'",
-        "'task_execution_shadow'", "'task_planner_canary'",
-    ]
-    # Mechanical 3AB2 inputs are every pre-existing value/callable read by the
-    # block; frozen returns are response plus possibly replaced pipeline, while
-    # timings is the sole required mutable side effect.
-    source = ast.unparse(boundary_try)
-    for dependency in (
-        "cp11_debug_response", "payload", "evidence_pipeline",
+    statement = next(n for n in body if stage[0] in ast.walk(n))
+    binding = next(n for n in body if isinstance(n, ast.Assign)
+                   and ast.unparse(n.targets[0]) == "response")
+    assert post[0].lineno < stage[0].lineno < binding.lineno < total.lineno
+    assert ast.unparse(statement.targets[0]) == "final_response_build_stage_result"
+    assert [ast.unparse(arg) for arg in stage[0].args] == [
+        "payload", "cp11_debug_response", "evidence_pipeline",
         "task_coverage_gate_cp10", "results", "plan", "status", "answer",
         "question", "research", "clarification", "task_execution_shadow",
-        "task_planner_canary", "trace", "_compact_evidence_pipeline_for_public_response",
-        "compact_results_for_public_response", "_model_to_dict", "timings",
-        "_observability_elapsed_ms", "response_build_started",
-    ):
-        assert dependency in source
+        "task_planner_canary", "trace", "timings",
+    ]
+    assert [(kw.arg, ast.unparse(kw.value)) for kw in stage[0].keywords] == [
+        ("observability_now", "_observability_now"),
+        ("compact_evidence_pipeline_for_public_response",
+         "_compact_evidence_pipeline_for_public_response"),
+        ("compact_results_for_public_response", "compact_results_for_public_response"),
+        ("model_to_dict", "_model_to_dict"),
+        ("observability_elapsed_ms", "_observability_elapsed_ms"),
+    ]
+    assert ast.unparse(binding.value) == "final_response_build_stage_result.response"
+    assert ast.unparse(total.value) == "_observability_elapsed_ms(run_started)"

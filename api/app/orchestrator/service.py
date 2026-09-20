@@ -24,6 +24,9 @@ from app.orchestrator.cp12_concise_composition_stage import (
 from app.orchestrator.cp15_release_observer_stage import (
     run_cp15_release_observer_stage,
 )
+from app.orchestrator.final_response_build_stage import (
+    run_final_response_build_stage,
+)
 from app.orchestrator.post_cp15_observability_stage import (
     run_post_cp15_observability_stage,
 )
@@ -7738,86 +7741,33 @@ def run_orchestrator(
         ),
     )
 
-    response_build_started = (
-        _observability_now()
+    final_response_build_stage_result = run_final_response_build_stage(
+        payload,
+        cp11_debug_response,
+        evidence_pipeline,
+        task_coverage_gate_cp10,
+        results,
+        plan,
+        status,
+        answer,
+        question,
+        research,
+        clarification,
+        task_execution_shadow,
+        task_planner_canary,
+        trace,
+        timings,
+        observability_now=_observability_now,
+        compact_evidence_pipeline_for_public_response=(
+            _compact_evidence_pipeline_for_public_response
+        ),
+        compact_results_for_public_response=(
+            compact_results_for_public_response
+        ),
+        model_to_dict=_model_to_dict,
+        observability_elapsed_ms=_observability_elapsed_ms,
     )
-
-    try:
-        # PROMATI_PUBLIC_RESPONSE_PROFILE_V1
-        #
-        # De volledige evidence pipeline blijft intern
-        # bestaan. Alleen de publieke serialisatie wordt
-        # geprojecteerd.
-        # Debug/include_trace behoudt het volledige
-        # Phase-C object voor regressie en audit.
-        debug_response = cp11_debug_response
-        if debug_response and not isinstance(evidence_pipeline, dict):
-            evidence_pipeline = {
-                "task_coverage_gate_cp10": task_coverage_gate_cp10,
-            }
-
-        public_evidence_pipeline = (
-            evidence_pipeline
-            if payload.include_trace or debug_response
-            else (
-                _compact_evidence_pipeline_for_public_response(
-                    evidence_pipeline
-                )
-            )
-        )
-
-        public_results = (
-            results
-            if payload.include_trace
-            else compact_results_for_public_response(
-                results,
-                requested_information=(
-                    plan.requested_information
-                ),
-            )
-        )
-
-        response = {
-            "status": status,
-            "answer": answer,
-            "context_type": "orchestrator",
-            "question": question,
-            "query_plan": (
-                _model_to_dict(
-                    plan
-                )
-            ),
-            "research": research,
-            "clarification": (
-                clarification
-            ),
-            "results": public_results,
-            "evidence_pipeline": (
-                public_evidence_pipeline
-            ),
-            "task_execution_shadow": (
-                task_execution_shadow
-            ),
-            "task_planner_canary": (
-                task_planner_canary
-            ),
-        }
-
-        if payload.include_trace:
-            response["trace"] = (
-                _model_to_dict(
-                    trace
-                )
-            )
-        else:
-            response["trace"] = None
-
-    finally:
-        timings["response_build"] = (
-            _observability_elapsed_ms(
-                response_build_started
-            )
-        )
+    response = final_response_build_stage_result.response
 
     # total is de wall-clock tijd van de service tot en
     # met de opbouw van de Python-response. HTTP JSON-

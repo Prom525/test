@@ -36,11 +36,9 @@ def test_one_import_callsite_without_assignment_order_inputs_and_dependencies():
     core = function()
     cp15 = named(core, "run_cp15_release_observer_stage")
     stage = named(core, "run_post_cp15_observability_stage")
-    assert tuple(map(len, (cp15, stage))) == (1, 1)
-    clocks = [node for node in core.body if isinstance(node, ast.Assign)
-              and any(ast.unparse(target) == "response_build_started"
-                      for target in node.targets)]
-    assert len(clocks) == 1 and cp15[0].lineno < stage[0].lineno < clocks[0].lineno
+    response_stage = named(core, "run_final_response_build_stage")
+    assert tuple(map(len, (cp15, stage, response_stage))) == (1, 1, 1)
+    assert cp15[0].lineno < stage[0].lineno < response_stage[0].lineno
     statement = next(node for node in core.body if stage[0] in ast.walk(node))
     assert isinstance(statement, ast.Expr) and statement.value is stage[0]
     assert [ast.unparse(arg) for arg in stage[0].args] == [
@@ -51,7 +49,6 @@ def test_one_import_callsite_without_assignment_order_inputs_and_dependencies():
         ("record_public_composition_canary_release_observability",
          "_record_public_composition_canary_release_observability"),
     ]
-    assert ast.unparse(clocks[0].value) == "_observability_now()"
 
 
 def test_wrappers_and_no_inline_duplication():
