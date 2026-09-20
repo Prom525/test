@@ -54,11 +54,8 @@ def test_order_total_envelope_wrappers_and_no_inline_duplication():
     function = core()
     post = calls(function, "run_post_cp15_observability_stage")[0]
     stage = calls(function, "run_final_response_build_stage")[0]
-    total = next(node for node in function.body if isinstance(node, ast.Assign)
-                 and ast.unparse(node.targets[0]) == "timings['total']")
-    assert post.lineno < stage.lineno < total.lineno
-    assert ast.unparse(total.value) == "_observability_elapsed_ms(run_started)"
-    assert 'response["observability"] = {' in source
+    envelope = calls(function, "run_final_observability_envelope_stage")[0]
+    assert post.lineno < stage.lineno < envelope.lineno
     core_source = source[source.index("def run_orchestrator("):]
     assert "response_build_started" not in core_source
     assert "debug_response = cp11_debug_response" not in core_source

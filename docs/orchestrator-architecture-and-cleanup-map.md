@@ -481,5 +481,10 @@ response-buildclock en wrappers blijven service-owned.
 `final_response_build_stage.py`. De leaf behoudt de clock-vóór-`try`, de exacte
 projectie- en serialisatievolgorde en de timingmutatie in `finally`. De service
 bindt vijftien inputs en vijf runtime-afhankelijkheden eenmaal, neemt alleen de
-frozen `response` over en blijft eigenaar van total-timing, observability-envelope
-en alle wrappers.
+frozen `response` over; alle wrappers blijven service-owned.
+
+3AC2 extraheert uitsluitend de total-timing en finale observability-envelope
+naar `final_observability_envelope_stage.py`. De leaf behoudt de ene elapsed-call,
+de raw total-write, de exacte dict-copyvolgorde en de ene responsewrite. De service
+bindt vijf positionele inputs en één runtime-afhankelijkheid, neemt dezelfde
+response terug over en behoudt het bestaande `return response` en alle wrappers.

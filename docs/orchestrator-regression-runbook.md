@@ -347,4 +347,14 @@ skip/xfail/XPASS. Run it together with `test_final_response_build_stage.py` and
 one-field contract, fifteen positional inputs, five runtime dependencies,
 clock/`try`/`finally` behavior, projection and serialization order, one service
 call and direct response binding, with total timing and the observability
-envelope remaining service-owned.
+envelope handed to the subsequent 3AC2 stage.
+
+For the 3AC2 final-observability-envelope extraction, run
+`tests/orchestrator/test_final_observability_envelope_boundary_characterization.py`
+before and after the edit and require exactly 15 normal passes with no
+skip/xfail/XPASS. Run it together with
+`test_final_observability_envelope_stage.py` and
+`test_final_observability_envelope_stage_service_integration.py`. These lock the
+frozen one-field contract, raw total timing and failure state, exact shallow-copy
+order, one response write, five positional inputs, one runtime dependency,
+direct response binding, unchanged wrapper chain, and existing final return.

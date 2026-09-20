@@ -472,12 +472,12 @@ def test_ast_exact_future_3ab2_boundary_inputs_outputs_and_total_stop():
     post = calls_named("run_post_cp15_observability_stage")
     stage = calls_named("run_final_response_build_stage")
     assert tuple(map(len, (post, stage))) == (1, 1)
-    total = next(n for n in body if isinstance(n, ast.Assign)
-                 and ast.unparse(n.targets[0]) == "timings['total']")
+    envelope = calls_named("run_final_observability_envelope_stage")
     statement = next(n for n in body if stage[0] in ast.walk(n))
     binding = next(n for n in body if isinstance(n, ast.Assign)
                    and ast.unparse(n.targets[0]) == "response")
-    assert post[0].lineno < stage[0].lineno < binding.lineno < total.lineno
+    assert len(envelope) == 1
+    assert post[0].lineno < stage[0].lineno < binding.lineno < envelope[0].lineno
     assert ast.unparse(statement.targets[0]) == "final_response_build_stage_result"
     assert [ast.unparse(arg) for arg in stage[0].args] == [
         "payload", "cp11_debug_response", "evidence_pipeline",
@@ -494,4 +494,3 @@ def test_ast_exact_future_3ab2_boundary_inputs_outputs_and_total_stop():
         ("observability_elapsed_ms", "_observability_elapsed_ms"),
     ]
     assert ast.unparse(binding.value) == "final_response_build_stage_result.response"
-    assert ast.unparse(total.value) == "_observability_elapsed_ms(run_started)"

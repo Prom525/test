@@ -27,6 +27,9 @@ from app.orchestrator.cp15_release_observer_stage import (
 from app.orchestrator.final_response_build_stage import (
     run_final_response_build_stage,
 )
+from app.orchestrator.final_observability_envelope_stage import (
+    run_final_observability_envelope_stage,
+)
 from app.orchestrator.post_cp15_observability_stage import (
     run_post_cp15_observability_stage,
 )
@@ -7769,26 +7772,17 @@ def run_orchestrator(
     )
     response = final_response_build_stage_result.response
 
-    # total is de wall-clock tijd van de service tot en
-    # met de opbouw van de Python-response. HTTP JSON-
-    # serialisatie valt bewust buiten dit contract.
-    timings["total"] = (
-        _observability_elapsed_ms(
-            run_started
+    final_observability_envelope_stage_result = (
+        run_final_observability_envelope_stage(
+            response,
+            timings,
+            counts,
+            run_started,
+            ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION,
+            observability_elapsed_ms=_observability_elapsed_ms,
         )
     )
-
-    response["observability"] = {
-        "contract_version": (
-            ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION
-        ),
-        "timings_ms": dict(
-            timings
-        ),
-        "counts": dict(
-            counts
-        ),
-    }
+    response = final_observability_envelope_stage_result.response
 
     return response
 

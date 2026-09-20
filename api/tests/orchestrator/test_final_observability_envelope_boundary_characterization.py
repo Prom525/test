@@ -320,7 +320,7 @@ def test_boundary_mutates_only_timings_and_response(monkeypatch):
     assert after == h.boundary_before
 
 
-def test_ast_exact_future_3ac2_boundary():
+def test_ast_exact_3ac2_boundary():
     tree = ast.parse(Path(service.__file__).read_text(encoding="utf-8"))
     function = next(
         node for node in tree.body
@@ -332,32 +332,27 @@ def test_ast_exact_future_3ac2_boundary():
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         and node.func.id == "run_final_response_build_stage"
     ]
-    totals = [
-        node for node in body if isinstance(node, ast.Assign)
-        and ast.unparse(node.targets[0]) == "timings['total']"
-    ]
-    writes = [
-        node for node in body if isinstance(node, ast.Assign)
-        and ast.unparse(node.targets[0]) == "response['observability']"
+    envelope_calls = [
+        node for node in ast.walk(function)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "run_final_observability_envelope_stage"
     ]
     returns = [
         node for node in body if isinstance(node, ast.Return)
         and ast.unparse(node.value) == "response"
     ]
-    assert tuple(map(len, (stage_calls, totals, writes, returns))) == (1, 1, 1, 1)
-    response_binding = next(
+    assert tuple(map(len, (stage_calls, envelope_calls, returns))) == (1, 1, 1)
+    response_bindings = [
         node for node in body if isinstance(node, ast.Assign)
         and ast.unparse(node.targets[0]) == "response"
-    )
-    assert ast.unparse(response_binding.value) == "final_response_build_stage_result.response"
-    assert stage_calls[0].lineno < response_binding.lineno < totals[0].lineno < writes[0].lineno < returns[0].lineno
-    total_call = totals[0].value
-    assert isinstance(total_call, ast.Call)
-    assert ast.unparse(total_call.func) == "_observability_elapsed_ms"
-    assert [ast.unparse(arg) for arg in total_call.args] == ["run_started"]
-    literal = writes[0].value
-    assert isinstance(literal, ast.Dict)
-    assert [key.value for key in literal.keys] == ["contract_version", "timings_ms", "counts"]
-    assert ast.unparse(literal.values[0]) == "ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION"
-    assert ast.unparse(literal.values[1]) == "dict(timings)"
-    assert ast.unparse(literal.values[2]) == "dict(counts)"
+    ]
+    assert ast.unparse(response_bindings[-2].value) == "final_response_build_stage_result.response"
+    assert ast.unparse(response_bindings[-1].value) == "final_observability_envelope_stage_result.response"
+    assert stage_calls[0].lineno < response_bindings[-2].lineno < envelope_calls[0].lineno < response_bindings[-1].lineno < returns[0].lineno
+    assert [ast.unparse(arg) for arg in envelope_calls[0].args] == [
+        "response", "timings", "counts", "run_started",
+        "ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION",
+    ]
+    assert [(keyword.arg, ast.unparse(keyword.value))
+            for keyword in envelope_calls[0].keywords] == [
+        ("observability_elapsed_ms", "_observability_elapsed_ms")]
