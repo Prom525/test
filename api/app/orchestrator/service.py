@@ -12,6 +12,9 @@ from app.orchestrator.answer_presentation_stage import (
 from app.orchestrator.multi_product_answer_stage import (
     run_multi_product_answer_stage,
 )
+from app.orchestrator.single_family_product_answer_stage import (
+    run_single_family_product_answer_stage,
+)
 from app.orchestrator.composition_shadow_canary_stage import (
     run_composition_shadow_canary_stage,
 )
@@ -4001,104 +4004,18 @@ def _build_user_answer(
                     multi_product_answer_stage_result.delegated_answer
                 )
 
-            family_context = specialist_result.get(
-                "family_context"
+            single_family_product_answer_stage_result = (
+                run_single_family_product_answer_stage(
+                    specialist_result,
+                    requested,
+                    build_product_article_lines=(
+                        _build_product_article_lines
+                    ),
+                )
             )
 
-            if isinstance(family_context, dict):
-                family_rows = family_context.get(
-                    "results"
-                )
-
-                if (
-                    isinstance(family_rows, list)
-                    and family_rows
-                    and isinstance(
-                        family_rows[0],
-                        dict,
-                    )
-                ):
-                    family = family_rows[0]
-
-                    name = (
-                        family.get("family_name")
-                        or family.get("family_code")
-                    )
-
-                    strengths = family.get(
-                        "strengths"
-                    )
-
-                    limitations = family.get(
-                        "limitations"
-                    )
-
-                    selection_advice = family.get(
-                        "selection_advice"
-                    )
-
-                    answer_lines = []
-
-                    if name:
-                        answer_lines.append(
-                            str(name)
-                        )
-
-                    if strengths:
-                        answer_lines.extend(
-                            [
-                                "",
-                                (
-                                    "Sterktes: "
-                                    f"{strengths}"
-                                ),
-                            ]
-                        )
-
-                    if limitations:
-                        answer_lines.extend(
-                            [
-                                "",
-                                (
-                                    "Beperkingen: "
-                                    f"{limitations}"
-                                ),
-                            ]
-                        )
-
-                    if selection_advice:
-                        answer_lines.extend(
-                            [
-                                "",
-                                (
-                                    "Selectieadvies: "
-                                    f"{selection_advice}"
-                                ),
-                            ]
-                        )
-
-                    include_inventory = "inventory" in requested
-                    include_price = "price" in requested
-
-                    if include_inventory or include_price:
-                        article_lines = _build_product_article_lines(
-                            specialist_result,
-                            include_inventory=include_inventory,
-                            include_price=include_price,
-                        )
-
-                        if article_lines:
-                            answer_lines.extend(
-                                [
-                                    "",
-                                    *article_lines,
-                                ]
-                            )
-
-                    if answer_lines:
-                        return "\n".join(
-                            answer_lines
-                        )
+            if single_family_product_answer_stage_result.answer is not None:
+                return single_family_product_answer_stage_result.answer
 
         # -------------------------------------------------
         # ORG

@@ -305,6 +305,19 @@ builder call, direct non-`None` return identity, exact-`None` continuation into
 the existing single-family fallback, input immutability and unchanged
 `Exception`/`BaseException` propagation.
 
+For the 4B2 single-family product-answer extraction, run
+`tests/orchestrator/test_single_family_product_answer_boundary_characterization.py`
+before the edit and require 46 passes plus exactly one strict xfail. After the
+edit, remove only that future-boundary xfail marker and require all 47 cases to
+pass normally. Run it with
+`tests/orchestrator/test_single_family_product_answer_stage.py` and
+`tests/orchestrator/test_single_family_product_answer_stage_service_integration.py`.
+These lock every legacy shape gate, first-family selection, field order and
+truthiness, article flags and iterable splatting, the frozen exact-one-field
+result, the keyword-only runtime article dependency, direct non-`None` return,
+exact-`None` result-order fallthrough, input immutability and unchanged
+`Exception`/`BaseException` propagation.
+
 For the 3Z2C CP11-presentation extraction, run
 `tests/orchestrator/test_cp11_presentation_boundary_characterization.py`
 before and after the edit and require exactly 41 normal passes with no

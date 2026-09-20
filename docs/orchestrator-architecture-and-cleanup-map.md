@@ -459,11 +459,19 @@ responsebouw en wrappers blijven in `service.py`.
 4A2 extraheert uitsluitend de multi-productdelegatie binnen de bestaande
 productbranch van `_build_user_answer` naar `multi_product_answer_stage.py`.
 De frozen result bevat alleen `delegated_answer`: `None` betekent doorgaan via
-de service-owned single-family fallback; iedere niet-`None` waarde wordt
+de opvolgende single-family stage; iedere niet-`None` waarde wordt
 object-identiek direct geretourneerd. De genormaliseerde requested-information-
 set, originele resultatenlijst en runtime-resolved servicebuilder worden
 expliciet doorgegeven. Alle andere dispatch- en presentatiesemantiek blijft in
 `service.py`.
+
+4B2 extraheert uitsluitend de single-family family/articlepresentatie die na
+een exacte 4A2-`None` wordt bereikt naar
+`single_family_product_answer_stage.py`. Het frozen resultaat bevat alleen
+`answer`; de actuele `specialist_result`, de reeds genormaliseerde requested-set
+en de runtime-resolved `_build_product_article_lines`-binding worden expliciet
+doorgegeven. Iedere niet-`None` answer keert direct terug, terwijl exact `None`
+de bestaande resultaatloop en algemene finale `None` in `service.py` behoudt.
 
 3Z2D extraheert uitsluitend de CP12 concise-compositionzone binnen de
 service-owned dict-gate naar `cp12_concise_composition_stage.py`. De service

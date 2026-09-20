@@ -7,6 +7,7 @@ mechanical extraction; they do not prescribe an implementation shape.
 
 from __future__ import annotations
 
+import ast
 import copy
 import inspect
 
@@ -246,16 +247,40 @@ def test_empty_family_presentation_can_become_answer_only_through_articles(monke
     assert service._build_user_answer([_item(result={"family_context": {"results": [empty_family]}})], ["price"]) == "\narticle only"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "4B2 future boundary: add run_single_family_product_answer_stage to service; "
-        "then remove this xfail and assert its runtime-resolved article dependency, frozen "
-        "answer/None contract, and direct service consumption in normal green tests"
-    ),
-)
 def test_future_4b2_service_boundary_is_stage_owned_without_permanent_helper_coupling():
-    source = inspect.getsource(service._build_user_answer)
+    tree = ast.parse(inspect.getsource(service._build_user_answer))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "run_single_family_product_answer_stage"
+    ]
 
-    assert "run_single_family_product_answer_stage(" in source
+    assert len(calls) == 1
+    assert [ast.unparse(argument) for argument in calls[0].args] == [
+        "specialist_result",
+        "requested",
+    ]
+    assert [(keyword.arg, ast.unparse(keyword.value)) for keyword in calls[0].keywords] == [
+        ("build_product_article_lines", "_build_product_article_lines")
+    ]
+    assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and ast.unparse(node.value).startswith("run_single_family_product_answer_stage(")
+    ]
+    assert len(assignments) == 1
+    assert ast.unparse(assignments[0].targets[0]) == "single_family_product_answer_stage_result"
+    returns = [
+        ast.unparse(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Return) and node.value is not None
+    ]
+    assert "single_family_product_answer_stage_result.answer" in returns
+    source = inspect.getsource(service._build_user_answer)
+    assert source.index("run_multi_product_answer_stage(") < source.index(
+        "run_single_family_product_answer_stage("
+    )
     assert "_build_product_article_lines(" not in source
