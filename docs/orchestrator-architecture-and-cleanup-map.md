@@ -456,6 +456,15 @@ worden per core-aanroep runtime-resolved doorgegeven. De accessor bewaart de
 `try` als builder-keyword wordt gelezen. Composition, evidence-mutaties,
 responsebouw en wrappers blijven in `service.py`.
 
+4A2 extraheert uitsluitend de multi-productdelegatie binnen de bestaande
+productbranch van `_build_user_answer` naar `multi_product_answer_stage.py`.
+De frozen result bevat alleen `delegated_answer`: `None` betekent doorgaan via
+de service-owned single-family fallback; iedere niet-`None` waarde wordt
+object-identiek direct geretourneerd. De genormaliseerde requested-information-
+set, originele resultatenlijst en runtime-resolved servicebuilder worden
+expliciet doorgegeven. Alle andere dispatch- en presentatiesemantiek blijft in
+`service.py`.
+
 3Z2D extraheert uitsluitend de CP12 concise-compositionzone binnen de
 service-owned dict-gate naar `cp12_concise_composition_stage.py`. De service
 evalueert het responseprofiel eenmaal direct vóór de stagecall en bindt de vier

@@ -295,6 +295,16 @@ repair, timing mutation in `finally`, runtime binding of all four service
 dependencies, one ordered stage callsite, direct answer binding and the
 unchanged composition handoff and wrapper chain.
 
+For the 4A2 multi-product-answer extraction, keep
+`tests/orchestrator/test_build_user_answer_dispatch_characterization.py`
+byte-identical and run it before and after the edit. Run it together with
+`tests/orchestrator/test_multi_product_answer_stage.py` and
+`tests/orchestrator/test_multi_product_answer_stage_service_integration.py`.
+These lock the frozen one-field result, exact input identity, one runtime-bound
+builder call, direct non-`None` return identity, exact-`None` continuation into
+the existing single-family fallback, input immutability and unchanged
+`Exception`/`BaseException` propagation.
+
 For the 3Z2C CP11-presentation extraction, run
 `tests/orchestrator/test_cp11_presentation_boundary_characterization.py`
 before and after the edit and require exactly 41 normal passes with no

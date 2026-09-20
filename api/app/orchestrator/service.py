@@ -9,6 +9,9 @@ from typing import Any
 from app.orchestrator.answer_presentation_stage import (
     run_answer_presentation_stage,
 )
+from app.orchestrator.multi_product_answer_stage import (
+    run_multi_product_answer_stage,
+)
 from app.orchestrator.composition_shadow_canary_stage import (
     run_composition_shadow_canary_stage,
 )
@@ -3982,15 +3985,21 @@ def _build_user_answer(
             # PROMATI_MULTI_PRODUCT_PUBLIC_SYNTHESIS_P4_5B7_FIX
             # Only activate once the current result is a product result. This keeps
             # the legacy result-order precedence for diagnostics/scope answers.
-            multi_product_answer = (
-                _build_multi_product_user_answer(
+            multi_product_answer_stage_result = (
+                run_multi_product_answer_stage(
                     results,
                     requested,
+                    _build_multi_product_user_answer,
                 )
             )
 
-            if multi_product_answer is not None:
-                return multi_product_answer
+            if (
+                multi_product_answer_stage_result.delegated_answer
+                is not None
+            ):
+                return (
+                    multi_product_answer_stage_result.delegated_answer
+                )
 
             family_context = specialist_result.get(
                 "family_context"
