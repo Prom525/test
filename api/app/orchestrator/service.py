@@ -9,6 +9,9 @@ from typing import Any
 from app.orchestrator.analysis_scope_answer_stage import (
     run_analysis_scope_answer_stage,
 )
+from app.orchestrator.asset_inspection_summary_answer_stage import (
+    run_asset_inspection_summary_answer_stage,
+)
 from app.orchestrator.diagnostics_answer_stage import (
     run_diagnostics_answer_stage,
 )
@@ -1712,197 +1715,15 @@ def _build_user_answer(
             )
             == "inspection_summary"
         ):
-            raw_rows = asset_result.get("resultaat")
+            inspection_summary_stage = (
+                run_asset_inspection_summary_answer_stage(
+                    asset_result,
+                    tuple(answer_lines),
+                )
+            )
 
-            if isinstance(raw_rows, list):
-                dated_rows: list[tuple[str, dict[str, Any]]] = []
-
-                for raw_row in raw_rows:
-                    if not isinstance(raw_row, dict):
-                        continue
-
-                    document_date = str(
-                        raw_row.get("document_date") or ""
-                    ).strip()
-
-                    if not document_date:
-                        continue
-
-                    dated_rows.append(
-                        (
-                            document_date,
-                            raw_row,
-                        )
-                    )
-
-                if dated_rows:
-                    latest_date = max(
-                        document_date
-                        for document_date, _ in dated_rows
-                    )
-
-                    latest_rows = [
-                        row
-                        for document_date, row in dated_rows
-                        if document_date == latest_date
-                    ]
-
-                    seen_measurements: set[
-                        tuple[
-                            str,
-                            str,
-                            str,
-                            str,
-                        ]
-                    ] = set()
-
-                    measurements: list[
-                        dict[str, Any]
-                    ] = []
-
-                    for row in latest_rows:
-                        meshoogte = row.get(
-                            "meshoogte_mm"
-                        )
-
-                        if meshoogte is None:
-                            continue
-
-                        inspection_key = str(
-                            row.get(
-                                "inspection_key"
-                            )
-                            or ""
-                        ).strip()
-
-                        scraper_type = str(
-                            row.get(
-                                "scraper_type_raw"
-                            )
-                            or ""
-                        ).strip()
-
-                        location = str(
-                            row.get("locatie_raw")
-                            or ""
-                        ).strip()
-
-                        dedupe_key = (
-                            inspection_key,
-                            scraper_type,
-                            location,
-                            str(meshoogte),
-                        )
-
-                        if dedupe_key in seen_measurements:
-                            continue
-
-                        seen_measurements.add(
-                            dedupe_key
-                        )
-
-                        measurements.append(
-                            {
-                                "inspection_key": (
-                                    inspection_key
-                                ),
-                                "scraper_type": (
-                                    scraper_type
-                                ),
-                                "location": location,
-                                "meshoogte_mm": meshoogte,
-                                "mes_vervangen": row.get(
-                                    "mes_vervangen"
-                                ),
-                            }
-                        )
-
-                    answer_lines.extend(
-                        [
-                            "",
-                            (
-                                "Laatste inspectie: "
-                                f"{latest_date}"
-                            ),
-                        ]
-                    )
-
-                    if measurements:
-                        answer_lines.extend(
-                            [
-                                "",
-                                "Schrapers:",
-                            ]
-                        )
-
-                        for measurement in sorted(
-                            measurements,
-                            key=lambda item: (
-                                item[
-                                    "scraper_type"
-                                ],
-                                item[
-                                    "location"
-                                ],
-                            ),
-                        ):
-                            scraper_type = (
-                                measurement[
-                                    "scraper_type"
-                                ]
-                                or "Onbekende schraper"
-                            )
-
-                            location = measurement[
-                                "location"
-                            ]
-
-                            meshoogte = measurement[
-                                "meshoogte_mm"
-                            ]
-
-                            label = scraper_type
-
-                            if location:
-                                label += (
-                                    f" â€” {location}"
-                                )
-
-                            answer_lines.append(
-                                f"- {label}: "
-                                f"{meshoogte} mm"
-                            )
-
-                        replacement_values = [
-                            item.get(
-                                "mes_vervangen"
-                            )
-                            for item in measurements
-                        ]
-
-                        if (
-                            replacement_values
-                            and all(
-                                value is False
-                                for value
-                                in replacement_values
-                            )
-                        ):
-                            answer_lines.extend(
-                                [
-                                    "",
-                                    (
-                                        "Geen mesvervanging "
-                                        "geregistreerd bij "
-                                        "deze laatste "
-                                        "metingen."
-                                    ),
-                                ]
-                            )
-
-                    return "\n".join(
-                        answer_lines
-                    )
+            if inspection_summary_stage.answer is not None:
+                return inspection_summary_stage.answer
 
         # PROMATI_INSPECTION_TREND_PRESENTATION_V1
         #

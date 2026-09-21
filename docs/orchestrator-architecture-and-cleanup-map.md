@@ -535,3 +535,14 @@ Het frozen resultaat bevat alleen `answer`; een verkeerde broncode levert
 de bestaande grounded of ungrounded tekst direct retourneert. Assetprescan,
 mappinggate, action/contextconversie, selector, branchvolgorde en algemene
 finale `None` blijven service-owned.
+
+4G2B extraheert uitsluitend de presentatie van de exact geselecteerde
+`inspection_summary`-assetroute naar de dependencyvrije leaf
+`asset_inspection_summary_answer_stage.py`. Het frozen resultaat bevat alleen
+`answer`; de stage ontvangt het geselecteerde `asset_result` en een immutable
+tuple-snapshot van de reeds service-owned opgebouwde assetheader. De stage
+kopieert die snapshot vóór uitbreiding. Niet-`None` keert direct terug en exact
+`None` behoudt de bestaande fallthrough naar lifecycle, maintenance positions,
+deep analysis en de generieke assetfallback. Assetprescan, eerste-matchkeuze,
+context/entities, beide `_display_name_code`-calls en action/intentselectie
+blijven in `service.py`.

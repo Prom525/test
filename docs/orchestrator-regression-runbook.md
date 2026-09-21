@@ -419,3 +419,16 @@ Together these lock the frozen one-field contract, exact source-code gate,
 title and used-context shape handling, first-match grounding, exact texts,
 service-owned selector and conversion, one callsite, `None` fallthrough and
 unchanged exception propagation.
+
+For the 4G2B asset inspection-summary extraction, run
+`tests/orchestrator/test_asset_inspection_summary_answer_characterization.py`
+before and after the edit and require exactly 42 normal passes. Run it with
+`tests/orchestrator/test_asset_inspection_summary_answer_stage.py` and
+`tests/orchestrator/test_asset_inspection_summary_answer_stage_service_integration.py`.
+Together these lock the frozen exact-one-field contract, immutable header
+snapshot and internal copy, all legacy row/date/dedupe/sort/measurement text,
+exact service-owned action/intent selector, first-asset priority, two display
+helper calls, direct success, exact-`None` generic fallthrough, one production
+callsite, input immutability and unchanged `Exception`/`BaseException`
+propagation. Keep lifecycle, maintenance positions, deep analysis and generic
+asset presentation inline in `service.py`.

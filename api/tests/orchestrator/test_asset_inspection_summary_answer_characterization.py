@@ -5,7 +5,7 @@ import copy
 
 import pytest
 
-from app.orchestrator import service
+from app.orchestrator import asset_inspection_summary_answer_stage, service
 
 
 class Fatal(BaseException):
@@ -291,7 +291,7 @@ def test_mapping_iteration_conversion_truthiness_sort_and_helper_throwables_prop
     elif boundary == "replacement_get":
         payload["resultaat"] = [RaisingGet("mes_vervangen", error, **_row())]
     elif boundary == "sort":
-        monkeypatch.setattr(service, "sorted", lambda *_a, **_k: (_ for _ in ()).throw(error), raising=False)
+        monkeypatch.setattr(asset_inspection_summary_answer_stage, "sorted", lambda *_a, **_k: (_ for _ in ()).throw(error), raising=False)
     elif boundary == "display":
         monkeypatch.setattr(service, "_display_name_code", lambda *_a: (_ for _ in ()).throw(error))
     with pytest.raises(type(error), match=boundary) as raised:
