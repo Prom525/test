@@ -520,3 +520,10 @@ selector, alle opvolgende branches en de algemene `None` blijven service-owned.
 geretourneerd. Assetprescan, mappinggate, action/context-extractie, de exacte
 contextselector en alle diagnostics-, product-, ORG- en technicaldispatch blijven
 service-owned.
+
+4E2 extraheert uitsluitend de ORG-presentatie na de service-owned exacte
+`org_assistant`-selector naar `org_answer_stage.py`. Het frozen resultaat bevat
+alleen `answer`; niet-`None` keert direct terug en exact `None` laat de bestaande
+resultaatloop doorlopen naar een volgende ORG- of technical-uitkomst. Status-,
+location- en functionpresentatie zijn dependencyvrij; assetprescan, selectors,
+branchvolgorde en algemene finale `None` blijven service-owned.

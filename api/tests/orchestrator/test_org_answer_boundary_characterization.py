@@ -383,7 +383,7 @@ def test_location_row_iteration_errors_propagate_exception_and_baseexception(err
         )
 
 
-def test_org_branch_is_inline_without_runtime_helper_and_before_technical_structurally():
+def test_org_branch_calls_extracted_stage_once_and_before_technical_structurally():
     source = inspect.getsource(service._build_user_answer)
     tree = ast.parse(source)
     calls = {
@@ -391,7 +391,9 @@ def test_org_branch_is_inline_without_runtime_helper_and_before_technical_struct
         for node in ast.walk(tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert "run_org_answer_stage" not in calls
+    assert "run_org_answer_stage" in calls
+    assert source.count("run_org_answer_stage(specialist_result)") == 1
+    assert "org_answer_stage_result.answer is not None" in source
     assert source.index("# ORG") < source.index("# TECHNICAL - CEMA")
     assert source.count('action == "org_assistant"') == 1
     assert source.count('context_type == "org_assistant"') == 1
