@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.orchestrator import service
+from app.orchestrator import asset_lifecycle_answer_stage, service
 
 
 LEGACY_DASH = "\u00e2\u20ac\u201d"
@@ -213,60 +213,35 @@ def test_ast_pins_inline_route_order_and_mechanical_extraction_boundary():
     lifecycle = dict(routes)["lifecycle"]
     assert [type(node) for node in lifecycle.body] == [ast.Assign, ast.If]
     assert ast.unparse(lifecycle.body[0]) == (
-        "raw_rows = asset_result.get('resultaat')"
+        "lifecycle_stage = run_asset_lifecycle_answer_stage(asset_result, "
+        "tuple(answer_lines), requested)"
     )
     assert ast.unparse(lifecycle.body[1].test) == (
-        "isinstance(raw_rows, list)"
+        "lifecycle_stage.answer is not None"
     )
-    returns = [
-        node
-        for node in ast.walk(lifecycle)
-        if isinstance(node, ast.Return)
-        and node.value is not None
-        and ast.unparse(node.value) == "'\\n'.join(answer_lines)"
-    ]
-    assert len(returns) == 1
-    assert ast.unparse(returns[0].value) == "'\\n'.join(answer_lines)"
-
+    assert ast.unparse(lifecycle.body[1].body[0]) == (
+        "return lifecycle_stage.answer"
+    )
     body_tree = ast.Module(body=lifecycle.body, type_ignores=[])
-    loaded = {
-        node.id
+    calls = {
+        ast.unparse(node.func)
         for node in ast.walk(body_tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        if isinstance(node, ast.Call)
     }
-    stored = {
-        node.id
-        for node in ast.walk(body_tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-    }
-    local_functions = {
-        node.name for node in ast.walk(body_tree) if isinstance(node, ast.FunctionDef)
-    }
-    parameters = {
-        node.arg for node in ast.walk(body_tree) if isinstance(node, ast.arg)
-    }
-    builtins_and_types = {
-        "Any",
-        "bool",
-        "dict",
-        "float",
-        "int",
-        "isinstance",
-        "len",
-        "list",
-        "set",
-        "sorted",
-        "str",
-        "tuple",
-    }
-    assert loaded - stored - local_functions - parameters - builtins_and_types == {
-        "answer_lines",
-        "asset_result",
-        "requested",
-    }
-    calls = {ast.unparse(node.func) for node in ast.walk(lifecycle) if isinstance(node, ast.Call)}
-    assert "run_asset_inspection_summary_answer_stage" not in calls
+    assert calls == {"run_asset_lifecycle_answer_stage", "tuple"}
     assert "_display_name_code" not in calls
+
+    runner = ast.parse(
+        inspect.getsource(
+            asset_lifecycle_answer_stage.run_asset_lifecycle_answer_stage
+        )
+    ).body[0]
+    assert ast.unparse(runner.body[0]) == (
+        "answer_lines = list(asset_header_lines)"
+    )
+    assert ast.unparse(runner.body[1]) == (
+        "raw_rows = asset_result.get('resultaat')"
+    )
     assert ast.unparse(asset_if.test) == "asset_result is not None"
     assert any(
         isinstance(node, ast.For) and ast.unparse(node.iter) == "results"
@@ -785,7 +760,12 @@ def test_mapping_iteration_truthiness_conversion_sort_and_helper_throwables_prop
                 raise error
             return real_sorted(*args, **kwargs)
 
-        monkeypatch.setattr(service, "sorted", throwing_sorted, raising=False)
+        monkeypatch.setattr(
+            asset_lifecycle_answer_stage,
+            "sorted",
+            throwing_sorted,
+            raising=False,
+        )
         if boundary == "latest_sort":
             requested = ["latest_measurements"]
         elif boundary == "replacement_sort":
@@ -793,7 +773,7 @@ def test_mapping_iteration_truthiness_conversion_sort_and_helper_throwables_prop
     elif boundary == "format":
         RaisingFormattedFloat.error = error
         monkeypatch.setattr(
-            service,
+            asset_lifecycle_answer_stage,
             "float",
             RaisingFormattedFloat,
             raising=False,

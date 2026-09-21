@@ -546,3 +546,18 @@ kopieert die snapshot vóór uitbreiding. Niet-`None` keert direct terug en exac
 deep analysis en de generieke assetfallback. Assetprescan, eerste-matchkeuze,
 context/entities, beide `_display_name_code`-calls en action/intentselectie
 blijven in `service.py`.
+
+4G2C extraheert uitsluitend de presentatie van de exact geselecteerde
+`lifecycle`-assetroute naar de dependencyvrije leaf
+`asset_lifecycle_answer_stage.py`. Het frozen resultaat bevat alleen `answer`;
+de stage ontvangt het geselecteerde `asset_result`, een immutable tuple-snapshot
+van de service-owned assetheader en de reeds door de service genormaliseerde
+requested-information-set. De stage kopieert de headertuple vóór uitbreiding en
+behoudt rows/shape-gates, normalisatie, deduplicatie, groepering, stabiele
+sortering, mm-formattering, facets en antwoordtekst. Niet-`None` keert direct
+terug en exact `None` behoudt de bestaande fallthrough naar
+`maintenance_positions`, `band_deep_analysis` en de generieke assetfallback.
+Assetprescan, eerste-matchkeuze, headeropbouw, beide `_display_name_code`-calls,
+requested-information-normalisatie, selectors en routevolgorde blijven in
+`service.py`; de lifecycle-facets binnen `band_deep_analysis` blijven eveneens
+service-owned.

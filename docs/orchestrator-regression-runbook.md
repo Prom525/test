@@ -430,5 +430,20 @@ snapshot and internal copy, all legacy row/date/dedupe/sort/measurement text,
 exact service-owned action/intent selector, first-asset priority, two display
 helper calls, direct success, exact-`None` generic fallthrough, one production
 callsite, input immutability and unchanged `Exception`/`BaseException`
-propagation. Keep lifecycle, maintenance positions, deep analysis and generic
-asset presentation inline in `service.py`.
+propagation. Keep maintenance positions, deep analysis and generic asset
+presentation inline in `service.py`.
+
+For the 4G2C asset lifecycle extraction, run
+`tests/orchestrator/test_asset_lifecycle_answer_characterization.py` before and
+after the edit and require exactly 104 normal passes. Run it with
+`tests/orchestrator/test_asset_lifecycle_answer_stage.py` and
+`tests/orchestrator/test_asset_lifecycle_answer_stage_service_integration.py`.
+Together these lock the frozen exact-one-field contract, immutable header
+snapshot and fresh internal list, exact row/shape gates, normalization,
+deduplication, grouping, stable sorting, mm formatting, facets and legacy
+mojibake text, plus service-owned requested-information normalization, exact
+action/intent selection, object-identity forwarding, one production callsite,
+direct non-`None` return, exact-`None` fallthrough through maintenance, deep
+analysis and generic asset presentation, input immutability, fresh per-call
+state and unchanged `Exception`/`BaseException` propagation. Keep the lifecycle
+facets inside `band_deep_analysis` inline in `service.py`.
