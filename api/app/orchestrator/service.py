@@ -22,6 +22,9 @@ from app.orchestrator.single_family_product_answer_stage import (
     run_single_family_product_answer_stage,
 )
 from app.orchestrator.org_answer_stage import run_org_answer_stage
+from app.orchestrator.technical_cema_answer_stage import (
+    run_technical_cema_answer_stage,
+)
 from app.orchestrator.composition_shadow_canary_stage import (
     run_composition_shadow_canary_stage,
 )
@@ -3764,153 +3767,12 @@ def _build_user_answer(
             action == "technical_assistant"
             or context_type == "technical_assistant"
         ):
-            source_code = (
-                specialist_result.get(
-                    "source_code"
-                )
+            technical_cema_answer_stage_result = (
+                run_technical_cema_answer_stage(specialist_result)
             )
 
-            if (
-                source_code
-                == "CEMA_BELT_CONVEYORS_7"
-            ):
-                technical_context = (
-                    specialist_result.get(
-                        "technical_context"
-                    )
-                )
-
-                source_title = None
-
-                if isinstance(
-                    technical_context,
-                    dict,
-                ):
-                    technical_rows = (
-                        technical_context.get(
-                            "results"
-                        )
-                    )
-
-                    if isinstance(
-                        technical_rows,
-                        list,
-                    ):
-                        for row in technical_rows:
-                            if not isinstance(
-                                row,
-                                dict,
-                            ):
-                                continue
-
-                            candidate = row.get(
-                                "source_title"
-                            )
-
-                            if candidate:
-                                source_title = str(
-                                    candidate
-                                )
-                                break
-
-                # -----------------------------------------
-                # Grounded CEMA definition
-                #
-                # Alleen used_context geldt als bronbewijs.
-                # rag_context.antwoord is op zichzelf
-                # nadrukkelijk niet voldoende.
-                # -----------------------------------------
-
-                full_name = (
-                    "Conveyor Equipment Manufacturers Association"
-                )
-
-                grounded_full_name = False
-
-                rag_context = (
-                    specialist_result.get(
-                        "rag_context"
-                    )
-                )
-
-                if isinstance(
-                    rag_context,
-                    dict,
-                ):
-                    used_context = (
-                        rag_context.get(
-                            "used_context"
-                        )
-                    )
-
-                    if isinstance(
-                        used_context,
-                        list,
-                    ):
-                        for item in used_context:
-
-                            context_text = None
-
-                            if isinstance(
-                                item,
-                                str,
-                            ):
-                                context_text = item
-
-                            elif isinstance(
-                                item,
-                                dict,
-                            ):
-                                candidate_text = (
-                                    item.get(
-                                        "text"
-                                    )
-                                )
-
-                                if isinstance(
-                                    candidate_text,
-                                    str,
-                                ):
-                                    context_text = (
-                                        candidate_text
-                                    )
-
-                            if not context_text:
-                                continue
-
-                            if (
-                                full_name.casefold()
-                                in context_text.casefold()
-                            ):
-                                grounded_full_name = True
-                                break
-
-                if grounded_full_name:
-                    if source_title:
-                        return (
-                            f"CEMA staat voor {full_name}. "
-                            f"Bron: {source_title}."
-                        )
-
-                    return (
-                        f"CEMA staat voor {full_name}."
-                    )
-
-                if source_title:
-                    return (
-                        "CEMA-referentiegegevens zijn "
-                        f"beschikbaar uit {source_title}. "
-                        "In dit specialistresultaat is "
-                        "geen definitierecord van CEMA "
-                        "aanwezig."
-                    )
-
-                return (
-                    "CEMA-referentiegegevens zijn "
-                    "beschikbaar, maar in dit "
-                    "specialistresultaat is geen "
-                    "definitierecord van CEMA aanwezig."
-                )
+            if technical_cema_answer_stage_result.answer is not None:
+                return technical_cema_answer_stage_result.answer
 
     return None
 

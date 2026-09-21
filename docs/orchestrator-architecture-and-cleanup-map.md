@@ -527,3 +527,11 @@ alleen `answer`; niet-`None` keert direct terug en exact `None` laat de bestaand
 resultaatloop doorlopen naar een volgende ORG- of technical-uitkomst. Status-,
 location- en functionpresentatie zijn dependencyvrij; assetprescan, selectors,
 branchvolgorde en algemene finale `None` blijven service-owned.
+
+4F2 extraheert uitsluitend de CEMA-presentatie na de service-owned exacte
+technicalselector naar de dependencyvrije leaf `technical_cema_answer_stage.py`.
+Het frozen resultaat bevat alleen `answer`; een verkeerde broncode levert
+`None` en laat de resultaatloop doorlopen, terwijl een geldige CEMA-bron exact
+de bestaande grounded of ungrounded tekst direct retourneert. Assetprescan,
+mappinggate, action/contextconversie, selector, branchvolgorde en algemene
+finale `None` blijven service-owned.

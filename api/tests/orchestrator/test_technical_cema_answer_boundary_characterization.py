@@ -329,7 +329,7 @@ def test_results_iteration_propagates_exception_and_baseexception(error):
         service._build_user_answer(ExplodingResults())
 
 
-def test_branch_is_inline_has_no_runtime_dependency_and_is_last_known_dispatch():
+def test_branch_has_one_leaf_call_and_is_last_known_dispatch():
     source = inspect.getsource(service._build_user_answer)
     tree = ast.parse(source)
     function = tree.body[0]
@@ -347,11 +347,15 @@ def test_branch_is_inline_has_no_runtime_dependency_and_is_last_known_dispatch()
         "action == 'technical_assistant' or context_type == 'technical_assistant'"
     )
     technical_if = [node for node in loop.body if isinstance(node, ast.If)][-1]
-    runtime_calls = {
-        node.func.id for node in ast.walk(technical_if)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert runtime_calls == {"isinstance", "str"}
-    assert "run_technical_cema_answer_stage" not in source
+    stage_calls = [
+        node for node in ast.walk(technical_if)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "run_technical_cema_answer_stage"
+    ]
+    assert len(stage_calls) == 1
+    assert ast.unparse(stage_calls[0]) == (
+        "run_technical_cema_answer_stage(specialist_result)"
+    )
     assert isinstance(function.body[-1], ast.Return)
     assert function.body[-1].value.value is None

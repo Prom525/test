@@ -409,3 +409,13 @@ these lock the frozen one-field contract, nested/outer status priority,
 location/function presentation, exact service selector, direct identity return,
 `None` fallthrough, exception propagation, one callsite and the unchanged
 technical boundary.
+
+For the 4F2 technical/CEMA-answer extraction, run
+`tests/orchestrator/test_technical_cema_answer_boundary_characterization.py`
+before and after the edit and require exactly 89 normal passes. Run it with
+`tests/orchestrator/test_technical_cema_answer_stage.py` and
+`tests/orchestrator/test_technical_cema_answer_stage_service_integration.py`.
+Together these lock the frozen one-field contract, exact source-code gate,
+title and used-context shape handling, first-match grounding, exact texts,
+service-owned selector and conversion, one callsite, `None` fallthrough and
+unchanged exception propagation.
