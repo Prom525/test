@@ -561,3 +561,17 @@ Assetprescan, eerste-matchkeuze, headeropbouw, beide `_display_name_code`-calls,
 requested-information-normalisatie, selectors en routevolgorde blijven in
 `service.py`; de lifecycle-facets binnen `band_deep_analysis` blijven eveneens
 service-owned.
+
+4G2D extraheert uitsluitend de presentatie van de exact geselecteerde
+`maintenance_positions`-assetroute naar de dependencyvrije leaf
+`asset_maintenance_positions_answer_stage.py`. Het frozen resultaat bevat
+alleen `answer`; de stage ontvangt het geselecteerde `asset_result` en een
+immutable tuple-snapshot van de service-owned assetheader en kopieert die
+snapshot vóór uitbreiding. De leaf behoudt de exacte rows/shape-gates,
+veldfallbacks, normalisatie, first-wins-deduplicatie, stabiele sortering,
+status-/forecastselectie, getalformattering, units, witregels, separators en
+legacy-mojibake. Niet-`None` keert direct terug en exact `None` behoudt de
+bestaande fallthrough naar `band_deep_analysis` en de generieke assetfallback.
+Requested-information-normalisatie, assetprescan en eerste-match/break,
+context/entities/result-text, beide `_display_name_code`-calls, headeropbouw,
+selectors en routevolgorde blijven in `service.py`.

@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.orchestrator import asset_maintenance_positions_answer_stage as maintenance_stage
 from app.orchestrator import service
 
 
@@ -242,33 +243,33 @@ def test_ast_pins_route_order_inline_boundary_and_smallest_future_interface():
     )
     assert [type(node) for node in maintenance.body] == [ast.Assign, ast.If]
     assert ast.unparse(maintenance.body[0]) == (
-        "raw_rows = asset_result.get('resultaat')"
+        "maintenance_positions_stage = "
+        "run_asset_maintenance_positions_answer_stage(asset_result, tuple(answer_lines))"
     )
-    assert isinstance(maintenance.body[1].body[-1], ast.If)
-    assert any(
-        isinstance(node, ast.Return)
-        and ast.unparse(node.value) == "'\\n'.join(answer_lines)"
-        for node in ast.walk(maintenance)
+    assert ast.unparse(maintenance.body[1].test) == (
+        "maintenance_positions_stage.answer is not None"
+    )
+    assert ast.unparse(maintenance.body[1].body[0]) == (
+        "return maintenance_positions_stage.answer"
     )
 
-    calls = {
+    calls = [
         ast.unparse(node.func)
         for node in ast.walk(maintenance)
         if isinstance(node, ast.Call)
-    }
+    ]
+    assert calls.count("run_asset_maintenance_positions_answer_stage") == 1
     assert {
         "str",
-        "float",
-        "isinstance",
-        "set",
-        "int",
-        "enumerate",
-    } <= calls
+        "asset_result.get",
+        "run_asset_maintenance_positions_answer_stage",
+        "tuple",
+    } <= set(calls)
     assert not {
         "_display_name_code",
         "run_asset_inspection_summary_answer_stage",
         "run_asset_lifecycle_answer_stage",
-    } & calls
+    } & set(calls)
 
     loaded_names = {
         node.id
@@ -287,14 +288,6 @@ def test_ast_pins_route_order_inline_boundary_and_smallest_future_interface():
         "str",
         "tuple",
     } == {
-        "bool",
-        "dict",
-        "enumerate",
-        "float",
-        "int",
-        "isinstance",
-        "list",
-        "set",
         "str",
         "tuple",
     }
@@ -1025,11 +1018,11 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
                 return RaisingComparableFloat(value)
             return real_float(value)
 
-        monkeypatch.setattr(service, "float", sort_float, raising=False)
+        monkeypatch.setattr(maintenance_stage, "float", sort_float, raising=False)
         payload["resultaat"] = [row, dict(row, prioriteit=2, cycle_end="other")]
     elif boundary == "enumerate":
         monkeypatch.setattr(
-            service,
+            maintenance_stage,
             "enumerate",
             lambda *_a, **_k: (_ for _ in ()).throw(error),
             raising=False,
@@ -1043,7 +1036,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
                 return RaisingIsIntegerFloat(value)
             return real_float(value)
 
-        monkeypatch.setattr(service, "float", format_float, raising=False)
+        monkeypatch.setattr(maintenance_stage, "float", format_float, raising=False)
     elif boundary == "format_int":
         RaisingIntFloat.error = error
         real_float = builtins.float
@@ -1053,7 +1046,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
                 return RaisingIntFloat(value)
             return real_float(value)
 
-        monkeypatch.setattr(service, "float", int_float, raising=False)
+        monkeypatch.setattr(maintenance_stage, "float", int_float, raising=False)
     elif boundary == "display":
         monkeypatch.setattr(
             service,

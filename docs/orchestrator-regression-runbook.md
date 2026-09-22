@@ -447,3 +447,20 @@ direct non-`None` return, exact-`None` fallthrough through maintenance, deep
 analysis and generic asset presentation, input immutability, fresh per-call
 state and unchanged `Exception`/`BaseException` propagation. Keep the lifecycle
 facets inside `band_deep_analysis` inline in `service.py`.
+
+For the 4G2D asset maintenance-positions extraction, run
+`tests/orchestrator/test_asset_maintenance_positions_answer_characterization.py`
+before and after the edit and require exactly 148 normal passes with an
+unchanged collected-node-ID hash. Run it with
+`tests/orchestrator/test_asset_maintenance_positions_answer_stage.py` and
+`tests/orchestrator/test_asset_maintenance_positions_answer_stage_service_integration.py`.
+Together these lock the frozen exact-one-field contract, immutable header
+snapshot and fresh internal list, exact row/shape gates, field fallbacks,
+normalization, first-wins deduplication, stable priority/scraper/position sort,
+numeric and forecast gates, rounding, units, separators and legacy mojibake
+text. They also lock service-owned requested-information normalization,
+asset selection/header construction and exact action/intent selection, payload
+identity, one production callsite, direct non-`None` return, exact-`None`
+fallthrough through `band_deep_analysis` and the generic asset fallback, input
+immutability, fresh per-call state and unchanged `Exception`/`BaseException`
+propagation.
