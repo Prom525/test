@@ -239,4 +239,3 @@ def test_stage_exception_and_baseexception_propagate_unchanged(
     with pytest.raises(type(error)) as raised:
         _answer(_payload())
     assert raised.value is error
-
