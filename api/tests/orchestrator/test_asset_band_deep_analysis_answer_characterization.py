@@ -1,4 +1,4 @@
-"""Characterize only the inline ``band_deep_analysis`` asset presenter."""
+"""Characterize the extracted ``band_deep_analysis`` asset presenter."""
 from __future__ import annotations
 
 import ast
@@ -11,6 +11,7 @@ from decimal import Decimal
 import pytest
 
 from app.orchestrator import service
+from app.orchestrator import asset_band_deep_analysis_answer_stage as stage
 
 
 LEGACY_DASH = "\u00e2\u20ac\u201d"
@@ -269,12 +270,42 @@ def test_ast_pins_route_order_whole_branch_and_smallest_mechanical_interface():
         "asset_action == 'analysis_assistant' and "
         "str(asset_result.get('intent') or '') == 'band_deep_analysis'"
     )
-    assert [type(node) for node in deep.body] == [ast.Assign, ast.Assign, ast.If]
-    assert [ast.unparse(node) for node in deep.body[:2]] == [
+    assert [type(node) for node in deep.body] == [ast.Assign, ast.If]
+    assert ast.unparse(deep.body[0]) == (
+        "band_deep_analysis_stage = "
+        "run_asset_band_deep_analysis_answer_stage("
+        "asset_result, tuple(answer_lines), requested)"
+    )
+    assert ast.unparse(deep.body[1].test) == (
+        "band_deep_analysis_stage.answer is not None"
+    )
+    assert ast.unparse(deep.body[1].body[0]) == (
+        "return band_deep_analysis_stage.answer"
+    )
+
+    stage_tree = ast.parse(inspect.getsource(stage))
+    assert [
+        node.module
+        for node in stage_tree.body
+        if isinstance(node, ast.ImportFrom)
+    ] == ["dataclasses", "typing"]
+    runner = next(
+        node
+        for node in stage_tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "run_asset_band_deep_analysis_answer_stage"
+    )
+    assert [argument.arg for argument in runner.args.args] == [
+        "asset_result",
+        "asset_header_lines",
+        "requested",
+    ]
+    assert ast.unparse(runner.body[0]) == "answer_lines = list(asset_header_lines)"
+    assert [ast.unparse(node) for node in runner.body[1:3]] == [
         "raw_positions = asset_result.get('gecombineerde_slijtage')",
         "raw_forecasts = asset_result.get('forecast_3mm')",
     ]
-    positions_gate = deep.body[2]
+    positions_gate = runner.body[3]
     assert ast.unparse(positions_gate.test) == "isinstance(raw_positions, list)"
     assert [
         node.name
@@ -302,15 +333,15 @@ def test_ast_pins_route_order_whole_branch_and_smallest_mechanical_interface():
         if isinstance(node, ast.If) and ast.unparse(node.test) == "facet_requested"
     )
     assert ast.unparse(rendered_positions_gate.body[-1]) == (
-        "return '\\n'.join(answer_lines)"
+        "return AssetBandDeepAnalysisAnswerStageResult(answer='\\n'.join(answer_lines))"
     )
 
     # These line-number-independent metrics show why arbitrary internal splitting
     # is not mechanical: the cohesive facet block consumes almost half the route,
     # while the whole selected body has only three external values.
-    assert sum(1 for _ in ast.walk(deep)) == 1805
+    assert sum(1 for _ in ast.walk(runner)) == 1832
     assert sum(1 for _ in ast.walk(facet_gate)) == 840
-    body_module = ast.Module(body=deep.body, type_ignores=[])
+    body_module = ast.Module(body=runner.body[1:-1], type_ignores=[])
     loaded = {
         node.id
         for node in ast.walk(body_module)
@@ -329,12 +360,15 @@ def test_ast_pins_route_order_whole_branch_and_smallest_mechanical_interface():
         for node in ast.walk(body_module)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
     )
-    external = loaded - bound - set(dir(builtins)) - {"Any"}
+    external = loaded - bound - set(dir(builtins)) - {
+        "Any",
+        "AssetBandDeepAnalysisAnswerStageResult",
+    }
     assert external == {"asset_result", "answer_lines", "requested"}
 
     calls = {
         ast.unparse(node.func)
-        for node in ast.walk(deep)
+        for node in ast.walk(runner)
         if isinstance(node, ast.Call)
     }
     assert not {name for name in calls if name.startswith("run_")}
@@ -1219,14 +1253,14 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
         ]
         real_str = builtins.str
         monkeypatch.setattr(
-            service,
+            stage,
             "str",
             lambda value="": Comparable() if value is marker else real_str(value),
             raising=False,
         )
     elif boundary == "enumerate":
         monkeypatch.setattr(
-            service,
+            stage,
             "enumerate",
             lambda *_a, **_k: (_ for _ in ()).throw(error),
             raising=False,
@@ -1234,7 +1268,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
     elif boundary == "format_is_integer":
         RaisingIsIntegerFloat.error = error
         monkeypatch.setattr(
-            service,
+            stage,
             "float",
             RaisingIsIntegerFloat,
             raising=False,
@@ -1243,7 +1277,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
     elif boundary == "format_int":
         RaisingIntFloat.error = error
         monkeypatch.setattr(
-            service,
+            stage,
             "float",
             RaisingIntFloat,
             raising=False,
@@ -1264,7 +1298,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
         def throwing_sorted(*args, **kwargs):
             raise error
 
-        monkeypatch.setattr(service, "sorted", throwing_sorted, raising=False)
+        monkeypatch.setattr(stage, "sorted", throwing_sorted, raising=False)
     elif boundary == "replacement_sort":
         real_sorted = builtins.sorted
         calls = 0
@@ -1276,7 +1310,7 @@ def test_mapping_property_iteration_truth_conversion_sort_format_and_helper_thro
                 raise error
             return real_sorted(*args, **kwargs)
 
-        monkeypatch.setattr(service, "sorted", second_sorted, raising=False)
+        monkeypatch.setattr(stage, "sorted", second_sorted, raising=False)
     elif boundary == "display":
         monkeypatch.setattr(
             service,
