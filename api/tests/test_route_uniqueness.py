@@ -18,10 +18,6 @@ from app.main import app
 # verschijnt, faalt de test.
 KNOWN_DUPLICATES = {
     (
-        "DELETE",
-        "/analysis/rfq/{rfq_id}/positions/{position_id}",
-    ): 3,
-    (
         "GET",
         "/analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf",
     ): 2,
@@ -213,6 +209,15 @@ class RouteUniquenessTests(unittest.TestCase):
                 "responsecontract behouden."
             ),
         )
+
+    def test_rfq_position_delete_is_registered_once(self):
+        grouped = group_routes(collect_route_records())
+        key = ("DELETE", "/analysis/rfq/{rfq_id}/positions/{position_id}")
+        records = grouped.get(key, [])
+
+        self.assertEqual(len(records), 1, "RFQ position DELETE moet exact één keer bestaan.")
+        self.assertEqual(records[0]["module"], "app.routers.rfq_api")
+        self.assertEqual(records[0]["name"], "delete_rfq_position")
 
     def test_orchestrator_ask_is_registered_once(self):
         grouped = group_routes(

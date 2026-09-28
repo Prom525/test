@@ -4,6 +4,7 @@ import ast
 import copy
 import sys
 import unittest
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,8 +58,8 @@ class SourceRegistration:
     identity: HandlerIdentity
 
 
-KNOWN_DUPLICATE_ROUTES = {
-    ("DELETE", "/{rfq_id}/positions/{position_id}"): (
+KNOWN_SOURCE_HANDLER_IDENTITIES = {
+    "delete_rfq_position": (
         HandlerIdentity(
             ("rfq_id", "position_id", "deleted_by"),
             frozenset({"fetch_one", "execute_one", "update_rfq_workflow_status"}),
@@ -75,7 +76,7 @@ KNOWN_DUPLICATE_ROUTES = {
             frozenset({"Positie niet gevonden", "rfq_position_deleted"}),
         ),
     ),
-    ("GET", "/{rfq_id}/positions/{position_id}/datasheet/pdf"): (
+    "get_rfq_position_datasheet_pdf": (
         HandlerIdentity(
             ("rfq_id", "position_id", "commercial_approved", "view_mode"),
             frozenset({"render_landscape_rfq_html", "HTML.write_pdf", "Response"}),
@@ -87,6 +88,15 @@ KNOWN_DUPLICATE_ROUTES = {
             frozenset({"trommel-datasheet-", "utf-8"}),
         ),
     ),
+}
+
+KNOWN_REGISTERED_ROUTE_IDENTITIES = {
+    ("DELETE", "/{rfq_id}/positions/{position_id}"): (
+        KNOWN_SOURCE_HANDLER_IDENTITIES["delete_rfq_position"][0],
+    ),
+    ("GET", "/{rfq_id}/positions/{position_id}/datasheet/pdf"): KNOWN_SOURCE_HANDLER_IDENTITIES[
+        "get_rfq_position_datasheet_pdf"
+    ],
 }
 
 
@@ -141,7 +151,7 @@ def _source_registrations(
                 continue
 
             key = (decorator.func.attr.upper(), decorator.args[0].value)
-            if key in KNOWN_DUPLICATE_ROUTES and any(
+            if key in KNOWN_REGISTERED_ROUTE_IDENTITIES and any(
                 keyword.arg == "operation_id" for keyword in decorator.keywords
             ):
                 raise AssertionError(f"explicit operation_id introduced for {key}")
@@ -152,22 +162,52 @@ def _source_registrations(
     return registrations
 
 
-def _assert_known_duplicate_registrations(
+def _source_handler_definitions(
+    tree: ast.Module | None = None,
+) -> dict[str, list[SourceRegistration]]:
+    tree = tree or ast.parse(RFQ_SOURCE.read_text(encoding="utf-8"))
+    definitions: dict[str, list[SourceRegistration]] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in KNOWN_SOURCE_HANDLER_IDENTITIES:
+            definitions.setdefault(node.name, []).append(
+                SourceRegistration(node.lineno, node.name, _handler_identity(node))
+            )
+    return definitions
+
+
+def _assert_source_handler_definitions(
+    definitions: dict[str, list[SourceRegistration]],
+) -> None:
+    for name, expected_identities in KNOWN_SOURCE_HANDLER_IDENTITIES.items():
+        observed = definitions.get(name, [])
+        if len(observed) != len(expected_identities) or any(
+            not _identity_matches(registration.identity, expected)
+            for registration, expected in zip(observed, expected_identities, strict=True)
+        ):
+            raise AssertionError(f"source handler identities changed for {name}")
+        if [registration.line for registration in observed] != sorted(
+            registration.line for registration in observed
+        ):
+            raise AssertionError(f"source handler order changed for {name}")
+
+
+def _assert_registered_route_identities(
     registrations: dict[tuple[str, str], list[SourceRegistration]],
 ) -> None:
-    for key, expected_identities in KNOWN_DUPLICATE_ROUTES.items():
+    for key, expected_identities in KNOWN_REGISTERED_ROUTE_IDENTITIES.items():
         observed = registrations.get(key, [])
         if len(observed) != len(expected_identities) or any(
             not _identity_matches(registration.identity, expected)
             for registration, expected in zip(observed, expected_identities, strict=True)
         ):
-            raise AssertionError(f"duplicate handler identities changed for {key}")
-        if tuple(registration.name for registration in observed) != (
-            ("delete_rfq_position",) * 3
+            raise AssertionError(f"registered handler identities changed for {key}")
+        expected_name = (
+            "delete_rfq_position"
             if key[0] == "DELETE"
-            else ("get_rfq_position_datasheet_pdf",) * 2
-        ):
-            raise AssertionError(f"duplicate handler names changed for {key}")
+            else "get_rfq_position_datasheet_pdf"
+        )
+        if tuple(registration.name for registration in observed) != (expected_name,) * len(observed):
+            raise AssertionError(f"registered handler names changed for {key}")
         if [registration.line for registration in observed] != sorted(
             registration.line for registration in observed
         ):
@@ -185,12 +225,54 @@ def _identity_matches(
     )
 
 
-def _duplicate_registrations_for_key(
+def _registered_routes_for_key(
     key: tuple[str, str],
 ) -> list[SourceRegistration]:
     registrations = _source_registrations()
-    _assert_known_duplicate_registrations(registrations)
+    _assert_registered_route_identities(registrations)
     return registrations[key]
+
+
+def _delete_decorator(node: ast.FunctionDef) -> ast.Call:
+    decorators = [
+        decorator
+        for decorator in node.decorator_list
+        if isinstance(decorator, ast.Call)
+        and isinstance(decorator.func, ast.Attribute)
+        and isinstance(decorator.func.value, ast.Name)
+        and decorator.func.value.id == "router"
+        and decorator.func.attr == "delete"
+        and decorator.args
+        and isinstance(decorator.args[0], ast.Constant)
+        and decorator.args[0].value == "/{rfq_id}/positions/{position_id}"
+    ]
+    if len(decorators) != 1:
+        raise AssertionError("expected exactly one RFQ position DELETE decorator")
+    return decorators[0]
+
+
+def _remove_duplicate_delete_decorators(tree: ast.Module) -> ast.Module:
+    delete_nodes = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "delete_rfq_position"
+    ]
+    if len(delete_nodes) != 3:
+        raise AssertionError("expected all three RFQ DELETE function definitions")
+    for node in delete_nodes[1:]:
+        node.decorator_list = [
+            decorator for decorator in node.decorator_list
+            if not (
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and isinstance(decorator.func.value, ast.Name)
+                and decorator.func.value.id == "router"
+                and decorator.func.attr == "delete"
+                and decorator.args
+                and isinstance(decorator.args[0], ast.Constant)
+                and decorator.args[0].value == "/{rfq_id}/positions/{position_id}"
+            )
+        ]
+    return tree
 
 
 def _named_stub(name: str, marker: str):
@@ -202,29 +284,42 @@ def _named_stub(name: str, marker: str):
 
 
 class RfqDuplicateRouteCharacterizationTests(unittest.TestCase):
-    def test_source_keeps_known_duplicate_order_and_distinct_handler_identities(self):
+    def test_source_preserves_all_handler_definitions_and_registers_only_the_first_delete(self):
         registrations = _source_registrations()
-        _assert_known_duplicate_registrations(registrations)
+        definitions = _source_handler_definitions()
+        _assert_source_handler_definitions(definitions)
+        _assert_registered_route_identities(registrations)
 
-        for key, expected_identities in KNOWN_DUPLICATE_ROUTES.items():
-            with self.subTest(method=key[0], path=key[1]):
-                observed = registrations.get(key, [])
-                self.assertTrue(
-                    all(
-                        _identity_matches(registration.identity, expected)
-                        for registration, expected in zip(
-                            observed, expected_identities, strict=True
-                        )
-                    )
-                )
-                self.assertEqual(
-                    [registration.line for registration in observed],
-                    sorted(registration.line for registration in observed),
-                )
-                self.assertEqual(
-                    len({registration.identity.label() for registration in observed}),
-                    len(observed),
-                )
+        delete_definitions = definitions["delete_rfq_position"]
+        self.assertEqual(len(delete_definitions), 3)
+        self.assertEqual(
+            len({registration.identity.label() for registration in delete_definitions}),
+            3,
+        )
+        delete_routes = registrations[("DELETE", "/{rfq_id}/positions/{position_id}")]
+        self.assertEqual(delete_routes, [delete_definitions[0]])
+        self.assertEqual(
+            len(registrations[("GET", "/{rfq_id}/positions/{position_id}/datasheet/pdf")]),
+            2,
+        )
+
+    def test_candidate_ast_is_exactly_the_in_memory_removal_of_the_two_duplicate_decorators(self):
+        candidate = ast.parse(RFQ_SOURCE.read_text(encoding="utf-8"))
+        reconstructed_start = copy.deepcopy(candidate)
+        delete_nodes = [
+            node for node in reconstructed_start.body
+            if isinstance(node, ast.FunctionDef) and node.name == "delete_rfq_position"
+        ]
+        self.assertEqual(len(delete_nodes), 3)
+        first_decorator = _delete_decorator(delete_nodes[0])
+        for node in delete_nodes[1:]:
+            node.decorator_list.append(copy.deepcopy(first_decorator))
+
+        expected = _remove_duplicate_delete_decorators(reconstructed_start)
+        self.assertEqual(
+            ast.dump(expected, include_attributes=False),
+            ast.dump(candidate, include_attributes=False),
+        )
 
     def test_handler_implementation_swap_is_detected_without_editing_source(self):
         tree = ast.parse(RFQ_SOURCE.read_text(encoding="utf-8"))
@@ -234,12 +329,6 @@ class RfqDuplicateRouteCharacterizationTests(unittest.TestCase):
             for node in mutated.body
             if isinstance(node, ast.FunctionDef)
             and node.name == "delete_rfq_position"
-            and any(
-                isinstance(decorator, ast.Call)
-                and isinstance(decorator.func, ast.Attribute)
-                and decorator.func.attr == "delete"
-                for decorator in node.decorator_list
-            )
         ]
         self.assertEqual(len(delete_nodes), 3)
         delete_nodes[0].args, delete_nodes[1].args = (
@@ -252,14 +341,24 @@ class RfqDuplicateRouteCharacterizationTests(unittest.TestCase):
         )
 
         with self.assertRaises(AssertionError):
-            _assert_known_duplicate_registrations(_source_registrations(mutated))
+            _assert_source_handler_definitions(_source_handler_definitions(mutated))
 
-    def test_isolated_fastapi_registration_dispatches_first_and_openapi_keeps_last_identity(self):
+    def test_reintroduced_second_delete_decorator_is_rejected_in_memory(self):
+        mutated = ast.parse(RFQ_SOURCE.read_text(encoding="utf-8"))
+        delete_nodes = [
+            node for node in mutated.body
+            if isinstance(node, ast.FunctionDef) and node.name == "delete_rfq_position"
+        ]
+        delete_nodes[1].decorator_list.append(copy.deepcopy(_delete_decorator(delete_nodes[0])))
+        with self.assertRaises(AssertionError):
+            _assert_registered_route_identities(_source_registrations(mutated))
+
+    def test_isolated_fastapi_registration_dispatches_the_registered_identity(self):
         """Route matching is isolated; this suite intentionally does not open ASGI sockets."""
-        for method, path in KNOWN_DUPLICATE_ROUTES:
+        for method, path in KNOWN_REGISTERED_ROUTE_IDENTITIES:
             with self.subTest(method=method, path=path):
                 app = FastAPI()
-                registrations = _duplicate_registrations_for_key((method, path))
+                registrations = _registered_routes_for_key((method, path))
                 stubs = [
                     _named_stub(registration.name, registration.identity.label())
                     for registration in registrations
@@ -305,8 +404,14 @@ class RfqDuplicateRouteCharacterizationTests(unittest.TestCase):
                     registrations[0].identity.label(),
                 )
 
-                with self.assertWarnsRegex(UserWarning, "Duplicate Operation ID"):
-                    schema = app.openapi()
+                if len(routes) == 1:
+                    with warnings.catch_warnings(record=True) as captured:
+                        warnings.simplefilter("always")
+                        schema = app.openapi()
+                    self.assertFalse(captured)
+                else:
+                    with self.assertWarnsRegex(UserWarning, "Duplicate Operation ID"):
+                        schema = app.openapi()
                 operation = schema["paths"][path][method.lower()]
                 self.assertEqual(operation["operationId"], routes[-1].unique_id)
                 self.assertEqual(

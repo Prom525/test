@@ -31,7 +31,7 @@ _EXCLUDED = {
 }
 
 _PROBE = r'''
-import inspect, json, re, socket, traceback, warnings
+import ast, inspect, json, re, socket, traceback, warnings
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -110,7 +110,7 @@ with (
         ["-q", "tests/test_route_uniqueness.py"], plugins=[route_uniqueness]
     ))
     assert route_uniqueness_exit_code == 0, route_uniqueness_exit_code
-    assert route_uniqueness.total == route_uniqueness.passed == 5
+    assert route_uniqueness.total == route_uniqueness.passed == 6
     assert route_uniqueness.failed == route_uniqueness.skipped == 0
 
 operations = {
@@ -153,8 +153,7 @@ for path, expected in expected_assistants.items():
     assert (routes[0].endpoint.__module__, routes[0].endpoint.__name__) == expected
 
 rfq_expectations = {
-    ("DELETE", "/analysis/rfq/{rfq_id}/positions/{position_id}"): 3,
-    ("GET", "/analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf"): 2,
+     ("GET", "/analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf"): 2,
 }
 for key, count in rfq_expectations.items():
     routes = registrations[key]
@@ -166,28 +165,51 @@ for key, count in rfq_expectations.items():
     matched = [route for route in routes if route.matches(scope)[0] is Match.FULL]
     assert matched and matched[0] is routes[0]
 
-# The real DELETE duplicates differ: only the first has deleted_by. Last wins.
+# The real DELETE is registered once from the first definition.  Python still
+# binds the module name to the final, deliberately undecorated definition.
 delete_key = ("DELETE", "/analysis/rfq/{rfq_id}/positions/{position_id}")
 delete_routes = schema_registrations[delete_key]
+assert len(delete_routes) == 1
 schema_parameters = [item["name"] for item in operations[delete_key].get("parameters", [])]
-last_parameters = [item.name for item in (*delete_routes[-1].dependant.path_params, *delete_routes[-1].dependant.query_params)]
-first_parameters = [item.name for item in (*delete_routes[0].dependant.path_params, *delete_routes[0].dependant.query_params)]
-assert schema_parameters == last_parameters
-try:
-    assert schema_parameters == first_parameters
-except AssertionError:
-    first_delete_metadata_rejected = True
-else:
-    raise AssertionError("first DELETE metadata unexpectedly matched schema")
+registered_parameters = [item.name for item in (*delete_routes[0].dependant.path_params, *delete_routes[0].dependant.query_params)]
+assert schema_parameters == registered_parameters == ["rfq_id", "position_id", "deleted_by"]
+delete_operation = operations[delete_key]
+assert delete_operation["operationId"] == delete_routes[0].unique_id
+assert delete_operation["summary"] == "Delete Rfq Position"
+assert set(delete_operation["responses"]) == {"200", "422"}
+deleted_by_parameter = next(item for item in delete_operation["parameters"] if item["name"] == "deleted_by")
+assert deleted_by_parameter["required"] is False
+assert deleted_by_parameter["schema"]["default"] == "DEV_TEST"
 
 # Exercise the real first registered RFQ endpoint in-process.  This remains
 # inside the Docker-attested process: TestClient uses ASGI transport, not a
 # listening socket, and the domain helpers are replaced before every request.
 rfq_module = __import__("app.routers.rfq_api", fromlist=["delete_rfq_position"])
-first_delete_route, last_delete_route = delete_routes[0], delete_routes[-1]
-assert first_delete_route.endpoint is not rfq_module.delete_rfq_position
-assert last_delete_route.endpoint is rfq_module.delete_rfq_position
-assert first_delete_route.endpoint.__module__ == rfq_module.__name__
+registered_delete_route = delete_routes[0]
+source_tree = ast.parse(inspect.getsource(rfq_module))
+source_delete_nodes = [
+     node for node in source_tree.body
+     if isinstance(node, ast.FunctionDef) and node.name == "delete_rfq_position"
+]
+assert len(source_delete_nodes) == 3
+source_delete_decorator_counts = [
+     sum(
+         isinstance(decorator, ast.Call)
+         and isinstance(decorator.func, ast.Attribute)
+         and isinstance(decorator.func.value, ast.Name)
+         and decorator.func.value.id == "router"
+         and decorator.func.attr == "delete"
+         and decorator.args
+         and isinstance(decorator.args[0], ast.Constant)
+         and decorator.args[0].value == "/{rfq_id}/positions/{position_id}"
+         for decorator in node.decorator_list
+     )
+     for node in source_delete_nodes
+]
+assert source_delete_decorator_counts == [1, 0, 0]
+assert registered_delete_route.endpoint.__code__.co_firstlineno == source_delete_nodes[0].decorator_list[0].lineno
+assert registered_delete_route.endpoint is not rfq_module.delete_rfq_position
+assert rfq_module.delete_rfq_position.__code__.co_firstlineno == source_delete_nodes[-1].lineno
 
 rfq_path = "/analysis/rfq/rfq-synthetic/positions/position-synthetic"
 rfq_position = {
@@ -348,9 +370,14 @@ with (
 assert missing_path_response.status_code == 404
 assert invalid_path_calls == []
 rfq_delete_contract = {
-    "first_handler_differs_from_module_symbol": first_delete_route.endpoint is not rfq_module.delete_rfq_position,
-    "openapi_metadata_uses_last_handler": schema_parameters == last_parameters,
-    "first_handler_metadata_rejected_by_openapi": first_delete_metadata_rejected,
+    "registered_handler_is_first_source": registered_delete_route.endpoint.__code__.co_firstlineno == source_delete_nodes[0].decorator_list[0].lineno,
+     "module_symbol_is_undecorated_third_source": rfq_module.delete_rfq_position.__code__.co_firstlineno == source_delete_nodes[-1].lineno,
+     "openapi_metadata_uses_registered_first_handler": schema_parameters == registered_parameters,
+     "openapi_parameters": schema_parameters,
+     "openapi_deleted_by_default": deleted_by_parameter["schema"]["default"],
+     "openapi_response_codes": sorted(delete_operation["responses"]),
+     "openapi_operation_id": delete_operation["operationId"],
+     "openapi_summary": delete_operation["summary"],
     "success_actors": success_actors,
     "missing_position_status": 404,
     "failure_sequences": failure_sequences,
@@ -447,8 +474,7 @@ print("MAIN_OPENAPI_PROBE=" + json.dumps({
         "exit_code": route_uniqueness_exit_code,
     },
     "guard_probe_counts": {key: len(value) for key, value in guard_probe_attempts.items()},
-    "first_delete_metadata_rejected": first_delete_metadata_rejected,
-    "rfq_delete_contract": rfq_delete_contract,
+     "rfq_delete_contract": rfq_delete_contract,
     "marker_first_metadata_rejected": marker_first_metadata_rejected,
 }, sort_keys=True))
 '''
@@ -543,22 +569,19 @@ print(json.dumps({
         marker = next((line for line in completed.stdout.splitlines() if line.startswith("MAIN_OPENAPI_PROBE=")), None)
         self.assertIsNotNone(marker, "isolated OpenAPI probe did not emit a summary")
         summary = json.loads(marker.removeprefix("MAIN_OPENAPI_PROBE="))
-        self.assertEqual(summary["api_route_registrations"], 282)
+        self.assertEqual(summary["api_route_registrations"], 280)
         self.assertEqual(summary["unique_method_paths"], 279)
         self.assertEqual(summary["schema_paths"], 264)
         self.assertEqual(summary["schema_operations"], 272)
         self.assertEqual({tuple(item) for item in summary["schema_excluded_method_paths"]}, _EXCLUDED)
         self.assertEqual(summary["duplicate_method_path_counts"], {
-            "DELETE /analysis/rfq/{rfq_id}/positions/{position_id}": 3,
-            "GET /analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf": 2,
-        })
+             "GET /analysis/rfq/{rfq_id}/positions/{position_id}/datasheet/pdf": 2,
+         })
         self.assertEqual(summary["operation_id_collision_counts"], {
-            "delete_rfq_position_analysis_rfq__rfq_id__positions__position_id__delete": 3,
-            "get_rfq_position_datasheet_pdf_analysis_rfq__rfq_id__positions__position_id__datasheet_pdf_get": 2,
-        })
+             "get_rfq_position_datasheet_pdf_analysis_rfq__rfq_id__positions__position_id__datasheet_pdf_get": 2,
+         })
         self.assertEqual(summary["warning_operation_id_counts"], {
-            "delete_rfq_position_analysis_rfq__rfq_id__positions__position_id__delete": 2,
-            "get_rfq_position_datasheet_pdf_analysis_rfq__rfq_id__positions__position_id__datasheet_pdf_get": 1,
+             "get_rfq_position_datasheet_pdf_analysis_rfq__rfq_id__positions__position_id__datasheet_pdf_get": 1,
         })
         self.assertTrue(summary["schema_operation_ids_unique"])
         self.assertEqual(summary["ddl_calls_blocked"], [{"bind_type": "Engine"}])
@@ -568,16 +591,20 @@ print(json.dumps({
         self.assertEqual(summary["minio_bucket_checks"], ["synthetic-files"])
         self.assertEqual(summary["minio_make_bucket_attempts"], [])
         self.assertEqual(summary["route_uniqueness"], {
-            "total": 5, "passed": 5, "failed": 0, "skipped": 0, "exit_code": 0,
+             "total": 6, "passed": 6, "failed": 0, "skipped": 0, "exit_code": 0,
         })
         self.assertEqual(summary["guard_probe_counts"], {
             "network": 2, "database": 2, "make_bucket": 1,
         })
-        self.assertTrue(summary["first_delete_metadata_rejected"])
         self.assertEqual(summary["rfq_delete_contract"], {
-            "first_handler_differs_from_module_symbol": True,
-            "openapi_metadata_uses_last_handler": True,
-            "first_handler_metadata_rejected_by_openapi": True,
+             "registered_handler_is_first_source": True,
+             "module_symbol_is_undecorated_third_source": True,
+             "openapi_metadata_uses_registered_first_handler": True,
+             "openapi_parameters": ["rfq_id", "position_id", "deleted_by"],
+             "openapi_deleted_by_default": "DEV_TEST",
+             "openapi_response_codes": ["200", "422"],
+             "openapi_operation_id": "delete_rfq_position_analysis_rfq__rfq_id__positions__position_id__delete",
+             "openapi_summary": "Delete Rfq Position",
             "success_actors": ["DEV_TEST", "explicit-actor", ""],
             "missing_position_status": 404,
             "failure_sequences": {

@@ -4679,7 +4679,6 @@ def confirm_duplicate_cleanup(
         "write_actions_available": True,
     }
 
-@router.delete("/{rfq_id}/positions/{position_id}")
 def delete_rfq_position(
     rfq_id: str,
     position_id: str,
@@ -5456,7 +5455,6 @@ def get_rfq_positions(rfq_id: str):
     return {"intent": "rfq_positions", "rfq_id": rfq_id, "positions": fetch_all("SELECT * FROM rfq.position WHERE rfq_id = :rfq_id ORDER BY pos_nr", {"rfq_id": rfq_id})}
 
 
-@router.delete("/{rfq_id}/positions/{position_id}")
 def delete_rfq_position(rfq_id: str, position_id: str):
     deleted = execute_one(
         """DELETE FROM rfq.position WHERE rfq_id = :rfq_id AND position_id = :position_id RETURNING *""",
