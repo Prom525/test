@@ -918,6 +918,22 @@ def detect_band_code(
         ):
             continue
 
+        # "de 3 mm" is a Dutch measurement phrase, not the band
+        # candidate DE3. Keep this guard in the standalone path and
+        # require the unit directly after the candidate: explicit
+        # forms such as "band DE 3" and standalone "DE 3" therefore
+        # retain their existing code semantics.
+        if (
+            has_separator
+            and raw_prefix == "DE"
+            and re.match(
+                r"\s*(?:mm|millimeters?)\b",
+                q[match.end():],
+                re.IGNORECASE,
+            )
+        ):
+            continue
+
         # Een losse V+nummer-kandidaat in software-/versiecontext
         # is gÃ©Ã©n bandcode.
         #

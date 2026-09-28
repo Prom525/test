@@ -10,7 +10,7 @@
     },
     {
       "id": "GSL_3MM_FALSE_DE3",
-      "current_observed": {"false_band_candidate": "DE3", "threshold_entity": null, "clarification_required": true},
+      "current_observed": {"false_band_candidate": null, "threshold_entity": null, "clarification_required": true},
       "desired_future": {"false_band_candidate": null, "threshold_mm": 3.0, "scope": "GSL"},
       "removal_condition": "Remove after every documented threshold spelling grounds a threshold and never DE3."
     },

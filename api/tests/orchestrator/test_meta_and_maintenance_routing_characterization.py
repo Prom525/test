@@ -40,17 +40,19 @@ def test_business_inspection_questions_remain_separate(question):
     assert "inspection" in [_value(item) for item in plan.domains]
 
 
-@pytest.mark.parametrize(("phrase", "blockers"), [
-    ("3 mm", []), ("de 3 mm", ["DE3"]), ("rond de 3mm", []),
-    ("drie millimeter", []), ("op of onder 3 mm", []),
+@pytest.mark.parametrize("phrase", [
+    "3mm", "de3mm", "de 3 mm", "rond de 3mm", "drie millimeter", "op of onder 3 mm",
 ])
-def test_gsl_threshold_variants_lock_current_false_de3_gap(phrase, blockers):
+def test_gsl_threshold_variants_remain_unrouted_without_false_band_candidates(phrase):
     plan = understand_query(f"toon GSL schrapers {phrase} vervanggrens")
     assert [_value(item) for item in plan.domains] == []
     assert plan.intent == "unknown"
     assert plan.clarification_required is True
     assert "band_code" not in plan.entities
-    assert [item.candidate_value for item in plan.execution_blockers] == blockers
+    assert "threshold" not in plan.entities
+    assert "meshoogte_threshold" not in plan.entities
+    assert plan.execution_blockers == []
+    assert plan.execution_steps == []
 
 
 def test_real_band_a319_survives_next_to_threshold_without_threshold_entity():
@@ -76,6 +78,9 @@ def test_future_contracts_are_machine_readable_and_not_implemented():
     ids = {gap["id"] for gap in gaps["gaps"]}
     assert {"META_QUESTIONS_NOT_DEVELOPMENT_CLASS", "GSL_3MM_FALSE_DE3",
             "MAINTENANCE_FALSE_DOMAIN_EXPANSION", "MAINTENANCE_CAPABILITY_CONTRACT"} <= ids
+    gsl_3mm = next(g for g in gaps["gaps"] if g["id"] == "GSL_3MM_FALSE_DE3")
+    assert gsl_3mm["current_observed"]["false_band_candidate"] is None
+    assert gsl_3mm["current_observed"]["threshold_entity"] is None
     capability = next(g for g in gaps["gaps"] if g["id"] == "MAINTENANCE_CAPABILITY_CONTRACT")
     assert capability["desired_future"]["capability_id"] == "analysis.maintenance_positions.v1"
     assert capability["desired_future"]["public_projection"] == "maintenance_position_public_list_v1"

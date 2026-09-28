@@ -16,7 +16,7 @@ def _value(value):
     return getattr(value, "value", value)
 
 
-def test_gsl_3mm_current_observed_behavior_is_locked():
+def test_gsl_3mm_lexical_fix_preserves_safe_clarification():
     plan = build_execution_plan(apply_routing_sanity(understand_query(QUESTION)))
     assert _value(plan.query_class) == "business"
     assert [_value(item) for item in plan.domains] == []
@@ -26,15 +26,22 @@ def test_gsl_3mm_current_observed_behavior_is_locked():
     assert plan.execution_steps == []
     assert "band_code" not in plan.entities
     assert plan.clarification_required is True
-    assert plan.execution_blockers[0].candidate_value == "DE3"
-    assert "DE3" in (plan.clarification_question or "")
+    assert plan.execution_blockers == []
+    assert plan.clarification_question == (
+        "Kun je aangeven of je informatie zoekt over een product, inspectie, "
+        "technische vraag, RFQ of organisatie?"
+    )
 
 
 def test_gsl_3mm_gap_registration_distinguishes_current_and_desired():
     gap = json.loads(GAP.read_text(encoding="utf-8"))
     assert gap["classification"] == "known_baseline_gap"
-    assert gap["current_observed"]["false_band_candidate"] == "DE3"
+    assert gap["current_observed"]["false_band_candidate"] is None
     assert gap["current_observed"]["action"] is None
+    assert gap["current_observed"]["clarification_question"] == (
+        "Kun je aangeven of je informatie zoekt over een product, inspectie, "
+        "technische vraag, RFQ of organisatie?"
+    )
     assert gap["current_observed"]["public_answer_detail_rows"] is False
     assert gap["desired_future"]["action"] == "analysis_maintenance_positions"
     assert gap["desired_future"]["endpoint"] == "/analysis/maintenance/positions"

@@ -45,5 +45,29 @@ def test_real_band_codes_remain_intact():
 
 
 def test_existing_compact_letter_digit_codes_remain_intact():
-    for code in ("B12", "R5", "E950", "MV1"):
+    for code in ("B12", "R5", "E950", "MV1", "DE3"):
         assert detect_band_code(code).value == code
+
+
+def test_existing_separated_and_explicit_band_codes_remain_intact():
+    for question, expected in (
+        ("R 5", "R5"),
+        ("R-5", "R5"),
+        ("DE 3", "DE3"),
+        ("band DE3", "DE3"),
+        ("band DE 3", "DE3"),
+    ):
+        assert detect_band_code(question).value == expected
+
+
+def test_dutch_measurement_phrase_is_not_a_standalone_band_code():
+    for question in ("3mm", "de3mm", "de 3 mm", "rond de 3 mm"):
+        assert detect_band_code(question) is None
+
+
+def test_measurement_does_not_mask_real_band_code_before_or_after():
+    for question in (
+        "de 3 mm voor A319",
+        "A319 na de 3 mm",
+    ):
+        assert detect_band_code(question).value == "A319"
