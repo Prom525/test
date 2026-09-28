@@ -33,12 +33,14 @@ _EXCLUDED = {
 _PROBE = r'''
 import inspect, json, re, socket, traceback, warnings
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from unittest.mock import patch
 from minio import Minio
 import psycopg2
 import pytest
 from fastapi import FastAPI, Query
 from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql.schema import MetaData
@@ -178,6 +180,183 @@ except AssertionError:
 else:
     raise AssertionError("first DELETE metadata unexpectedly matched schema")
 
+# Exercise the real first registered RFQ endpoint in-process.  This remains
+# inside the Docker-attested process: TestClient uses ASGI transport, not a
+# listening socket, and the domain helpers are replaced before every request.
+rfq_module = __import__("app.routers.rfq_api", fromlist=["delete_rfq_position"])
+first_delete_route, last_delete_route = delete_routes[0], delete_routes[-1]
+assert first_delete_route.endpoint is not rfq_module.delete_rfq_position
+assert last_delete_route.endpoint is rfq_module.delete_rfq_position
+assert first_delete_route.endpoint.__module__ == rfq_module.__name__
+
+rfq_path = "/analysis/rfq/rfq-synthetic/positions/position-synthetic"
+rfq_position = {
+    "position_id": "position-synthetic",
+    "pos_nr": 17,
+    "product_type": "synthetic-product",
+}
+
+def compact_sql(statement):
+    return " ".join(statement.split()).upper()
+
+LOOKUP_SQL = "SELECT * FROM RFQ.POSITION WHERE RFQ_ID = :RFQ_ID AND POSITION_ID = :POSITION_ID"
+DELETE_SQL = "DELETE FROM RFQ.POSITION WHERE RFQ_ID = :RFQ_ID AND POSITION_ID = :POSITION_ID RETURNING POSITION_ID"
+AUDIT_SQL = (
+    "INSERT INTO RFQ.DECISION_LOG ( RFQ_ID, STEP, USER_OVERRIDE, APPROVED_BY, APPROVED_AT ) "
+    "VALUES ( :RFQ_ID, 'POSITION_DELETED', CAST(:USER_OVERRIDE AS JSONB), :APPROVED_BY, NOW() ) "
+    "RETURNING DECISION_ID"
+)
+EXPECTED_POSITION_PARAMS = {"rfq_id": "rfq-synthetic", "position_id": "position-synthetic"}
+
+def sql_kind(statement, parameters):
+    normalized = compact_sql(statement)
+    values = dict(parameters)
+    if normalized == LOOKUP_SQL and values == EXPECTED_POSITION_PARAMS:
+        return "lookup"
+    if normalized == DELETE_SQL and values == EXPECTED_POSITION_PARAMS:
+        return "delete"
+    if normalized == AUDIT_SQL and set(values) == {"rfq_id", "user_override", "approved_by"}:
+        return "audit"
+    return None
+
+# Keep these mutations in memory: each must be rejected by the same fail-closed
+# predicate used by the database doubles below.
+assert sql_kind(LOOKUP_SQL.replace("RFQ.POSITION", "RFQ.REQUEST"), EXPECTED_POSITION_PARAMS) is None
+assert sql_kind(LOOKUP_SQL.replace("RFQ_ID = :RFQ_ID AND ", ""), EXPECTED_POSITION_PARAMS) is None
+assert sql_kind(DELETE_SQL.replace(" AND POSITION_ID = :POSITION_ID", ""), EXPECTED_POSITION_PARAMS) is None
+assert sql_kind(AUDIT_SQL.replace("POSITION_DELETED", "POSITION_CREATED"), {
+    "rfq_id": "rfq-synthetic", "user_override": "{}", "approved_by": "synthetic",
+}) is None
+
+@contextmanager
+def rfq_request_guards():
+    with (
+        patch.object(socket.socket, "connect", deny_network),
+        patch.object(socket, "create_connection", deny_network),
+        patch.object(psycopg2, "connect", deny_database),
+        patch.object(Engine, "connect", deny_database),
+        patch.object(Minio, "make_bucket", deny_make_bucket),
+    ):
+        yield
+
+def exercise_rfq_delete(*, deleted_by=None, missing=False, failing_helper=None):
+    calls = []
+    unexpected_sql = []
+    def fail_closed(statement, parameters):
+        kind = sql_kind(statement, parameters)
+        if kind is None:
+            unexpected_sql.append({"statement": compact_sql(statement), "parameters": dict(parameters)})
+            raise AssertionError("unexpected RFQ DELETE SQL")
+        return kind
+    def lookup(statement, parameters):
+        assert fail_closed(statement, parameters) == "lookup"
+        calls.append(("lookup", statement, dict(parameters)))
+        if failing_helper == "lookup":
+            raise RuntimeError("synthetic lookup failure")
+        return None if missing else dict(rfq_position)
+    def write(statement, parameters):
+        call = fail_closed(statement, parameters)
+        assert call in {"delete", "audit"}
+        calls.append((call, statement, dict(parameters)))
+        if failing_helper == call:
+            raise RuntimeError(f"synthetic {call} failure")
+        # Current behavior deliberately ignores this DELETE RETURNING result.
+        return None if call == "delete" else {"decision_id": "synthetic-decision"}
+    def workflow(rfq_id):
+        calls.append(("workflow", rfq_id))
+        if failing_helper == "workflow":
+            raise RuntimeError("synthetic workflow failure")
+    request_kwargs = {} if deleted_by is None else {"params": {"deleted_by": deleted_by}}
+    with (
+        patch.object(rfq_module, "fetch_one", lookup),
+        patch.object(rfq_module, "execute_one", write),
+        patch.object(rfq_module, "update_rfq_workflow_status", workflow),
+        rfq_request_guards(),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        try:
+            response = client.delete(rfq_path, **request_kwargs)
+        finally:
+            client.close()
+    assert not unexpected_sql, unexpected_sql
+    return response, calls
+
+success_actors = []
+for actor in (None, "explicit-actor", ""):
+    response, calls = exercise_rfq_delete(deleted_by=actor)
+    expected_actor = "DEV_TEST" if actor is None else actor
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "status": "ok",
+        "rfq_id": "rfq-synthetic",
+        "deleted_position_id": "position-synthetic",
+        "write_actions_available": True,
+    }
+    assert [call[0] for call in calls] == ["lookup", "delete", "audit", "workflow"]
+    lookup, deletion, audit, workflow = calls
+    assert lookup[2] == {"rfq_id": "rfq-synthetic", "position_id": "position-synthetic"}
+    assert deletion[2] == lookup[2]
+    assert compact_sql(lookup[1]) == LOOKUP_SQL
+    assert compact_sql(deletion[1]) == DELETE_SQL
+    assert compact_sql(audit[1]) == AUDIT_SQL
+    assert audit[2]["rfq_id"] == "rfq-synthetic"
+    assert audit[2]["approved_by"] == expected_actor
+    assert json.loads(audit[2]["user_override"]) == {
+        "position_id": "position-synthetic",
+        "pos_nr": 17,
+        "product_type": "synthetic-product",
+        "reason": "Testfase positie verwijderd",
+    }
+    assert workflow == ("workflow", "rfq-synthetic")
+    success_actors.append(expected_actor)
+
+response, calls = exercise_rfq_delete(missing=True)
+assert response.status_code == 404
+assert response.json() == {"detail": "RFQ position not found"}
+assert [call[0] for call in calls] == ["lookup"]
+
+failure_sequences = {}
+for helper, expected_calls in (
+    ("lookup", ["lookup"]),
+    ("delete", ["lookup", "delete"]),
+    ("audit", ["lookup", "delete", "audit"]),
+    ("workflow", ["lookup", "delete", "audit", "workflow"]),
+):
+    response, calls = exercise_rfq_delete(failing_helper=helper)
+    assert response.status_code == 500, response.text
+    assert response.text == "Internal Server Error"
+    assert [call[0] for call in calls] == expected_calls
+    failure_sequences[helper] = expected_calls
+
+invalid_path_calls = []
+def unexpected_domain_call(*args, **kwargs):
+    invalid_path_calls.append((args, kwargs))
+    raise AssertionError("invalid path invoked RFQ domain helper")
+with (
+    patch.object(rfq_module, "fetch_one", unexpected_domain_call),
+    patch.object(rfq_module, "execute_one", unexpected_domain_call),
+    patch.object(rfq_module, "update_rfq_workflow_status", unexpected_domain_call),
+    rfq_request_guards(),
+):
+    client = TestClient(app, raise_server_exceptions=False)
+    try:
+        missing_path_response = client.delete(
+            "/analysis/rfq/rfq-synthetic/positions/position-synthetic/unexpected"
+        )
+    finally:
+        client.close()
+assert missing_path_response.status_code == 404
+assert invalid_path_calls == []
+rfq_delete_contract = {
+    "first_handler_differs_from_module_symbol": first_delete_route.endpoint is not rfq_module.delete_rfq_position,
+    "openapi_metadata_uses_last_handler": schema_parameters == last_parameters,
+    "first_handler_metadata_rejected_by_openapi": first_delete_metadata_rejected,
+    "success_actors": success_actors,
+    "missing_position_status": 404,
+    "failure_sequences": failure_sequences,
+    "delete_return_ignored": True,
+}
+
 # Independent, in-memory marker proof after untouched real schema baseline.
 app.openapi_schema = None
 marker_app = FastAPI()
@@ -269,6 +448,7 @@ print("MAIN_OPENAPI_PROBE=" + json.dumps({
     },
     "guard_probe_counts": {key: len(value) for key, value in guard_probe_attempts.items()},
     "first_delete_metadata_rejected": first_delete_metadata_rejected,
+    "rfq_delete_contract": rfq_delete_contract,
     "marker_first_metadata_rejected": marker_first_metadata_rejected,
 }, sort_keys=True))
 '''
@@ -352,7 +532,14 @@ print(json.dumps({
             [sys.executable, "-c", _PROBE], check=False, capture_output=True, text=True,
             env=_synthetic_probe_environment(), cwd=Path.cwd(), timeout=60,
         )
-        self.assertEqual(completed.returncode, 0, "isolated OpenAPI probe failed")
+        self.assertEqual(
+            completed.returncode,
+            0,
+            "isolated OpenAPI probe failed\nstdout:\n"
+            + completed.stdout
+            + "\nstderr:\n"
+            + completed.stderr,
+        )
         marker = next((line for line in completed.stdout.splitlines() if line.startswith("MAIN_OPENAPI_PROBE=")), None)
         self.assertIsNotNone(marker, "isolated OpenAPI probe did not emit a summary")
         summary = json.loads(marker.removeprefix("MAIN_OPENAPI_PROBE="))
@@ -387,6 +574,20 @@ print(json.dumps({
             "network": 2, "database": 2, "make_bucket": 1,
         })
         self.assertTrue(summary["first_delete_metadata_rejected"])
+        self.assertEqual(summary["rfq_delete_contract"], {
+            "first_handler_differs_from_module_symbol": True,
+            "openapi_metadata_uses_last_handler": True,
+            "first_handler_metadata_rejected_by_openapi": True,
+            "success_actors": ["DEV_TEST", "explicit-actor", ""],
+            "missing_position_status": 404,
+            "failure_sequences": {
+                "lookup": ["lookup"],
+                "delete": ["lookup", "delete"],
+                "audit": ["lookup", "delete", "audit"],
+                "workflow": ["lookup", "delete", "audit", "workflow"],
+            },
+            "delete_return_ignored": True,
+        })
         self.assertTrue(summary["marker_first_metadata_rejected"])
         print(json.dumps(summary, sort_keys=True))
 
