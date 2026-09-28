@@ -2,6 +2,43 @@
 
 ## Besluit
 
+### Afsluitende fase-4-audit (4G2F, commit `da6211e`)
+
+De 4G2E-extractie van de gekarakteriseerde `band_deep_analysis`-presenter is
+op de actuele, schone checkout `da6211e131ffc012da973c653ce095ba5948d19c`
+statisch geaudit. `_build_user_answer` is nu `service.py:1613-1939` en is
+hoofdzakelijk dispatcher: het doet asset-prescan/first-match, bouwt de
+identiteitsheader, normaliseert requested information en routeert de
+assetleaves in de onveranderde volgorde
+`inspection_summary -> lifecycle -> maintenance_positions ->
+band_deep_analysis`. De vier calls staan ieder eenmaal in deze grens
+(`service.py:1728`, `:1749`, `:1772`, `:1799`) en iedere niet-`None`-answer
+keert onmiddellijk terug; exacte `None` houdt de bestaande fallthrough in
+stand.
+
+De grote deep-analysispresentatie staat uitsluitend in de dependencyvrije leaf
+`asset_band_deep_analysis_answer_stage.py:12-919`; de dispatcher bezit daar
+geen deep-analysislocals of gedupliceerd presenterblok meer. De leaf behoudt
+de frozen one-field result en kopieert de immutable header-snapshot vóór
+uitbreiding. Het bestaande direct-stage-, service-integratie- en
+characterizationbewijs dekt selectie, first-match, routevolgorde, unieke
+callsite, header/identity, exact-`None` fallthrough en propagatie.
+
+De kleine generieke assetfallback blijft bewust service-owned:
+`service.py:1703-1716` en `:1809-1817` selecteren de eerste asset, maken de
+header en leveren na een niet-renderbare/niet-geselecteerde leaf exact
+`message -> kort_resultaat -> header-only`, met de historische truthiness en
+stringificatie. Dit is expliciet geen resterende phase-4-extractie; kleine
+niet-string/falsy-matrixgaten zijn slechts toekomstig testonderhoud.
+
+Fase 4 is hiermee afgesloten als presenter-routingaudit, niet als algemene
+orchestrator- of endpointvoltooiing. Statisch bewijs en de bestaande nameset-
+regressie tonen geen correcte verwerking van nieuwe live-data, actuele
+endpointdekking of volledig groene suite aan. De volgende afzonderlijke fase is alleen
+endpointinventarisatie/actualiteit en relatie tot
+orchestrator-capabilities; zij implementeert geen router, endpoint of
+multi-intentgedrag.
+
 ### Gerealiseerde research-context shadow-/call-guard shadowgrens (opdracht 3J2)
 
 De bestaande research-context- en research-call-guard-shadowzones staan nu
@@ -259,7 +296,7 @@ Alle drie servicewrappers en de compact-boundary repair omzeilen de authorityket
 
 ## Serviceverantwoordelijkheden en mutaties
 
-`service.py` telt 9.569 regels en bevat observabilityhelpers, serialisatie, legacy presenters, evidencepipeline-integratie, task-shadows/canaries, researchguards, uitvoering, CP9-CP15, responsebouw en drie repairs. `_build_user_answer` alleen beslaat regels 1862-4718 en bevat domeinpresentatie voor product, inspection/latest/lifecycle/maintenance/replacement, technical, RFQ, ORG en diagnostics.
+`service.py` telt op de 4G2F-auditbasis 6.066 regels en bevat observabilityhelpers, serialisatie, legacy presenters, evidencepipeline-integratie, task-shadows/canaries, researchguards, uitvoering, CP9-CP15, responsebouw en drie repairs. `_build_user_answer` beslaat nu regels 1613-1939 en is na de fase-4-extracties hoofdzakelijk dispatcher met de kleine service-owned assetfallback.
 
 Belangrijke `answer`-mutaties zijn: legacy presenter; planresearch override; mojibake repair; oudere public-composition canary; P4.6F candidate; CP9- en CP10-herstel naar `legacy_answer_before_public_composition_canary`; CP11 presenter; CP12 composer; CP3C replacement; CP4B setter; CP4F setter; compact-boundary MV1 repair; tweede CP12-call. `final_answer` en `antwoord` bestaan niet in de core response, maar CP4B/CP4F houden ze synchroon wanneer een legacy/nested response ze al bevat.
 
@@ -328,7 +365,7 @@ De Docker testcontext is de hele map `api` omdat `.dockerignore` effectief leeg/
 
 | Bronbevinding | Status in huidige code | Bewijs |
 | --- | --- | --- |
-| `service.py` is de grootste risicoknoop | Nog actueel | 9.569 regels; pipeline, presentatie en repairs in één module |
+| `service.py` is de grootste risicoknoop | Nog actueel | 6.066 regels; pipeline, routing, presentatie en repairs in één module |
 | Legacy MV1-repairs zitten in public path | Nog actueel | CP3C, CP4B, CP4F en response-shaping repair |
 | Shadow/canary en beperkte authority zijn moeilijk te onderscheiden | Deels opgelost | Contractvelden en CP9-CP15 bestaan, maar flags/wrappers blijven verspreid |
 | Execution acceptance is breed fail-open | Nog actueel | legacy `_is_accepted`; typed acceptance compatibilitybreed |
@@ -574,4 +611,7 @@ legacy-mojibake. Niet-`None` keert direct terug en exact `None` behoudt de
 bestaande fallthrough naar `band_deep_analysis` en de generieke assetfallback.
 Requested-information-normalisatie, assetprescan en eerste-match/break,
 context/entities/result-text, beide `_display_name_code`-calls, headeropbouw,
-selectors en routevolgorde blijven in `service.py`.
+selectors en routevolgorde blijven in `service.py`. Deze 4G2D-notitie is
+historisch: 4G2E heeft de daaropvolgende `band_deep_analysis`-presenter daarna
+naar zijn eigen leaf verplaatst; alleen de generieke assetfallback blijft in
+de service.
