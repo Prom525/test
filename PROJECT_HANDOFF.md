@@ -1,5 +1,12 @@
 # PROJECT HANDOFF — orchestrator fase 4
 
+## Werkboomstatus — blade-height-filtergrens (basis `5ba81073`, review vereist)
+
+- Deze geïsoleerde werkboom bevat een niet-gecommitteerde, beperkte productieaansluiting van de bestaande pure meshoogteparser/-beslissing. Alleen een expliciete resultaatselectie met een door de bestaande resolver geleverde én intern coherente area/installatie-scope stopt vóór generieke planning, specialist- en researchcalls en retourneert top-level `status: "unsupported"` met de begrensde melding dat filteren voor die scope nog niet wordt ondersteund.
+- Bestaande blockers en scopeclarificaties behouden voorrang; ongeldige predicate, ontbrekende of tegenstrijdige scope en multi-intent krijgen een begrijpelijke Nederlandse clarification. Onvolledige en niet-eindige predicates worden bewust aan de parser aangeboden; uitleg- en citaatvragen blijven legacy. De bestaande classifier herkent niet iedere combinatie van filter met slijtage-uitleg als multi-intent; de boundary behoudt die combinatie daarom lokaal via clarification, zonder een component uit te voeren.
+- De parser/decision, backendcontract, endpoints en QueryPlan/schema zijn niet gewijzigd; interne parser/decisiondata wordt niet geserialiseerd. De bestaande publieke QueryPlan-clarificationvelden worden op boundary-antwoorden met de top-level clarification gesynchroniseerd.
+- Geen commit, push, deployment, Docker of databaseactie uitgevoerd. Coördinatorreview vereist vóór een volgende mijlpaal.
+
 ## Actuele status (4G2F-audit, 2026-09-27)
 
 - Branch en geverifieerde basis: `feature/monteur-flow`, commit

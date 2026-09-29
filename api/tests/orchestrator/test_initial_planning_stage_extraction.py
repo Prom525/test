@@ -48,6 +48,9 @@ def _chain(*, fail_at=None):
         observability_call=observability,
         understand_query=understanding,
         apply_routing_sanity=routing,
+        assess_blade_height_filter_applicability=(
+            lambda _question, _plan: type("Boundary", (), {"short_circuit": False})()
+        ),
         assess_research_requirement=research,
         build_execution_plan=planning,
     )
@@ -57,11 +60,11 @@ def _chain(*, fail_at=None):
 def test_direct_stage_preserves_order_identity_labels_and_serialized_context():
     calls, plans, timings, kwargs = _chain()
     context = {"already": "serialized"}
-    result = initial_planning_stage.run_initial_planning_stage(
-        " question ", context, timings, **kwargs
+    stage_result = initial_planning_stage.run_initial_planning_stage(
+        " question ", context, timings, original_question=" raw question ", **kwargs
     )
 
-    assert result is plans[3]
+    assert stage_result.plan is plans[3]
     assert calls[0][1] == "understanding"
     assert calls[1] == ("understanding", " question ", context)
     assert calls[2] == ("routing", plans[0])
@@ -87,8 +90,36 @@ def test_direct_stage_preserves_order_identity_labels_and_serialized_context():
 def test_stage_propagates_each_exception_and_stops(fail_at, expected_steps):
     calls, _plans, timings, kwargs = _chain(fail_at=fail_at)
     with pytest.raises(LookupError, match=fail_at):
-        initial_planning_stage.run_initial_planning_stage("q", None, timings, **kwargs)
+        initial_planning_stage.run_initial_planning_stage(
+            "q", None, timings, original_question="q", **kwargs
+        )
     assert [call[0] for call in calls if call[0] != "timing"] == expected_steps
+
+
+def test_filter_boundary_stops_before_research_assessment_and_generic_planning():
+    calls, plans, timings, kwargs = _chain()
+    boundary = type("Boundary", (), {"short_circuit": True})()
+    kwargs["assess_blade_height_filter_applicability"] = (
+        lambda original_question, plan: (
+            calls.append(("blade_filter", original_question, plan)) or boundary
+        )
+    )
+
+    context = {"context": "serialized"}
+    result = initial_planning_stage.run_initial_planning_stage(
+        "trimmed", context, timings, original_question="raw  ", **kwargs
+    )
+
+    assert result.plan is plans[1]
+    assert result.blade_height_filter_boundary is boundary
+    assert calls == [
+        ("timing", "understanding", kwargs["understand_query"], ("trimmed",), {
+            "conversation_context": context
+        }),
+        ("understanding", "trimmed", context),
+        ("routing", plans[0]),
+        ("blade_filter", "raw  ", plans[1]),
+    ]
 
 
 def test_service_runtime_lookup_and_execute_order(monkeypatch):
@@ -108,6 +139,10 @@ def test_service_runtime_lookup_and_execute_order(monkeypatch):
         calls.append(("route", plan))
         return plans[1]
 
+    def blade_filter(original_question, plan):
+        calls.append(("blade_filter", original_question, plan))
+        return type("Boundary", (), {"short_circuit": False})()
+
     def assess(plan):
         calls.append(("assess", plan))
         return plans[2]
@@ -118,6 +153,7 @@ def test_service_runtime_lookup_and_execute_order(monkeypatch):
 
     monkeypatch.setattr(service, "understand_query", understand)
     monkeypatch.setattr(service, "apply_routing_sanity", route)
+    monkeypatch.setattr(service, "assess_blade_height_filter_applicability", blade_filter)
     monkeypatch.setattr(service, "assess_research_requirement", assess)
     monkeypatch.setattr(service, "build_execution_plan", build)
     monkeypatch.setattr(
@@ -137,17 +173,18 @@ def test_service_runtime_lookup_and_execute_order(monkeypatch):
     payload = OrchestratorAskRequest(q="  selected  ", vraag="ignored")
     with pytest.raises(RuntimeError, match="stop-after-stage"):
         service._p4_15cp3c_previous_run_orchestrator(payload)
-    assert calls[:7] == [
+    assert calls[:8] == [
         "understanding",
         ("understand", "selected", {"conversation_context": None}),
         ("route", plans[0]),
+        ("blade_filter", "  selected  ", plans[1]),
         "research_requirement",
         ("assess", plans[1]),
         "planning",
         ("build", plans[2]),
     ]
-    assert calls[7] == "initial_specialist"
-    assert calls[8][0] == "execute" and calls[8][1] is plans[3]
+    assert calls[8] == "initial_specialist"
+    assert calls[9][0] == "execute" and calls[9][1] is plans[3]
 
 
 def test_source_shape_leaf_imports_and_wrapper_chain():
@@ -162,8 +199,10 @@ def test_source_shape_leaf_imports_and_wrapper_chain():
         for node in ast.walk(stage_tree)
         if isinstance(node, ast.ImportFrom) and node.module
     }
-    assert imported == {"typing"}
-    assert initial_planning_stage.__all__ == ("run_initial_planning_stage",)
+    assert imported == {"dataclasses", "typing"}
+    assert initial_planning_stage.__all__ == (
+        "InitialPlanningStageResult", "run_initial_planning_stage"
+    )
 
     service_tree = ast.parse(Path(service.__file__).read_text(encoding="utf-8-sig"))
     core = [n for n in service_tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_orchestrator"][0]

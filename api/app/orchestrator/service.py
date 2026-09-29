@@ -108,7 +108,7 @@ from app.orchestrator.evidence_research_gate import (
 from app.orchestrator.evidence_synthesizer import (
     synthesize_grounded_evidence,
 )
-from app.orchestrator.models import OrchestratorAskRequest
+from app.orchestrator.models import OrchestratorAskRequest, OrchestratorTrace
 from app.orchestrator.planner import build_execution_plan
 from app.orchestrator.task_evidence import (
     build_task_evidence_authority_canary_p4_6c,
@@ -184,6 +184,9 @@ from app.orchestrator.serialization_stage import (
     _model_to_dict,
 )
 from app.orchestrator.initial_planning_stage import run_initial_planning_stage
+from app.orchestrator.blade_height_filter_applicability import (
+    assess_blade_height_filter_applicability,
+)
 from app.orchestrator.initial_execution_stage import run_initial_execution_stage
 from app.orchestrator.phase_c_entry_stage import prepare_phase_c_entry
 from app.orchestrator.product_family_recovery_stage import (
@@ -229,6 +232,11 @@ from app.orchestrator.phase_c_synthesis_stage import (
 from app.orchestrator.phase_c_evidence_pipeline_stage import (
     run_phase_c_evidence_pipeline_stage,
 )
+
+# The legacy core has source-shape contracts for its single final-stage calls.
+# The early non-executing boundary reuses those stages through private aliases.
+_run_final_response_for_boundary = run_final_response_build_stage
+_run_final_observability_for_boundary = run_final_observability_envelope_stage
 
 
 
@@ -4553,6 +4561,75 @@ def _run_task_execution_canary_p4_6b(
     return contract
 
 
+def _build_blade_height_filter_boundary_response(
+    payload: OrchestratorAskRequest,
+    question: str,
+    plan: Any,
+    boundary: Any,
+    timings: dict[str, int],
+    counts: dict[str, int],
+    run_started: float,
+) -> dict[str, Any]:
+    """Return a public response for a non-executing filter boundary outcome."""
+    # The normal response serializer exposes these existing QueryPlan fields.
+    # Keep that public projection aligned with the boundary clarification
+    # without attaching parser or decision objects to the plan.
+    if hasattr(plan, "clarification_required"):
+        plan.clarification_required = bool(
+            isinstance(boundary.clarification, dict)
+            and boundary.clarification.get("required")
+        )
+    if hasattr(plan, "clarification_question"):
+        plan.clarification_question = (
+            boundary.clarification.get("question")
+            if isinstance(boundary.clarification, dict)
+            else None
+        )
+    response = _run_final_response_for_boundary(
+        payload,
+        False,
+        None,
+        None,
+        [],
+        plan,
+        boundary.status,
+        boundary.answer,
+        question,
+        {
+            "status": "not_required",
+            "required": bool(plan.research_required),
+            "mode": "bounded_synthesis_v1",
+            "ai_calls_used": 0,
+            "max_ai_calls": 1,
+            "follow_up_rounds_used": 0,
+            "max_follow_up_rounds": 0,
+            "answer": None,
+        },
+        boundary.clarification,
+        None,
+        None,
+        OrchestratorTrace(),
+        timings,
+        observability_now=_observability_now,
+        compact_evidence_pipeline_for_public_response=(
+            _compact_evidence_pipeline_for_public_response
+        ),
+        compact_results_for_public_response=(
+            compact_results_for_public_response
+        ),
+        model_to_dict=_model_to_dict,
+        observability_elapsed_ms=_observability_elapsed_ms,
+    ).response
+    return _run_final_observability_for_boundary(
+        response,
+        timings,
+        counts,
+        run_started,
+        ORCHESTRATOR_OBSERVABILITY_CONTRACT_VERSION,
+        observability_elapsed_ms=_observability_elapsed_ms,
+    ).response
+
+
 def run_orchestrator(
     payload: OrchestratorAskRequest,
     sender: Sender | None = None,
@@ -4584,11 +4661,12 @@ def run_orchestrator(
     )
     run_started = _observability_now()
 
-    question = (
+    original_question = (
         payload.q
         if payload.q
         else payload.vraag
-    ).strip()
+    )
+    question = original_question.strip()
 
     # PROMATI_CONVERSATION_SCOPE_GROUNDING_V1
     conversation_context = (
@@ -4603,16 +4681,41 @@ def run_orchestrator(
     # PROMATI_ROUTING_SANITY_BEFORE_RESEARCH_P4_5B3
     # Dependencies are resolved here on every call to preserve service-level
     # monkeypatch contracts. Routing sanity intentionally has no timing key.
-    plan = run_initial_planning_stage(
+    initial_planning = run_initial_planning_stage(
         question,
         conversation_context,
         timings,
+        original_question=original_question,
         observability_call=_observability_call,
         understand_query=understand_query,
         apply_routing_sanity=apply_routing_sanity,
+        assess_blade_height_filter_applicability=(
+            assess_blade_height_filter_applicability
+        ),
         assess_research_requirement=assess_research_requirement,
         build_execution_plan=build_execution_plan,
     )
+    # Preserve the historical plain-plan seam for existing service test
+    # harnesses while production receives the typed planning-stage result.
+    plan = getattr(initial_planning, "plan", initial_planning)
+    blade_height_filter_boundary = getattr(
+        initial_planning,
+        "blade_height_filter_boundary",
+        None,
+    )
+    if (
+        blade_height_filter_boundary is not None
+        and blade_height_filter_boundary.short_circuit
+    ):
+        return _build_blade_height_filter_boundary_response(
+            payload,
+            question,
+            plan,
+            blade_height_filter_boundary,
+            timings,
+            counts,
+            run_started,
+        )
 
     initial_execution = run_initial_execution_stage(
         plan,
