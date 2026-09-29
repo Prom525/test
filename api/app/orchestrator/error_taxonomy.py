@@ -13,6 +13,7 @@ HEALTH_CONTRACT_VERSION = (
 ERROR_CATEGORIES = (
     "routing_error",
     "clarification_required",
+    "capability_unsupported",
     "specialist_unavailable",
     "contract_violation",
     "evidence_insufficient",
@@ -29,6 +30,11 @@ ATTENTION_CATEGORIES = {
 }
 
 
+HEALTHY_CATEGORIES = {
+    "capability_unsupported",
+}
+
+
 STATUS_ALIASES = {
     "routing_error":
         "routing_error",
@@ -41,6 +47,9 @@ STATUS_ALIASES = {
 
     "clarification_required":
         "clarification_required",
+
+    "unsupported":
+        "capability_unsupported",
 
     "unavailable":
         "specialist_unavailable",
@@ -112,6 +121,12 @@ def _health(
 ) -> dict[str, Any]:
 
     if category is None:
+
+        health_status = (
+            "healthy"
+        )
+
+    elif category in HEALTHY_CATEGORIES:
 
         health_status = (
             "healthy"
@@ -335,7 +350,10 @@ def classify_response(
     if (
         top_category
         and top_category
-        != "clarification_required"
+        not in {
+            "clarification_required",
+            "capability_unsupported",
+        }
     ):
 
         return _health(
@@ -479,6 +497,18 @@ def classify_response(
 
         return _health(
             "routing_error"
+        )
+
+
+    if (
+        top_category
+        == "capability_unsupported"
+        or "capability_unsupported"
+        in result_categories
+    ):
+
+        return _health(
+            "capability_unsupported"
         )
 
 

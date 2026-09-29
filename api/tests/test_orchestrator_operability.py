@@ -5,6 +5,85 @@ import inspect
 from app.orchestrator import operability
 
 
+class _MappingResult:
+
+    def __init__(
+        self,
+        *,
+        first=None,
+        all_rows=(),
+    ):
+
+        self._first = first
+        self._all_rows = all_rows
+
+
+    def mappings(
+        self,
+    ):
+
+        return self
+
+
+    def first(
+        self,
+    ):
+
+        return self._first
+
+
+    def all(
+        self,
+    ):
+
+        return self._all_rows
+
+
+class _OperabilityDb:
+
+    def __init__(
+        self,
+    ):
+
+        self._results = iter(
+            (
+                _MappingResult(
+                    first={
+                        "total_runs": 1,
+                    },
+                ),
+                _MappingResult(
+                    first={
+                        "sample_count": 1,
+                    },
+                ),
+                _MappingResult(
+                    all_rows=(
+                        {
+                            "health_status": "healthy",
+                            "error_category": "capability_unsupported",
+                            "run_count": 1,
+                        },
+                    ),
+                ),
+                _MappingResult(),
+                _MappingResult(),
+                _MappingResult(),
+            )
+        )
+
+
+    def execute(
+        self,
+        *_args,
+        **_kwargs,
+    ):
+
+        return next(
+            self._results
+        )
+
+
 def test_operability_contract_is_exact():
 
     assert (
@@ -71,6 +150,25 @@ def test_operability_contains_required_dimensions():
             token
             in source
         )
+
+
+def test_operability_groups_capability_unsupported_without_new_dimensions():
+
+    snapshot = (
+        operability
+        ._window_snapshot(
+            _OperabilityDb(),
+            24,
+        )
+    )
+
+    assert snapshot["health"] == [
+        {
+            "health_status": "healthy",
+            "error_category": "capability_unsupported",
+            "run_count": 1,
+        }
+    ]
 
 
 def test_operability_has_no_raw_question_or_answer_fields():

@@ -14,6 +14,7 @@ from app.routers import orchestrator_api
 EXPECTED_CATEGORIES = (
     "routing_error",
     "clarification_required",
+    "capability_unsupported",
     "specialist_unavailable",
     "contract_violation",
     "evidence_insufficient",
@@ -98,6 +99,139 @@ def test_clarification_is_attention():
         health["category"]
         == "clarification_required"
     )
+
+
+def test_unsupported_is_healthy_capability_outcome():
+
+    health = (
+        error_taxonomy
+        .classify_response(
+            {
+                "status":
+                    "  UnSuPpOrTeD  ",
+            }
+        )
+    )
+
+    assert health == {
+        "contract_version":
+            "promati.orchestrator.health.v1",
+
+        "status":
+            "healthy",
+
+        "category":
+            "capability_unsupported",
+    }
+
+
+def test_unsupported_result_is_visible_when_top_level_status_is_unknown():
+
+    health = (
+        error_taxonomy
+        .classify_response(
+            {
+                "status":
+                    "legacy_pending",
+
+                "results": [
+                    {
+                        "result": {
+                            "status":
+                                "unsupported",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    assert health["status"] == "healthy"
+
+    assert (
+        health["category"]
+        == "capability_unsupported"
+    )
+
+
+def test_unsupported_does_not_broaden_existing_status_aliases():
+
+    routed = (
+        error_taxonomy
+        .classify_response(
+            {
+                "status":
+                    "unsupported_route",
+            }
+        )
+    )
+
+    unknown = (
+        error_taxonomy
+        .classify_response(
+            {
+                "status":
+                    "unsupported_capability",
+            }
+        )
+    )
+
+    assert (
+        routed["category"]
+        == "routing_error"
+    )
+
+    assert unknown == {
+        "contract_version":
+            "promati.orchestrator.health.v1",
+
+        "status":
+            "healthy",
+
+        "category":
+            None,
+    }
+
+
+def test_real_result_error_has_priority_over_unsupported():
+
+    health = (
+        error_taxonomy
+        .classify_response(
+            {
+                "status":
+                    "unsupported",
+
+                "results": [
+                    {
+                        "result": {
+                            "status":
+                                "timeout",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    assert (
+        health["category"]
+        == "timeout"
+    )
+
+
+@pytest.mark.parametrize("status", ["error", "  ErRoR  "])
+def test_top_level_error_has_priority_over_unsupported_result(status):
+    health = error_taxonomy.classify_response({
+        "status": status,
+        "results": [{"result": {"status": "unsupported"}}],
+    })
+
+    assert health == {
+        "contract_version": "promati.orchestrator.health.v1",
+        "status": "error",
+        "category": "routing_error",
+    }
 
 
 def test_specialist_unavailable_is_error():
@@ -339,6 +473,33 @@ def test_run_log_record_contains_health_metadata():
             "error_category"
         ]
         == "clarification_required"
+    )
+
+
+def test_run_log_record_projects_unsupported_category_without_new_fields():
+
+    record = (
+        run_logging
+        .build_orchestrator_run_record(
+            {
+                "status":
+                    "unsupported",
+            }
+        )
+    )
+
+    assert (
+        record[
+            "health_status"
+        ]
+        == "healthy"
+    )
+
+    assert (
+        record[
+            "error_category"
+        ]
+        == "capability_unsupported"
     )
 
 
