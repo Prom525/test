@@ -1,5 +1,23 @@
 # PROJECT HANDOFF — orchestrator fase 4
 
+## Actuele update — P3.2b capability_unsupported migratie voorbereid (niet toegepast)
+
+- Op basis `06370ae1463cec380c39d76247434f466c7c6ef6` zijn uitsluitend minimale,
+  reviewbare SQL-assets en gebruiksdocumentatie voorbereid voor
+  `observability.orchestrator_runs.error_category`. De bestaande gevalideerde
+  CHECK wordt uitsluitend uitgebreid met `capability_unsupported`; alle oude
+  waarden en `NULL`-semantiek blijven behouden.
+- De actuele database is alleen read-only geïnspecteerd: `promati`, nullable
+  `text`-kolom, constraint `ck_orchestrator_runs_error_category` gevalideerd en
+  nog op de oude P3.2-lijst. Er zijn alleen schemawaarden en geaggregeerde
+  categorieaantallen gelezen. Geen schemawijziging, backup/export,
+  livebusinesscall, commit, push of deployment is uitgevoerd.
+- Apply vereist aparte expliciete GO en de preflight/backupcontrole uit
+  `docs/orchestrator-error-category-capability-unsupported-migration.md`.
+  Rollback is fail-closed: bestaande `capability_unsupported`-runrecords
+  worden nooit verwijderd of herschreven en blokkeren een terugkeer naar de
+  oude constraint. Dit herstelt niet automatisch de huidige persistentie.
+
 ## Werkboomstatus — blade-height-filtergrens (basis `5ba81073`, review vereist)
 
 - Deze geïsoleerde werkboom bevat een niet-gecommitteerde, beperkte productieaansluiting van de bestaande pure meshoogteparser/-beslissing. Alleen een expliciete resultaatselectie met een door de bestaande resolver geleverde én intern coherente area/installatie-scope stopt vóór generieke planning, specialist- en researchcalls en retourneert top-level `status: "unsupported"` met de begrensde melding dat filteren voor die scope nog niet wordt ondersteund.
